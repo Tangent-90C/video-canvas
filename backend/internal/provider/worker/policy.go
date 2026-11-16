@@ -24,7 +24,33 @@ const (
 	codeTimeout         = "timeout"
 	codeTransferFailed  = "transfer_failed"
 	codeInvalidParam    = "invalid_param"
+	codeSecretMissing   = "secret_unavailable" // 宿主判定的「钱包未连接 / Key 失效」或「渠道 Key 未设置」
 )
+
+// failureForWallet 在 failureFor 的基础上，为钱包任务把上游的余额 / 授权错误换成本端的可操作提示：
+// 钱包任务扣的是用户自己的 TokenDance 余额，这两类失败是用户能自己解决的问题，不该显示成“服务繁忙”。
+// 其它失败仍优先给上游原文（原文里往往带着上游的具体原因）。
+func failureForWallet(class provider.ErrorClass, platformCode, upstream string, wallet bool) (code, message string) {
+	if !wallet {
+		return failureFor(class, platformCode, upstream)
+	}
+	// 钱包任务不冻结 / 不扣平台积分，宿主固定文案里的「积分已退回」不成立，换成钱包版说法
+	switch {
+	case class == provider.ClassSubmitUnknown:
+		return codeSubmitUnknown, "提交结果未知，请核对 TokenDance 账户是否产生了任务"
+	case class == failTimeout:
+		return codeTimeout, "生成超时"
+	case class == failTransfer:
+		return codeTransferFailed, "生成结果保存失败"
+	}
+	switch {
+	case class == provider.ClassProviderBalance:
+		return codeProviderBalance, "你的 TokenDance 余额不足，请充值后重试（钱包任务不消耗平台积分）"
+	case platformCode == codeSecretMissing:
+		return codeProviderError, "你的 TokenPay 钱包还没有连接或已失效，请到个人中心重新连接钱包"
+	}
+	return failureFor(class, platformCode, upstream)
+}
 
 // failureFor 把错误分类映射成（统一错误码，给用户看的文案）。
 // 拿到了上游的错误原文（upstream 非空）时文案就是原文（去掉上游的请求编号），让用户看到上游真实的失败原因；

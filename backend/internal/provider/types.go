@@ -127,6 +127,7 @@ type TaskRef struct {
 	ProviderTaskID string          // 提交前为空
 	State          json.RawMessage // 插件上次返回的私有状态（ProviderState.Plugin），没有为空
 	Prepared       json.RawMessage // 准备阶段已经完成的结果（ProviderState.Prepared），没有为空
+	Wallet         bool            // 钱包任务：渠道是钱包渠道，用发起用户自己的 TokenPay 钱包 Key（ai_secrets wallet:<UserID>）而不是渠道 Key
 }
 
 // SubmitInput 提交请求。Input 是已按模型能力（capabilities）校验过的规范化输入：prompt、op、各生成参数，以及 images / videos / audios 素材 id（uint64）数组。
@@ -274,6 +275,7 @@ type ModelInfo struct {
 	Tags         []string              `json:"tags"`
 	Pricing      modelcfg.Pricing      `json:"pricing"` // 不含积分成本
 	Capabilities modelcfg.Capabilities `json:"capabilities"`
+	Wallet       bool                  `json:"wallet,omitempty"` // 钱包渠道的模型：用发起用户自己的 TokenDance Key 支付，不扣平台积分
 }
 
 // Registry 只读访问“已发布”的模型配置。实现方缓存编译结果，发布 / 回滚 / 渠道变更后热生效。

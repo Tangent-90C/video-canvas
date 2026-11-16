@@ -24,6 +24,10 @@ export interface AuthConfig {
   register_enabled: boolean;
   /** 注册是否需要邮箱验证码；false 表示全新环境的首个账号，免验证 */
   email_verify_required: boolean;
+  /** 本站是否启用用户 TokenPay 钱包连接 */
+  tokenpay_enabled: boolean;
+  /** 站点对外地址（钱包渠道的归因 App URL），钱包页展示用 */
+  tokenpay_app_url: string;
 }
 
 /** 注册请求参数 */

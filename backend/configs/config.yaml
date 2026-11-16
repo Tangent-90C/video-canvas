@@ -65,6 +65,15 @@ ai:
   queue: # 任务队列并发的硬上限（每个实例）。实际并发在后台「任务队列」页调整（1..硬上限，几秒内生效，默认 16），改这里要重启
     max_concurrency: 64 # 同时处理的任务数；一个任务从提交到转存完成占一个
 
+tokenpay:
+  # 用户 TokenPay（TokenDance）钱包的部署配置。钱包渠道本身在后台「AI 渠道」里建（勾选「钱包渠道」），
+  # 模型绑定与凭证不在这里。app_url 留空表示本部署未启用钱包连接，用户侧接口返回未启用。
+  # app_url：本站点的对外地址（http(s)://host[:port]），既是授权里的应用归因 URL（App URL），
+  #   也是授权回调基址（<app_url>/wallet/tokenpay/callback）。环境变量 APP_TOKENPAY_APP_URL。
+  # key_name：授权页展示的应用名（授权后创建的 TokenDance Key 的默认名称）。环境变量 APP_TOKENPAY_KEY_NAME，默认「连镜」。
+  app_url: ""
+  key_name: "连镜"
+
 agent:
   # 画布 Agent：独立的常驻服务（仓库根目录 agent/，Pi Durable + SQLite，会话、运行、审批都在它里面）。Go 负责登录校验、反向代理前端的接口，
   # 并提供平台能力（画布读写、模型代理和计费、生成任务、素材）。docker compose 部署时由 APP_AGENT_ENABLED 开启（默认开）；

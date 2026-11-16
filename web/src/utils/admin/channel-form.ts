@@ -51,6 +51,8 @@ export type ChannelFormState = {
   headers: HeaderRow[];
   /** 是否启用 */
   enabled: boolean;
+  /** 钱包渠道：任务用发起用户自己的 TokenDance Key 支付，不扣平台积分 */
+  walletEnabled: boolean;
   /** 每秒请求数，空表示不限 */
   rps: string;
   /** 最大同时请求数，空表示不限 */
@@ -66,6 +68,7 @@ export function emptyChannelForm(): ChannelFormState {
     baseUrl: "",
     headers: [],
     enabled: true,
+    walletEnabled: false,
     rps: "",
     maxConcurrency: "",
     maxRunning: "",
@@ -85,6 +88,7 @@ export function channelFormFromView(view: ChannelView): ChannelFormState {
     baseUrl: view.base_url ?? "",
     headers: Object.entries(view.headers ?? {}).map(([name, value]) => ({ name, value })),
     enabled: !!view.enabled,
+    walletEnabled: !!view.wallet_enabled,
     rps: numText(view.rate_limit?.rps),
     maxConcurrency: numText(view.rate_limit?.max_concurrency),
     maxRunning: numText(view.rate_limit?.max_running),
@@ -223,6 +227,7 @@ export function buildChannelRequest(
     headers,
     rate_limit: rateLimit,
     enabled: form.enabled,
+    wallet_enabled: form.walletEnabled,
   };
   if (!original) return { ok: true, create, update: {}, changed: true };
 
@@ -237,6 +242,8 @@ export function buildChannelRequest(
   };
   if (JSON.stringify(rateLimit) !== JSON.stringify(originalLimit)) update.rate_limit = rateLimit;
   if (create.enabled !== !!original.enabled) update.enabled = create.enabled;
+  if (create.wallet_enabled !== !!original.wallet_enabled)
+    update.wallet_enabled = create.wallet_enabled;
   return { ok: true, create, update, changed: Object.keys(update).length > 0 };
 }
 

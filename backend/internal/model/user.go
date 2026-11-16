@@ -55,8 +55,10 @@ type SendRegisterCodeReq struct {
 
 // AuthConfigView 是 GET /auth/config 的响应。
 type AuthConfigView struct {
-	RegisterEnabled     bool `json:"register_enabled"`      // 当前是否开放注册
-	EmailVerifyRequired bool `json:"email_verify_required"` // 注册是否需要邮箱验证码
+	RegisterEnabled     bool   `json:"register_enabled"`      // 当前是否开放注册
+	EmailVerifyRequired bool   `json:"email_verify_required"` // 注册是否需要邮箱验证码
+	TokenPayEnabled     bool   `json:"tokenpay_enabled"`      // 本站是否启用用户 TokenPay 钱包连接
+	TokenPayAppURL      string `json:"tokenpay_app_url"`      // 站点对外地址（钱包渠道的归因 App URL），展示用
 }
 
 // LoginView 是登录 / 注册即登录的响应。

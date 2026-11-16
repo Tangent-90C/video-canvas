@@ -1,7 +1,7 @@
 import type { MeDto, MeStatsDto } from "@/api/me/type";
 
-/** 个人中心的 tab：概览 / 积分 / 资料 / 安全，顺序即界面顺序 */
-export const PROFILE_TABS = ["overview", "credits", "profile", "security"] as const;
+/** 个人中心的 tab：概览 / 积分 / 钱包 / 资料 / 安全，顺序即界面顺序 */
+export const PROFILE_TABS = ["overview", "credits", "wallet", "profile", "security"] as const;
 
 /** 个人中心的一个 tab */
 export type ProfileTab = (typeof PROFILE_TABS)[number];

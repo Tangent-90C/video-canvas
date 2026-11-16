@@ -131,4 +131,6 @@ export interface ModelInfo {
   pricing: Pricing;
   /** 模型能力：生成方式、参考素材、提示词上限与生成参数 */
   capabilities: Capabilities;
+  /** 钱包渠道的模型：用发起用户自己的 TokenDance Key 支付，不消耗平台积分；未连接钱包的用户不展示 */
+  wallet?: boolean;
 }

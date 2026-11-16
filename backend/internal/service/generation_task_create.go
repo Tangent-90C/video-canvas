@@ -66,18 +66,39 @@ func (s *GenerationTaskService) Create(ctx context.Context, userID uint64, idemp
 		return nil, errcode.ErrInvalidParams.WithMsg(fmt.Sprintf("node_ids 的数量（%d）必须等于生成数量（%d）", len(nodes), n))
 	}
 	one := max(modelcfg.Quote(snap.Model.Pricing, caps, modelcfg.SpecFromInput(input, caps.System)), 0)
+	// 5b. 钱包渠道：模型由发起用户自己的 TokenPay 钱包 Key 支付上游，平台不冻结 / 不扣积分（运营者通过分润结算）。
+	// 用户必须先在个人中心连接钱包，否则整体不创建任务。
+	wallet := snap.Channel.Wallet
+	if wallet {
+		connected, err := s.walletConnected(ctx, userID)
+		if err != nil {
+			return nil, err
+		}
+		if !connected {
+			return nil, errcode.ErrWalletNotConnected
+		}
+		one = 0
+	}
 	if name := modelcfg.FanoutParam(caps); name != "" {
 		delete(input, name)
 	}
 
 	// 6. 按节点顺序逐个创建
 	errs, err := s.createAll(ctx, userID, idempotencyKey, nodes, existing, func() *model.GenerationTask {
-		return &model.GenerationTask{UserID: userID, Credits: one}
+		return &model.GenerationTask{UserID: userID, Credits: one, Wallet: wallet}
 	}, req, snap, input, n)
 	if err != nil {
 		return nil, err
 	}
 	return taskItems(nodes, existing, errs), nil
+}
+
+// walletConnected 查询用户是否已连接 TokenPay 钱包。未注入钱包服务（nil）时视为未连接。
+func (s *GenerationTaskService) walletConnected(ctx context.Context, userID uint64) (bool, error) {
+	if s.wallets == nil {
+		return false, nil
+	}
+	return s.wallets.Connected(ctx, userID)
 }
 
 // createAll 按节点顺序逐个创建任务，结果写回 existing：已存在的原样保留，其余各自冻结。
@@ -318,6 +339,7 @@ func (s *GenerationTaskService) fillTask(task *model.GenerationTask, snap *provi
 
 // insertAndFreeze 在单个事务里：锁账户 → 幂等复查 → 校验余额与排队上限 → 插入任务 → 冻结积分 → 写 freeze 流水 → 入队。
 // 任何一步失败整体回滚，不会出现“积分冻结了但任务没创建”。命中幂等键（事务内复查或唯一索引冲突）时返回已存在的任务。
+// 钱包任务（wallet=true）不动平台积分：跳过账户锁、余额校验与冻结，只保留幂等复查、排队上限与入队。
 func (s *GenerationTaskService) insertAndFreeze(ctx context.Context, task *model.GenerationTask) (*model.GenerationTask, error) {
 	userID, key, credits := task.UserID, task.IdempotencyKey, task.Credits
 	// 事务外先读初始积分与并发上限：它们是设置读取，不属于积分事务，也避免在持有账户行锁时多做查询
@@ -354,21 +376,26 @@ func (s *GenerationTaskService) insertAndFreeze(ctx context.Context, task *model
 			}
 		}
 		// 1. 惰性创建积分账户（初始积分来自系统设置，缺省 config；真正建出新账户时仓储会在同一事务补写 initial 流水），
-		//    再对账户行加锁：同一个用户的并发提交在这里被串行化，余额与并发数的检查因此不会被并发穿透
-		if err := tx.EnsureCredit(ctx, userID, initial); err != nil {
-			return err
-		}
-		acc, err := tx.LockCredit(ctx, userID)
-		if err != nil {
-			return err
+		//    再对账户行加锁：同一个用户的并发提交在这里被串行化，余额与并发数的检查因此不会被并发穿透。
+		//    钱包任务不动积分账户，跳过这一步（幂等复查改由任务表唯一索引兜底）
+		var acc *model.UserCredit
+		if !task.Wallet {
+			if err := tx.EnsureCredit(ctx, userID, initial); err != nil {
+				return err
+			}
+			acc, err = tx.LockCredit(ctx, userID)
+			if err != nil {
+				return err
+			}
 		}
 		// 2. 加锁后再查一次幂等键：快速路径到这里之间可能已有同 key 的请求提交成功，命中就直接返回它，不冻结积分
 		if existing, err = s.findIdempotent(ctx, tx, userID, key); err != nil || existing != nil {
 			return err
 		}
 		// 3. 可用余额 = 余额 - 冻结，不足返回 402；未完成的任务数（含排队等名额的）不能超过“并发上限 × 排队倍数”，超过返回 429。
-		//    并发上限本身不在这里拦：超出并发的任务照常创建、排队，等前面的完成后才拿到用户名额（见 AcquireSlot）
-		if acc.Balance-acc.Frozen < credits {
+		//    并发上限本身不在这里拦：超出并发的任务照常创建、排队，等前面的完成后才拿到用户名额（见 AcquireSlot）。
+		//    钱包任务没有冻结，不做余额校验，只保留排队上限
+		if !task.Wallet && acc.Balance-acc.Frozen < credits {
 			return errcode.ErrInsufficientCredits
 		}
 		active, err := tx.CountActive(ctx, userID)
@@ -387,12 +414,14 @@ func (s *GenerationTaskService) insertAndFreeze(ctx context.Context, task *model
 		if !inserted {
 			return errIdempotentConflict
 		}
-		// 5. 冻结积分并写 freeze 流水（流水需要任务 id，所以在插入任务之后）
-		if err := tx.AddCredit(ctx, userID, 0, credits); err != nil {
-			return err
-		}
-		if _, err = tx.InsertLedger(ctx, &model.CreditLedger{UserID: userID, TaskID: model.TaskIDPtr(task.ID), Type: model.LedgerFreeze, Amount: credits}); err != nil {
-			return err
+		// 5. 冻结积分并写 freeze 流水（流水需要任务 id，所以在插入任务之后）。钱包任务不冻结
+		if !task.Wallet {
+			if err := tx.AddCredit(ctx, userID, 0, credits); err != nil {
+				return err
+			}
+			if _, err = tx.InsertLedger(ctx, &model.CreditLedger{UserID: userID, TaskID: model.TaskIDPtr(task.ID), Type: model.LedgerFreeze, Amount: credits}); err != nil {
+				return err
+			}
 		}
 		// 6. 在同一个事务里入队：任务、积分冻结、队列里的 job 要么一起成功，要么一起回滚，不会出现有任务没有 job
 		return tx.EnqueueTask(ctx, task)

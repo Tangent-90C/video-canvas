@@ -84,6 +84,11 @@ type GenerationTaskObserver interface {
 	OnTaskChanged(context.Context, *model.GenerationTask) error
 }
 
+// WalletChecker 查询用户是否已连接 TokenPay 钱包。钱包渠道的任务只有连接了钱包才能创建，执行时用用户自己的 Key。
+type WalletChecker interface {
+	Connected(ctx context.Context, userID uint64) (bool, error)
+}
+
 // GenerationTaskDeps 是任务服务的依赖，全部以接口注入。
 type GenerationTaskDeps struct {
 	Repo        GenerationTaskRepo
@@ -94,6 +99,7 @@ type GenerationTaskDeps struct {
 	Config      config.AI
 	Limits      TaskLimits        // 初始积分与并发上限的运行时来源（系统设置 + 单用户覆盖）；为 nil 时只用 Config
 	Covers      CanvasCoverSetter // 任务成功时把第一张生成的图写成画布封面；为 nil 时不写
+	Wallets     WalletChecker     // 钱包连接状态；为 nil 时视为所有用户都没有连接钱包（钱包渠道的模型不可用）
 }
 
 // GenerationTaskOption 用于替换可注入的部分（主要给测试用）。
@@ -120,6 +126,7 @@ type GenerationTaskService struct {
 	cfg         config.AI
 	limits      TaskLimits
 	covers      CanvasCoverSetter
+	wallets     WalletChecker
 	observer    GenerationTaskObserver
 
 	validateInput func(kind string, caps modelcfg.Capabilities, input map[string]any) (map[string]any, []modelcfg.FieldError)
@@ -144,6 +151,7 @@ func NewGenerationTaskService(deps GenerationTaskDeps, opts ...GenerationTaskOpt
 		cfg:           deps.Config,
 		limits:        deps.Limits,
 		covers:        deps.Covers,
+		wallets:       deps.Wallets,
 		validateInput: modelcfg.ValidateInput,
 		now:           time.Now,
 	}

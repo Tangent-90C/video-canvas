@@ -231,10 +231,10 @@ func (w *Worker) retryTransfer(ctx context.Context, t *model.GenerationTask, err
 	w.retry(ctx, t, attempts, w.opts.Now().Add(delay))
 }
 
-// failTransfer 转存彻底失败：置 failed（transfer_failed）并退款。
+// failTransfer 转存彻底失败：置 failed（transfer_failed）并退款。钱包任务没有积分，文案不说「退积分」。
 func (w *Worker) failTransfer(ctx context.Context, t *model.GenerationTask) {
 	w.forgetTask(t.ID)
-	code, msg := failureFor(failTransfer, "", "")
+	code, msg := failureForWallet(failTransfer, "", "", t.Wallet)
 	if _, err := w.store.Fail(ctx, t, code, msg); err != nil {
 		w.taskLog(t).Error("标记转存失败时出错，稍后重试", zap.Error(err))
 	}

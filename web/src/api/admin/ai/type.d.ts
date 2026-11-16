@@ -176,6 +176,8 @@ export interface ChannelView {
   sort: number;
   /** 是否启用 */
   enabled: boolean;
+  /** 钱包渠道：任务用发起用户自己的 TokenDance Key 支付，不扣平台积分 */
+  wallet_enabled: boolean;
   /** API Key 是否已设置（只写不读） */
   secret_set: boolean;
   /** Secret Key（可选的第二凭证，AK/SK 签名类协议用）是否已设置（只写不读） */
@@ -197,6 +199,7 @@ export interface ChannelCreateRequest {
   headers?: Record<string, string>;
   rate_limit?: ChannelRateLimit;
   enabled?: boolean;
+  wallet_enabled?: boolean;
 }
 
 /** PUT /admin/ai/channels/:key 的请求体：字段都可选，不传表示不改；headers 传了就整体替换 */

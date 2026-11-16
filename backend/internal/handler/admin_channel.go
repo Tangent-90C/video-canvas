@@ -28,7 +28,8 @@ type createChannelReq struct {
 	BaseURL   string             `json:"base_url" binding:"required,max=512" label:"base_url"`
 	Headers   map[string]string  `json:"headers"`
 	RateLimit provider.RateLimit `json:"rate_limit"`
-	Enabled   *bool              `json:"enabled"` // 不传按 true
+	Enabled   *bool              `json:"enabled"`        // 不传按 true
+	Wallet    *bool              `json:"wallet_enabled"` // 钱包渠道：任务用发起用户自己的 TokenPay Key，不扣平台积分
 }
 
 // updateChannelReq 更新渠道：字段都可选，不传表示不改；headers 传了（含空对象）就整体替换。
@@ -38,6 +39,7 @@ type updateChannelReq struct {
 	Headers   map[string]string   `json:"headers"`
 	RateLimit *provider.RateLimit `json:"rate_limit"`
 	Enabled   *bool               `json:"enabled"`
+	Wallet    *bool               `json:"wallet_enabled"`
 }
 
 // setSecretKeyReq 设置或清除渠道 Secret Key：value 为空串表示清除，所以不加 required。
@@ -91,7 +93,7 @@ func (h *AdminChannelHandler) Create(c *gin.Context) {
 	}
 	view, err := h.svc.Create(c.Request.Context(), service.ChannelCreateInput{
 		Key: req.Key, Name: req.Name, BaseURL: req.BaseURL, Headers: req.Headers, RateLimit: req.RateLimit,
-		Enabled: enabled, ActorID: currentUserID(c),
+		Enabled: enabled, WalletEnabled: req.Wallet != nil && *req.Wallet, ActorID: currentUserID(c),
 	})
 	if err != nil {
 		response.Fail(c, err)
@@ -112,7 +114,7 @@ func (h *AdminChannelHandler) Update(c *gin.Context) {
 	}
 	view, err := h.svc.Update(c.Request.Context(), service.ChannelUpdateInput{
 		Key: key, Name: req.Name, BaseURL: req.BaseURL, Headers: req.Headers, RateLimit: req.RateLimit,
-		Enabled: req.Enabled, ActorID: currentUserID(c),
+		Enabled: req.Enabled, WalletEnabled: req.Wallet, ActorID: currentUserID(c),
 	})
 	if err != nil {
 		response.Fail(c, err)

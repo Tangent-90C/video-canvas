@@ -17,6 +17,7 @@ type Config struct {
 	Redis    Redis    `mapstructure:"redis"`
 	JWT      JWT      `mapstructure:"jwt"`
 	AI       AI       `mapstructure:"ai"`
+	TokenPay TokenPay `mapstructure:"tokenpay"`
 	Storage  Storage  `mapstructure:"storage"`
 	Agent    Agent    `mapstructure:"agent"`
 	Update   Update   `mapstructure:"update"`
@@ -190,6 +191,34 @@ type AI struct {
 	PluginRunner PluginRunner `mapstructure:"plugin_runner"`
 }
 
+// TokenPay 是 TokenPay（TokenDance）用户钱包的部署配置。钱包渠道本身、模型绑定仍在后台 AI 配置里。
+type TokenPay struct {
+	// AppURL 是本站点的对外地址（http(s)://host[:port]）：既是 TokenDance 授权里的应用归因 URL（App URL），
+	// 也是授权回调的基址（<AppURL>/wallet/tokenpay/callback）。留空表示本部署未接入钱包连接，用户侧接口返回未启用。
+	AppURL string `mapstructure:"app_url"`
+	// KeyName 是授权页里展示的应用名（授权后创建的 TokenDance Key 的默认名称）。空时后端用「连镜」。
+	KeyName string `mapstructure:"key_name"`
+}
+
+// Enabled 表示本部署启用了用户钱包连接（配了 AppURL）。
+func (t TokenPay) Enabled() bool { return t.AppURL != "" }
+
+// Validate 校验启用了钱包时的配置：AppURL 必须是 http(s)://host[:port]。
+func (t TokenPay) Validate() error {
+	if !t.Enabled() {
+		return nil
+	}
+	return checkOrigin("tokenpay.app_url", t.AppURL)
+}
+
+// Defaults 填充可选字段的缺省值。
+func (t TokenPay) Defaults() TokenPay {
+	if t.KeyName == "" {
+		t.KeyName = "连镜"
+	}
+	return t
+}
+
 // PluginRunner 是 plugin-runner 进程（协议插件的沙箱执行环境）的部署与预算配置。
 // 生产环境 runner 是独立容器（network_mode: none、mem_limit、restart: always），经共享卷里的 Unix socket 通信，mode 用 external；
 // 开发环境（含 Windows）mode 用 spawn：主服务把自己的二进制以 plugin-runner 子命令拉起来，设 GOMEMLIMIT 软限制，崩溃后自动重启。
@@ -273,6 +302,7 @@ func Load(path string) (*Config, error) {
 	// 否则升级时无法把它们导入为后台存储
 	for _, key := range []string{
 		"server.id_key", "log.instance", "database.allow_newer_schema", "update.updater_token", "ai.secret_key", "ai.allow_fake_ip", "storage.driver",
+		"tokenpay.app_url", "tokenpay.key_name",
 		"agent.enabled", "agent.url", "agent.bridge_url", "agent.bridge_addr", "agent.service_token", "agent.web_enabled", "agent.searxng_url", "agent.disabled_tools",
 		"storage.s3.endpoint", "storage.s3.region", "storage.s3.bucket", "storage.s3.access_key", "storage.s3.secret_key",
 		"storage.s3.use_ssl", "storage.s3.public_base_url", "storage.s3.path_prefix",
@@ -286,6 +316,10 @@ func Load(path string) (*Config, error) {
 	}
 	cfg.Agent = cfg.Agent.WithDefaults()
 	if err := cfg.Agent.Validate(); err != nil {
+		return nil, err
+	}
+	cfg.TokenPay = cfg.TokenPay.Defaults()
+	if err := cfg.TokenPay.Validate(); err != nil {
 		return nil, err
 	}
 	return &cfg, nil

@@ -82,6 +82,8 @@ var (
 	ErrConfigNotFound      = New(40011, "配置不存在", http.StatusNotFound)
 	ErrSecretNotSet        = New(40013, "凭证尚未设置", http.StatusConflict)
 	ErrWSTicketInvalid     = New(40014, "连接凭证无效或已过期", http.StatusUnauthorized)
+	ErrWalletDisabled      = New(40015, "本站未启用 TokenPay 钱包", http.StatusConflict)
+	ErrWalletNotConnected  = New(40016, "请先在个人中心连接 TokenPay 钱包", http.StatusPaymentRequired)
 )
 
 // 协议插件 / 渠道 / 模型删除 5xxxx

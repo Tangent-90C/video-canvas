@@ -14,7 +14,8 @@ import (
 type Handlers struct {
 	Health         *handler.HealthHandler
 	User           *handler.UserHandler
-	Me             *handler.MeHandler // 个人中心：资料、头像、改密码、统计、热力图、积分流水
+	Me             *handler.MeHandler     // 个人中心：资料、头像、改密码、统计、热力图、积分流水
+	Wallet         *handler.WalletHandler // 用户 TokenPay 钱包：发起授权、授权码交换、连接状态、断开
 	CanvasProject  *handler.CanvasProjectHandler
 	CanvasTransfer *handler.CanvasTransferHandler // 画布导出为文档、从文档导入为新画布
 	Storyboard     *handler.StoryboardHandler     // 画布分镜表：从剧本拆分镜
@@ -175,6 +176,15 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		tasks.POST("/:id/cancel", h.GenerationTask.Cancel)
 		auth.GET("/credits", h.GenerationTask.Credits)
 		auth.GET("/models", h.AIModel.List)
+
+		// 用户 TokenPay 钱包：start 返回授权页地址（前端整页跳转），connect 用回调带回的一次性授权码换 Key。
+		// 未配置 tokenpay.app_url 的部署里，这些接口返回「本站未启用 TokenPay 钱包」。
+		wallet := auth.Group("/wallet/tokenpay")
+		wallet.GET("/start", h.Wallet.Start)
+		wallet.POST("/connect", h.Wallet.Connect)
+		wallet.GET("/connection", h.Wallet.Connection)
+		wallet.DELETE("/connection", h.Wallet.Disconnect)
+
 		auth.POST("/assets", h.Asset.Upload)
 		auth.POST("/assets/upload-intents", h.Asset.CreateUploadIntent)          // 申请上传：直传凭证，或告知走后端中转
 		auth.POST("/assets/upload-intents/:id/complete", h.Asset.CompleteUpload) // 直传完成后登记素材

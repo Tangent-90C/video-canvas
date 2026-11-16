@@ -36,6 +36,7 @@ import Login from "@/pages/login";
 import MarketingDetail from "@/pages/marketing/detail";
 import MarketingList from "@/pages/marketing";
 import PayReturn from "@/pages/pay/return";
+import TokenPayCallback from "@/pages/wallet/tokenpay-callback";
 import Profile from "@/pages/profile";
 import { useMeStore } from "@/store/me";
 import { getToken } from "@/utils/storage/token";
@@ -94,6 +95,11 @@ export const router = createBrowserRouter([
       {
         path: "/pay/return",
         element: <PayReturn />,
+      },
+      /** TokenDance 授权完成后回调落地：用 code 换 Key 后跳回发起页；未登录时引导先登录再回来 */
+      {
+        path: "/wallet/tokenpay/callback",
+        element: <TokenPayCallback />,
       },
       {
         element: <RequireAuth />,

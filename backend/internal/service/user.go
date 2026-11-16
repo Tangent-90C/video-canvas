@@ -81,6 +81,10 @@ type UserDeps struct {
 	JWTExpireHours int
 	// Debug 为 true（gin debug 模式）时把验证码打印到日志，方便本地联调；release 模式绝不输出。
 	Debug bool
+
+	// TokenPayEnabled / TokenPayAppURL 是用户 TokenPay 钱包的站点级开关与归因地址，进 GET /auth/config 给前端展示。
+	TokenPayEnabled bool
+	TokenPayAppURL  string
 }
 
 // UserService 负责登录、注册（含验证码）、鉴权状态查询。

@@ -17,6 +17,7 @@ import {
 
 import { CreditsTab } from "./credits-tab";
 import { OverviewTab } from "./overview-tab";
+import { WalletTab } from "./wallet-tab";
 import { ProfileTab as ProfileFormTab } from "./profile-tab";
 import { SecurityTab } from "./security-tab";
 
@@ -24,6 +25,7 @@ import { SecurityTab } from "./security-tab";
 const TABS: { value: ProfileTab; label: string }[] = [
   { value: "overview", label: "概览" },
   { value: "credits", label: "积分" },
+  { value: "wallet", label: "钱包" },
   { value: "profile", label: "资料" },
   { value: "security", label: "安全" },
 ];
@@ -141,6 +143,9 @@ export default function ProfilePage() {
         </TabsContent>
         <TabsContent value="credits" className="pt-3">
           <CreditsTab />
+        </TabsContent>
+        <TabsContent value="wallet" className="pt-3">
+          <WalletTab />
         </TabsContent>
         <TabsContent value="profile" className="pt-3">
           <ProfileFormTab />

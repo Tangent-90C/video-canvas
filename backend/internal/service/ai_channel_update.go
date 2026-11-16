@@ -72,6 +72,9 @@ func applyUpdateFields(next *model.AIChannel, in ChannelUpdateInput) ([]string, 
 	if in.Enabled != nil {
 		next.Enabled = *in.Enabled
 	}
+	if in.WalletEnabled != nil {
+		next.WalletEnabled = *in.WalletEnabled
+	}
 	return problems, nil
 }
 
@@ -100,6 +103,9 @@ func changedFields(before, after *model.AIChannel) []string {
 	}
 	if !jsonEqual(before.RateLimitJSON, after.RateLimitJSON) {
 		changed = append(changed, "rate_limit")
+	}
+	if before.WalletEnabled != after.WalletEnabled {
+		changed = append(changed, "wallet_enabled")
 	}
 	return changed
 }

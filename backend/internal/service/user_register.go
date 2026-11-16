@@ -55,13 +55,18 @@ func (s *UserService) loadRegisterState(ctx context.Context) (registerState, err
 	return registerState{open: switchOn, verifyRequired: smtpOn && !empty, smtpOn: smtpOn}, nil
 }
 
-// AuthConfig 返回登录页需要的注册配置（GET /auth/config）。
+// AuthConfig 返回登录页需要的注册配置与钱包开关（GET /auth/config）。
 func (s *UserService) AuthConfig(ctx context.Context) (*model.AuthConfigView, error) {
 	st, err := s.loadRegisterState(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return &model.AuthConfigView{RegisterEnabled: st.open, EmailVerifyRequired: st.verifyRequired}, nil
+	return &model.AuthConfigView{
+		RegisterEnabled:     st.open,
+		EmailVerifyRequired: st.verifyRequired,
+		TokenPayEnabled:     s.TokenPayEnabled,
+		TokenPayAppURL:      s.TokenPayAppURL,
+	}, nil
 }
 
 // normalizeEmail 去掉首尾空白并转小写：邮箱大小写不敏感，库里统一存小写。

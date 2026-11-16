@@ -64,7 +64,7 @@ func failureOfResult(res *provider.QueryResult) failure {
 // snap 为 nil 表示快照本身损坏，日志里就没有渠道与插件信息。
 func (w *Worker) fail(ctx context.Context, t *model.GenerationTask, snap *provider.Snapshot, f failure) {
 	w.forgetTask(t.ID)
-	code, msg := failureFor(f.class, f.code, f.upstream)
+	code, msg := failureForWallet(f.class, f.code, f.upstream, t.Wallet)
 
 	log := w.taskLog(t)
 	fields := []zap.Field{
@@ -74,8 +74,8 @@ func (w *Worker) fail(ctx context.Context, t *model.GenerationTask, snap *provid
 	case f.pluginFault:
 		// 插件抛异常、超时、返回值不合规、runner 崩溃：是插件或运维问题，用户只看到“平台繁忙”，必须告警
 		log.Error("【告警】插件级失败，任务已失败并退积分", append(fields, pluginFields(snap)...)...)
-	case f.class == provider.ClassProviderBalance:
-		// 上游账户余额不足是运维问题，必须告警
+	case f.class == provider.ClassProviderBalance && !t.Wallet:
+		// 平台渠道的上游账户余额不足是运维问题，必须告警；钱包任务扣的是用户自己的余额，不算运维告警
 		log.Error("【告警】上游账户余额不足，请尽快充值", append(fields, pluginFields(snap)...)...)
 	case f.class == provider.ClassSubmitUnknown:
 		// 提交读超时，上游可能已经创建了任务并计费，需要人工核对

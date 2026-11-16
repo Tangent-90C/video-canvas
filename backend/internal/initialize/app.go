@@ -88,7 +88,8 @@ func NewApp(cfg *config.Config) (*App, error) {
 	userSvc := service.NewUserService(service.UserDeps{
 		Repo: userRepo, Cache: userCache, Codes: cache.NewRegisterCodeStore(rdb), Policy: settingsSvc, Mail: smtpSvc,
 		JWTSecret: cfg.JWT.Secret, JWTIssuer: cfg.JWT.Issuer, JWTExpireHours: cfg.JWT.ExpireHours,
-		Debug: cfg.Server.Mode == "debug", // 仅 debug 模式把验证码打到日志
+		Debug:           cfg.Server.Mode == "debug", // 仅 debug 模式把验证码打到日志
+		TokenPayEnabled: cfg.TokenPay.Enabled(), TokenPayAppURL: cfg.TokenPay.AppURL,
 	})
 
 	// 对外 ID 编码：画布 ID 等以十六进制串暴露，库里主键不变
@@ -109,6 +110,16 @@ func NewApp(cfg *config.Config) (*App, error) {
 	if cfg.AI.SecretKey == "" {
 		logger.Warn("未配置 ai.secret_key（环境变量 APP_AI_SECRET_KEY），管理端无法设置或读取平台凭证，生成任务将无法提交")
 	}
+
+	// 用户 TokenPay（TokenDance）钱包：OAuth 授权拿到用户自己的 Key（加密存 ai_secrets），
+	// 钱包渠道的任务用它支付上游，平台不冻结 / 不扣积分。未配 tokenpay.app_url 时整体未启用（用户侧接口报未启用）。
+	walletSvc := service.NewUserWalletService(service.UserWalletDeps{
+		Repo:    repository.NewUserWalletRepository(db),
+		Secrets: aiCfgSvc,
+		Flows:   cache.NewOAuthFlowStore(rdb),
+		AppURL:  cfg.TokenPay.AppURL,
+		KeyName: cfg.TokenPay.KeyName,
+	})
 
 	// 素材存储：存储配置在数据库里（后台“存储配置”管理），密钥复用 AI 配置的加密存储（ai_secrets），
 	// 所以 AI 配置服务要先建。Registry 按 id 解析存储并缓存客户端；写入用默认存储，读取按素材记录的 storage_id。
@@ -175,6 +186,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		Config:      cfg.AI,
 		Limits:      service.NewTaskLimitService(settingsSvc, userRepo), // 初始积分 / 并发上限：单用户覆盖 > 系统设置 > config
 		Covers:      canvasProjectRepo,                                  // 任务成功时把第一张图写成画布封面
+		Wallets:     walletSvc,                                          // 钱包渠道的任务要求用户已连接 TokenPay 钱包
 	})
 
 	// 短剧流水线的文本步骤用后台的 Agent 模型（经 LLM 网关直接请求渠道）与账户计价；拆解写画布与角色卡由同一事务提交。
@@ -350,6 +362,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		Health:          handler.NewHealthHandler(db, rdb),
 		User:            handler.NewUserHandler(userSvc),
 		Me:              handler.NewMeHandler(meSvc),
+		Wallet:          handler.NewWalletHandler(walletSvc),
 		CanvasProject:   handler.NewCanvasProjectHandler(canvasProjectSvc),
 		Drama:           handler.NewDramaHandler(dramaSvc),
 		AdminStep:       handler.NewAdminStepHandler(stepSvc),

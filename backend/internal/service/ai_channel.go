@@ -101,40 +101,43 @@ var channelKeyRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
 
 // ChannelView 是管理端的渠道视图。Key 与 Secret Key 只写不读：只告诉调用方有没有设置。
 type ChannelView struct {
-	Key          string             `json:"key"`
-	Name         string             `json:"name"`
-	BaseURL      string             `json:"base_url"`
-	Headers      map[string]string  `json:"headers"`
-	RateLimit    provider.RateLimit `json:"rate_limit"`
-	Sort         int                `json:"sort"`
-	Enabled      bool               `json:"enabled"`
-	SecretSet    bool               `json:"secret_set"`
-	SecretKeySet bool               `json:"secret_key_set"`
-	UpdatedBy    uint64             `json:"updated_by"`
-	UpdatedAt    time.Time          `json:"updated_at"`
-	CreatedAt    time.Time          `json:"created_at"`
+	Key           string             `json:"key"`
+	Name          string             `json:"name"`
+	BaseURL       string             `json:"base_url"`
+	Headers       map[string]string  `json:"headers"`
+	RateLimit     provider.RateLimit `json:"rate_limit"`
+	Sort          int                `json:"sort"`
+	Enabled       bool               `json:"enabled"`
+	WalletEnabled bool               `json:"wallet_enabled"`
+	SecretSet     bool               `json:"secret_set"`
+	SecretKeySet  bool               `json:"secret_key_set"`
+	UpdatedBy     uint64             `json:"updated_by"`
+	UpdatedAt     time.Time          `json:"updated_at"`
+	CreatedAt     time.Time          `json:"created_at"`
 }
 
 // ChannelCreateInput 是新建渠道的参数。
 type ChannelCreateInput struct {
-	Key       string
-	Name      string
-	BaseURL   string
-	Headers   map[string]string
-	RateLimit provider.RateLimit
-	Enabled   bool // 调用方在请求没传时按 true 传入
-	ActorID   uint64
+	Key           string
+	Name          string
+	BaseURL       string
+	Headers       map[string]string
+	RateLimit     provider.RateLimit
+	Enabled       bool // 调用方在请求没传时按 true 传入
+	WalletEnabled bool
+	ActorID       uint64
 }
 
 // ChannelUpdateInput 是更新渠道的参数：指针 / nil 的字段表示“不改”。
 type ChannelUpdateInput struct {
-	Key       string
-	Name      *string
-	BaseURL   *string
-	Headers   map[string]string   // nil 表示不改；非 nil（含空对象）表示整体替换
-	RateLimit *provider.RateLimit // nil 表示不改
-	Enabled   *bool
-	ActorID   uint64
+	Key           string
+	Name          *string
+	BaseURL       *string
+	Headers       map[string]string   // nil 表示不改；非 nil（含空对象）表示整体替换
+	RateLimit     *provider.RateLimit // nil 表示不改
+	Enabled       *bool
+	WalletEnabled *bool
+	ActorID       uint64
 }
 
 // List 返回所有渠道（按 sort、key 升序），带 secret_set 与 secret_key_set。返回的切片永远不是 nil。
@@ -220,7 +223,7 @@ func (s *AIChannelService) Create(ctx context.Context, in ChannelCreateInput) (*
 	}
 	ch := &model.AIChannel{
 		Key: in.Key, Name: name, BaseURL: baseURL, HeadersJSON: model.JSONText(headersJSON), RateLimitJSON: model.JSONText(rateJSON),
-		Sort: sortNo, Enabled: in.Enabled, UpdatedBy: in.ActorID,
+		Sort: sortNo, Enabled: in.Enabled, WalletEnabled: in.WalletEnabled, UpdatedBy: in.ActorID,
 	}
 	err = s.repo.CreateChannel(ctx, ch)
 	// 自动生成的 key 撞上已有渠道：换一个重试；显式传的 key 重复就是 409
@@ -260,7 +263,7 @@ func (s *AIChannelService) view(ctx context.Context, ch *model.AIChannel) (*Chan
 	}
 	v := &ChannelView{
 		Key: ch.Key, Name: ch.Name, BaseURL: ch.BaseURL, Headers: decodeStringMap(ch.HeadersJSON), Sort: ch.Sort,
-		Enabled: ch.Enabled, SecretSet: set, SecretKeySet: keySet,
+		Enabled: ch.Enabled, WalletEnabled: ch.WalletEnabled, SecretSet: set, SecretKeySet: keySet,
 		UpdatedBy: ch.UpdatedBy, UpdatedAt: ch.UpdatedAt, CreatedAt: ch.CreatedAt,
 	}
 	if len(ch.RateLimitJSON) > 0 {

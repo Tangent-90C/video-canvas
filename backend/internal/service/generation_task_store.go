@@ -474,7 +474,8 @@ func (s *GenerationTaskService) finish(ctx context.Context, id uint64, from []st
 			return err
 		}
 		updated = t
-		if t.IsTest {
+		if t.IsTest || t.Wallet {
+			// 试跑任务与钱包任务（上游由用户自己的 TokenDance Key 付费）都不动平台积分
 			return nil
 		}
 		if err := settleLedger(ctx, tx, t, target); err != nil {

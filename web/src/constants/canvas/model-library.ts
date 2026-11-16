@@ -16,6 +16,8 @@ export type ModelOption = {
   vendor?: string;
   /** 展示标签 */
   tags?: readonly string[];
+  /** 钱包模型：用用户自己的 TokenDance 额度，不消耗平台积分 */
+  wallet?: boolean;
 };
 
 /**
