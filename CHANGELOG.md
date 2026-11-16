@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.6.16] - 2026-11-17
+
 ### 新增
 
 - 接入 TokenPay（TokenDance）用户钱包：用户在个人中心授权自己的 TokenDance 账号后即可使用钱包模型，生成用用户自己的额度支付、不消耗平台积分；管理后台渠道支持「钱包渠道」标记（配 `APP_TOKENPAY_APP_URL` 启用），新增 tokendance 视频、语音协议插件。
