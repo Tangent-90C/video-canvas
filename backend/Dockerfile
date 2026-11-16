@@ -6,6 +6,10 @@ FROM --platform=$BUILDPLATFORM golang:1.27-bookworm AS build
 
 WORKDIR /src
 
+# 国内网络构建时传 --build-arg GOPROXY=https://goproxy.cn,direct；留空用 Go 默认
+ARG GOPROXY=
+ENV GOPROXY=${GOPROXY}
+
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 
