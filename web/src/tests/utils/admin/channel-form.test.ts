@@ -46,6 +46,7 @@ describe("emptyChannelForm", () => {
       rps: "",
       maxConcurrency: "",
       maxRunning: "",
+      walletEnabled: false,
     });
   });
 });
@@ -60,6 +61,7 @@ describe("channelFormFromView", () => {
       rps: "5",
       maxConcurrency: "",
       maxRunning: "",
+      walletEnabled: false,
     });
   });
 
@@ -163,6 +165,7 @@ describe("buildChannelRequest（新建）", () => {
       headers: { "User-Agent": "ua" },
       rate_limit: { rps: 3, max_concurrency: 0, max_running: 0 },
       enabled: true,
+      wallet_enabled: false,
     });
   });
 

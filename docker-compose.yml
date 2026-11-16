@@ -57,6 +57,9 @@ services:
       APP_AGENT_SERVICE_TOKEN: ${AGENT_SERVICE_TOKEN:-}
       # 一键升级（可选，见下方 updater）：与 updater 共用的 token，为空表示没启用
       APP_UPDATE_UPDATER_TOKEN: ${UPDATER_TOKEN:-}
+      # TokenPay 用户钱包：站点对外地址（授权归因 + 回调基址）。不配则钱包功能整体关闭；不配 KEY_NAME 时后端用默认「连镜」
+      APP_TOKENPAY_APP_URL: ${APP_TOKENPAY_APP_URL:-}
+      APP_TOKENPAY_KEY_NAME: ${APP_TOKENPAY_KEY_NAME:-}
     volumes:
       - backend_assets:/app/data/assets
       # 日志：app.log（过程和结果，保留 30 天）、payload.log（每次上游调用的请求和响应全文，保留 7 天）
