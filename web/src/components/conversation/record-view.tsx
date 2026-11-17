@@ -38,8 +38,9 @@ import { useRemoteModels } from "@/hooks/use-models";
 import { TAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useConversationRecordsStore } from "@/store/conversation-records";
+import { useWalletStore } from "@/store/wallet";
 import { downloadMedia } from "@/utils/canvas/download";
-import { recordActive, recordCredits } from "@/utils/conversation/cell";
+import { recordActive, recordCredits, recordWalletCost } from "@/utils/conversation/cell";
 import { recordPreviewItems } from "@/utils/conversation/preview-items";
 import { restoreComposer } from "@/utils/conversation/restore";
 import { isCancelableTask } from "@/utils/tasks/status";
@@ -116,7 +117,7 @@ function RefThumbs({ refs }: { refs: Array<{ kind: RefKind; id: number }> }) {
 const LONG_PROMPT = 140;
 
 /**
- * 对话里的一条生成记录：参考图数量 + 「模式 | 模型 | 参数 | 积分」，提示词，结果格子，操作。
+ * 对话里的一条生成记录：参考图数量 + 「模式 | 模型 | 参数 | 花费」（钱包记录是预估花费（元），普通记录是平台积分），提示词，结果格子，操作。
  * 操作：重新编辑（填回输入卡片）、再次生成（用同一份快照新提交一条）、取消进行中的任务、
  * 更多（复制提示词、下载全部、发到画布、删除）。发到画布要等阶段 2，先禁用。
  * @param record 记录
@@ -148,6 +149,8 @@ export function RecordView({
   const cancelable = tasks.some(isCancelableTask);
   const credits = recordCredits(tasks);
   const model = models.find((item) => item.key === record.modelId);
+  const yuanPerCredit = useWalletStore((state) => state.balance?.yuan_per_credit);
+  const walletCost = recordWalletCost(record, model, yuanPerCredit);
   const offline = isModelOffline(
     record,
     status === "ready" ? models.map((item) => item.key) : null,
@@ -197,11 +200,14 @@ export function RecordView({
           {summary && <span className={META_ITEM}>{summary}</span>}
           {refCount > 0 && <span className={META_ITEM}>参考 {refCount} 个</span>}
           {tasks.length > 0 &&
-            // 钱包记录扣的是用户自己的 TokenDance 额度，不显示平台积分
+            // 钱包记录扣的是用户自己的 TokenDance 额度：不显示平台积分，改显示这条花了多少钱
             (model?.wallet ? (
-              <span className={cn(META_ITEM, "inline-flex items-center gap-0.5")} title="用你自己的 TokenDance 额度">
+              <span
+                className={cn(META_ITEM, "inline-flex items-center gap-0.5 tabular-nums")}
+                title="预估花费，实际以 TokenDance 账单为准；用你自己的 TokenDance 额度"
+              >
                 <Wallet className="size-3" />
-                钱包
+                {walletCost || "—"}
               </span>
             ) : (
               <span

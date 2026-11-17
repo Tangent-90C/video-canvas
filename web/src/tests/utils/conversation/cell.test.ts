@@ -1,8 +1,16 @@
 import { describe, expect, test } from "bun:test";
 
 import type { RecordDto } from "@/api/conversation/type";
+import type { ModelInfo } from "@/api/model/type";
 import { makeTask, succeeded } from "../tasks/fixtures";
-import { cellNeedsClock, deriveCell, recordActive, recordCredits } from "@/utils/conversation/cell";
+import { defaultCapabilities } from "@/utils/admin/model-template";
+import {
+  cellNeedsClock,
+  deriveCell,
+  recordActive,
+  recordCredits,
+  recordWalletCost,
+} from "@/utils/conversation/cell";
 
 /** 固定「现在」：任务创建 10 分钟后 */
 const NOW = Date.parse("2026-09-29T10:10:00Z");
@@ -160,5 +168,69 @@ describe("cellNeedsClock：什么时候格子要走表刷新「已耗时」", ()
       expect(cellNeedsClock(makeTask({ status }))).toBe(false);
     }
     expect(cellNeedsClock(undefined)).toBe(false);
+  });
+});
+
+describe("recordWalletCost：钱包记录显示这条花了多少钱（元）", () => {
+  /** 钱包图片模型：按次 4 积分（同步模板的定价） */
+  const walletImage: ModelInfo = {
+    key: "tp-image",
+    kind: "image",
+    label: "Seedream",
+    wallet: true,
+    pricing: { billing: "per_call", unit: 4 },
+    capabilities: defaultCapabilities("image"),
+  };
+  /** 钱包视频模型：按秒 2 积分，1080P 规格 4 积分/秒 */
+  const walletVideo: ModelInfo = {
+    key: "tp-video",
+    kind: "video",
+    label: "Seedance",
+    wallet: true,
+    pricing: {
+      billing: "per_second",
+      per_second: 2,
+      tiers: [{ on: true, when: { resolution: "1080P" }, unit: 4 }],
+    },
+    capabilities: defaultCapabilities("video"),
+  };
+  /** 汇率：1 元 = 200 积分（后台定价设置） */
+  const rate = 1 / 200;
+
+  test("不是钱包模型：返回空串（调用方照旧显示平台积分）", () => {
+    const plain = { ...walletImage, wallet: false };
+    expect(recordWalletCost(record(), plain, rate)).toBe("");
+  });
+
+  test("汇率还没拿到（余额未加载）：返回空串，调用方显示「—」", () => {
+    expect(recordWalletCost(record(), walletImage, undefined)).toBe("");
+  });
+
+  test("按次计费：单价 × 生成数量，× 汇率折成元", () => {
+    // 4 积分 × 2 张 ÷ 200 = 0.04
+    expect(recordWalletCost(record({ count: 2 }), walletImage, rate)).toBe("≈¥0.04");
+    expect(recordWalletCost(record({ count: 1 }), walletImage, rate)).toBe("≈¥0.02");
+  });
+
+  test("按秒计费：时长与清晰度规格从记录快照里取，不是默认值", () => {
+    // 1080P 规格 4 积分/秒 × 5 秒 × 2 条 ÷ 200 = 0.2
+    const rec = record({
+      kind: "video",
+      count: 2,
+      input: { prompt: "p", duration: 5, resolution: "1080P" },
+    });
+    expect(recordWalletCost(rec, walletVideo, rate)).toBe("≈¥0.20");
+    // 720P：2 积分/秒 × 5 秒 × 1 条 ÷ 200 = 0.05
+    expect(
+      recordWalletCost(
+        record({ count: 1, input: { duration: 5, resolution: "720P" } }),
+        walletVideo,
+        rate,
+      ),
+    ).toBe("≈¥0.05");
+  });
+
+  test("模型已下线（拿不到定价）不炸：返回空串", () => {
+    expect(recordWalletCost(record(), undefined, rate)).toBe("");
   });
 });

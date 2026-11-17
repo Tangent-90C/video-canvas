@@ -1,5 +1,8 @@
 import type { RecordDto } from "@/api/conversation/type";
 import type { TaskOutput, TaskView } from "@/api/generation-task/type";
+import type { ModelInfo } from "@/api/model/type";
+import { quote, yuanEstimate } from "@/utils/pricing/quote";
+import { priceSpecOf } from "@/utils/tasks/capabilities";
 import { derivePendingPhase } from "@/utils/tasks/node-view";
 import { canceledRefunded, isActiveStatus } from "@/utils/tasks/status";
 
@@ -84,6 +87,24 @@ export function deriveCell(
         taskRef: task.task_ref ?? null,
       };
   }
+}
+
+/**
+ * 钱包记录的预估花费（元）：这条记录扣的是用户自己的 TokenDance 额度，平台积分作废，
+ * 改按「本地计价 × 汇率」折算成钱显示（与输入卡片、画布节点同一套算法，见 utils/pricing/quote.ts）。
+ * @param record 这条记录
+ * @param model 它用的模型；不是钱包模型、或模型已下线拿不到定价时返回空串
+ * @param yuanPerCredit 「1 平台积分折多少元」汇率；拿不到（余额还没加载）返回空串，调用方显示「—」
+ */
+export function recordWalletCost(
+  record: RecordDto,
+  model: ModelInfo | undefined,
+  yuanPerCredit: number | undefined,
+) {
+  if (!model?.wallet) return "";
+  const spec = priceSpecOf(model.capabilities, record.input);
+  const each = quote(model.pricing, model.capabilities, spec);
+  return yuanEstimate(each * record.count, yuanPerCredit);
 }
 
 /**
