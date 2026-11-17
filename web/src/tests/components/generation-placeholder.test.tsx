@@ -67,4 +67,13 @@ describe("FailedPlaceholder", () => {
     expect(out).toContain("disabled");
     expect(out).toContain('title="模型已下线"');
   });
+
+  test("给了 onRecharge 才显示去充值，和重试可以同时存在", () => {
+    expect(renderToStaticMarkup(<FailedPlaceholder message="失败" />)).not.toContain("去充值");
+    const out = renderToStaticMarkup(
+      <FailedPlaceholder message="余额不足" onRecharge={() => {}} onRetry={() => {}} />,
+    );
+    expect(out).toContain("去充值");
+    expect(out).toContain("重试");
+  });
 });

@@ -110,6 +110,8 @@ export function ModelParamsForm({
     caps.prompt.max_length > LIMITS.promptLength[1];
 
   const isAgent = kind === "agent";
+  const isText = kind === "text";
+  const isChat = isText || isAgent;
   const gemini = readModelApiFormat(body) === "gemini";
   const upstream = readModelChannel(body);
 
@@ -209,16 +211,18 @@ export function ModelParamsForm({
             channel={upstream.channel}
             upstreamModel={upstream.upstreamModel}
             current={caps.context}
-            media={isAgent ? caps : undefined}
+            media={isChat ? (isText ? { vision: !!caps.vision, video: false } : caps) : undefined}
             gemini={gemini}
             onApply={(context, limits) =>
               patch({
                 context,
-                ...(isAgent && limits ? suggestedMediaCapabilities(limits, gemini) : {}),
+                ...(isChat && limits
+                  ? suggestedMediaCapabilities(limits, isText ? false : gemini)
+                  : {}),
               })
             }
           />
-          {isAgent && (
+          {isChat && (
             <FormField
               size="default"
               className="mt-4"

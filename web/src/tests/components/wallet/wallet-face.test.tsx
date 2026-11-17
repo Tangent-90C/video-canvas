@@ -22,7 +22,7 @@ describe("钱包场景的金额文案（元）", () => {
 });
 
 describe("钱包任务不提示「积分已退回」", () => {
-  const task = (patch: Partial<TaskView>): TaskView =>
+  const task = (_patch: Partial<TaskView>): TaskView =>
     ({ id: 1, status: "failed", credits: 4, charged_credits: 0 }) as TaskView;
 
   test("普通任务失败：credits>0 → 提示退回", () => {

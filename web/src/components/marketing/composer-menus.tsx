@@ -451,7 +451,7 @@ export function ParamsMenu({
             ))}
             {textModels.length === 0 && (
               <div className="text-muted-foreground px-2.5 py-2 text-xs">
-                {textLoading ? "加载中…" : "没有能看图的文本模型"}
+                {textLoading ? "加载中…" : "没有已启用的看图文本模型"}
               </div>
             )}
           </div>

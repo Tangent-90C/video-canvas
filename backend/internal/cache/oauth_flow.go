@@ -97,6 +97,7 @@ if v then redis.call('DEL', KEYS[1]) end
 return v
 `)
 
+// Issue 生成并保存一次 Redis OAuth 流程。
 func (s *RedisOAuthFlowStore) Issue(ctx context.Context, verifier string, userID uint64, ttl time.Duration) (string, error) {
 	state, err := newOAuthState()
 	if err != nil {
@@ -108,6 +109,7 @@ func (s *RedisOAuthFlowStore) Issue(ctx context.Context, verifier string, userID
 	return state, nil
 }
 
+// Consume 原子读取并删除 Redis OAuth 流程，同时校验发起用户。
 func (s *RedisOAuthFlowStore) Consume(ctx context.Context, state string, uid uint64) (OAuthFlow, bool) {
 	if state == "" {
 		return OAuthFlow{}, false
@@ -150,6 +152,7 @@ func NewMemoryOAuthFlowStore(now func() time.Time) *MemoryOAuthFlowStore {
 	return &MemoryOAuthFlowStore{items: make(map[string]memOAuthFlow), now: now}
 }
 
+// Issue 生成并保存一次内存 OAuth 流程。
 func (s *MemoryOAuthFlowStore) Issue(_ context.Context, verifier string, userID uint64, ttl time.Duration) (string, error) {
 	state, err := newOAuthState()
 	if err != nil {
@@ -163,6 +166,7 @@ func (s *MemoryOAuthFlowStore) Issue(_ context.Context, verifier string, userID 
 	return state, nil
 }
 
+// Consume 读取并删除内存 OAuth 流程，同时校验发起用户。
 func (s *MemoryOAuthFlowStore) Consume(_ context.Context, state string, uid uint64) (OAuthFlow, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

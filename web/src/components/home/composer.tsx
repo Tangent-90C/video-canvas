@@ -103,7 +103,14 @@ export function Composer({
     if (!draft) return;
     if (draft.text) setText(draft.text);
     for (const ref of draft.refs) {
-      addRef({ kind: ref.kind as ComposerRef["kind"], id: ref.id, assetId: ref.assetId, url: ref.url, name: ref.name, status: "done" });
+      addRef({
+        kind: ref.kind as ComposerRef["kind"],
+        id: ref.id,
+        assetId: ref.assetId,
+        url: ref.url,
+        name: ref.name,
+        status: "done",
+      });
     }
     // 只在挂载时跑一次
     // eslint-disable-next-line react-hooks/exhaustive-deps

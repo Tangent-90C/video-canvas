@@ -115,18 +115,28 @@ func TestParseModel_Agent限制(t *testing.T) {
 			mcCaps(m)["refs"] = map[string]any{"image": map[string]any{"on": true, "max": 3, "max_mb": 10}}
 		}, "capabilities.refs.image.on", ""},
 		{"单条消息字数上限必须设置", func(m map[string]any) { mcAsAgent(m); delete(mcCaps(m), "prompt") }, "capabilities.prompt.max_length", ""},
-		{"vision 只有 Agent 模型能声明", func(m map[string]any) { mcAsText(m); mcCaps(m)["vision"] = true }, "capabilities.vision", "Agent"},
-		{"图片模型也不能声明 vision", func(m map[string]any) { mcCaps(m)["vision"] = true }, "capabilities.vision", "Agent"},
+		{"图片模型不能声明 vision", func(m map[string]any) { mcCaps(m)["vision"] = true }, "capabilities.vision", "文本或 Agent"},
 	})
 }
 
 func TestParseModel_Agent不影响文本模型的既有规则(t *testing.T) {
-	// 文本模型仍然可以有固定系统提示，也仍然不能用 vision。
+	// 文本模型仍然可以有固定系统提示，也可以声明图片输入能力。
 	m := mcLoadFixture(t, "model_video.json")
 	mcAsText(m)
 	mcCaps(m)["system"] = "你是写作助手"
+	mcCaps(m)["vision"] = true
 	if got, issues := modelcfg.ParseModel(mcMarshal(t, m)); got == nil {
 		t.Fatalf("文本模型的固定系统提示应保持可用: %v", mcIssueList(issues))
+	}
+}
+
+func TestParseModel_文本模型可以声明Vision(t *testing.T) {
+	m := mcLoadFixture(t, "model_video.json")
+	mcAsText(m)
+	mcCaps(m)["vision"] = true
+	got, issues := modelcfg.ParseModel(mcMarshal(t, m))
+	if got == nil || len(issues) != 0 || !got.Capabilities.Vision {
+		t.Fatalf("文本模型应能声明 vision: got=%+v issues=%v", got, mcIssueList(issues))
 	}
 }
 

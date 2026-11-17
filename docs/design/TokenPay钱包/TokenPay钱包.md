@@ -164,10 +164,10 @@ ALTER TABLE generation_tasks ADD COLUMN wallet bool NOT NULL DEFAULT false;
 `agent` 是和 text/image/video/audio 并列的第五种**模型种类**，与「渠道」是两个维度：TokenPay 是渠道，不是种类。agent 模型的特殊之处（`provider/modelcfg/types.go:45` 的注释）：
 
 - **不走插件**，由 Go 的 LLM 网关按接口格式（`openai` / `gemini`）直接请求渠道——插件钩子是同步的、不能联网，所以 Agent 要流式 + 工具调用就只能绕过插件；
-- **渠道同步不产 agent 模型**（`ai_config_channel_sync.go` 的规则表里没有 agent 分支），必须在后台手建；
-- **不认用户钱包**：`service/agent/bridge.go` 的 `resolveModel` 直接读 `channel:<key>`，不做 `wallet:<uid>` 替换。所以绑在 TokenPay 渠道上的 agent 模型花的是**渠道自己的 Key**（运营者持有的产品方 Key），不是终端用户的钱包。归因头 `X-App-URL` 照常带上。
+- **渠道同步不产 agent 模型**（`ai_config_channel_sync.go` 的规则表里没有 agent 分支），但多模态文本模型会带 `vision=true`；
+- **agent 不能绑定钱包渠道**：`service/agent/bridge.go` 的 `resolveModel` 直接读普通渠道的 `channel:<key>`，不做 `wallet:<uid>` 替换；钱包渠道的 agent 模型会被配置与运行时双重拒绝。多模态 `text` 模型走 stepkit 时按当前用户读取 `wallet:<uid>`。归因头 `X-App-URL` 照常带上。
 
-因此「用户用自己的 TokenDance 额度驱动画布 Agent」属于下表的二期项，当前部署的做法是：手建一个 agent 模型绑到 TokenPay 渠道（如 `agent-deepseek-v4.1-flash`，`api_format=openai`、`path_prefix=/v1`、`vision=true`），由运营者账号承担费用。
+因此「用户用自己的 TokenDance 额度驱动画布 Agent」属于下表的二期项；当前可用的替代是让营销/文本环节使用钱包渠道的 `text + vision` 模型。不要把 agent 模型绑到 TokenPay 钱包渠道，也不要假设渠道 Key 扣谁的余额。
 
 ## 8. 明确不做（二期）
 

@@ -17,6 +17,7 @@ type UserWallet struct {
 	UpdatedAt time.Time `json:"updated_at"`                                    // 最近一次重连时间
 }
 
+// TableName 返回用户钱包表名。
 func (UserWallet) TableName() string { return "user_wallets" }
 
 // WalletSecretName 返回用户钱包 Key 在 ai_secrets 里的名字。用户 ID 不含冒号，与渠道密钥名字不会冲突。

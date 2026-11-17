@@ -19,7 +19,7 @@ type Streamer interface {
 	Stream(ctx context.Context, tg llmgateway.Target, req llmgateway.Request, emit func(llmgateway.Event)) (*llmgateway.Result, error)
 }
 
-// GatewayCaller 是生产用的 Caller：取渠道 Key，经 LLM 网关请求渠道。
+// GatewayCaller 是生产用的 Caller：取渠道 Key（钱包模型取当前用户的钱包 Key），经 LLM 网关请求渠道。
 type GatewayCaller struct {
 	Streamer Streamer
 	Secrets  provider.SecretResolver
@@ -30,7 +30,15 @@ func (g *GatewayCaller) Complete(ctx context.Context, snap *provider.Snapshot, m
 	if g.Streamer == nil || g.Secrets == nil {
 		return nil, errors.New("文本模型网关未配置")
 	}
-	key, err := g.Secrets.Get(ctx, model.ChannelSecretName(snap.Channel.Key))
+	name := model.ChannelSecretName(snap.Channel.Key)
+	if snap.Channel.Wallet {
+		userID := logger.UserIDOf(ctx)
+		if userID == 0 {
+			return nil, errors.New("钱包文本模型缺少用户上下文")
+		}
+		name = model.WalletSecretName(userID)
+	}
+	key, err := g.Secrets.Get(ctx, name)
 	if err != nil {
 		logger.Warn("环节模型渠道 Key 读取失败", zap.String("channel", snap.Channel.Key), zap.Error(err))
 		return nil, errors.New("模型渠道暂不可用")

@@ -105,6 +105,18 @@ func RequestRun(ctx context.Context) (kind, id string) {
 	return rs.kind, rs.id
 }
 
+// UserIDOf 返回当前用户：运行自带的优先，其次才是鉴权中间件挂在 ctx 上的用户。
+// 后台任务没有 HTTP 登录态，同步 HTTP 请求没有运行对象；两类调用都用这个函数取同一条规则。
+func UserIDOf(ctx context.Context) uint64 {
+	s := from(ctx)
+	if s.run != nil {
+		if userID := s.run.user(); userID != 0 {
+			return userID
+		}
+	}
+	return s.userID
+}
+
 // RequestIDOf 返回 ctx 上的请求编号；运行自带的优先。没有时返回空串。
 func RequestIDOf(ctx context.Context) string {
 	s := from(ctx)

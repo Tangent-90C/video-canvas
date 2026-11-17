@@ -1,11 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import {
-  saveCarry,
-  saveComposerDraft,
-  takeCarry,
-  takeComposerDraft,
-} from "@/utils/home/carry";
+import { saveCarry, saveComposerDraft, takeCarry, takeComposerDraft } from "@/utils/home/carry";
 
 /** 每个用例一套干净的 sessionStorage，互不污染 */
 function freshStorage() {

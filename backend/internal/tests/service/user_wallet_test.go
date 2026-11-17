@@ -432,18 +432,26 @@ func TestUserWalletRechargeValidation(t *testing.T) {
 	if _, err := noKey.Recharge(ctx, 7, 30); !errors.Is(err, errcode.ErrWalletNotConnected) {
 		t.Fatalf("Key 丢失应返回 ErrWalletNotConnected：%v", err)
 	}
+
+	expiredKey, _ := newRechargeService(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	})
+	var ec *errcode.Error
+	if _, err := expiredKey.Recharge(ctx, 7, 30); !errors.As(err, &ec) || ec.Code != errcode.ErrWalletNotConnected.Code {
+		t.Fatalf("上游 401 应让用户重新连接钱包：%v", err)
+	}
 }
 
 // 支付成功后清掉余额缓存：下一次 Balance 必须重新查上游，右上角能马上看到新余额。
 func TestUserWalletRechargePaidInvalidatesBalance(t *testing.T) {
 	balanceMicros := int64(1_000_000)
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/balance":
+		switch r.URL.Path {
+		case "/balance":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"balance": map[string]any{"credits": balanceMicros, "credits_used": 0, "balance": balanceMicros},
 			})
-		case r.URL.Path == "/recharge/sess-1":
+		case "/recharge/sess-1":
 			_ = json.NewEncoder(w).Encode(map[string]any{"id": "sess-1", "amount": 30, "status": "paid", "expired_at": 1_800_000_000})
 		default:
 			w.WriteHeader(http.StatusNotFound)

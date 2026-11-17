@@ -35,12 +35,12 @@ func failureForWallet(class provider.ErrorClass, platformCode, upstream string, 
 		return failureFor(class, platformCode, upstream)
 	}
 	// 钱包任务不冻结 / 不扣平台积分，宿主固定文案里的「积分已退回」不成立，换成钱包版说法
-	switch {
-	case class == provider.ClassSubmitUnknown:
+	switch class {
+	case provider.ClassSubmitUnknown:
 		return codeSubmitUnknown, "提交结果未知，请核对 TokenDance 账户是否产生了任务"
-	case class == failTimeout:
+	case failTimeout:
 		return codeTimeout, "生成超时"
-	case class == failTransfer:
+	case failTransfer:
 		return codeTransferFailed, "生成结果保存失败"
 	}
 	switch {

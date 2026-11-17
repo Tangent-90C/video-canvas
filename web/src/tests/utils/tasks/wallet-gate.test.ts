@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import {
-  isWalletNotConnected,
-  WALLET_NOT_CONNECTED_CODE,
-} from "@/utils/tasks/gateway";
+import { isWalletNotConnected, WALLET_NOT_CONNECTED_CODE } from "@/utils/tasks/gateway";
 
 /** 后端 errcode.ErrWalletNotConnected 的错误形状（ApiError：code + status） */
 const walletError = { code: 40016, status: 402, message: "请先在个人中心连接 TokenPay 钱包" };

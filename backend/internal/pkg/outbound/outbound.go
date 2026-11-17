@@ -21,11 +21,25 @@ import (
 // Client 返回带记录的客户端：复制 base 的设置（超时、重定向策略），把传输层包一层。base 为 nil 时用默认设置。
 // purpose 是默认用途（如 agent.web）；业务用 logger.WithCall 声明了调用时以声明的为准。
 func Client(purpose string, base *http.Client) *http.Client {
+	return client(purpose, base, false)
+}
+
+// SensitiveClient 和 Client 一样记录调用元数据，但不把请求 / 响应写进 payload.log。
+// 用于支付链接、授权 URL 等一旦落日志就会扩大凭证暴露面的接口。
+func SensitiveClient(purpose string, base *http.Client) *http.Client {
+	return client(purpose, base, true)
+}
+
+func client(purpose string, base *http.Client, sensitive bool) *http.Client {
 	c := &http.Client{}
 	if base != nil {
 		*c = *base
 	}
-	c.Transport = Transport(purpose, c.Transport)
+	baseTransport := c.Transport
+	if baseTransport == nil {
+		baseTransport = http.DefaultTransport
+	}
+	c.Transport = &transport{purpose: purpose, base: baseTransport, sensitive: sensitive}
 	return c
 }
 
@@ -38,8 +52,9 @@ func Transport(purpose string, base http.RoundTripper) http.RoundTripper {
 }
 
 type transport struct {
-	purpose string
-	base    http.RoundTripper
+	purpose   string
+	base      http.RoundTripper
+	sensitive bool
 }
 
 // RoundTrip 实现 http.RoundTripper：发请求前取请求体副本，响应体在调用方读完（或关闭）时记日志，不改变请求和响应本身。
@@ -57,25 +72,26 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		req.Header.Set("X-Request-ID", rid)
 	}
 	reqBody, reqBytes := requestBody(req)
-	rec := &record{call: call, req: req, reqBody: reqBody, reqBytes: reqBytes, start: time.Now()}
+	rec := &record{call: call, req: req, reqBody: reqBody, reqBytes: reqBytes, start: time.Now(), sensitive: t.sensitive}
 
 	resp, err := t.base.RoundTrip(req)
 	if err != nil {
 		rec.finish(nil, nil, 0, err)
 		return nil, err
 	}
-	resp.Body = &capture{ReadCloser: resp.Body, rec: rec, resp: resp, text: isText(resp.Header.Get("Content-Type"))}
+	resp.Body = &capture{ReadCloser: resp.Body, rec: rec, resp: resp, text: !t.sensitive && isText(resp.Header.Get("Content-Type"))}
 	return resp, nil
 }
 
 // record 是一次调用要记的东西，在响应读完时写出。
 type record struct {
-	call     logger.Call
-	req      *http.Request
-	reqBody  string
-	reqBytes int64
-	start    time.Time
-	once     sync.Once
+	call      logger.Call
+	req       *http.Request
+	reqBody   string
+	reqBytes  int64
+	start     time.Time
+	sensitive bool
+	once      sync.Once
 }
 
 // finish 写 app.log 的 ext.call 和 payload.log 的请求、响应全文，只写一次。
@@ -114,7 +130,7 @@ func (r *record) finish(resp *http.Response, body []byte, n int64, err error) {
 		run.AddExt()
 		run.NoteCall(r.call.ID)
 
-		if !logger.PayloadEnabled() {
+		if !logger.PayloadEnabled() || r.sensitive {
 			return
 		}
 		p := logger.PayloadRecord{CallID: r.call.ID, Kind: "http", Purpose: r.call.Purpose, LatencyMs: latency,

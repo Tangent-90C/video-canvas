@@ -79,6 +79,12 @@ describe("ModelParamsForm", () => {
       expect(render(kind)).not.toContain("上游响应超时");
   });
 
+  test("文本和 Agent 模型都可以声明看图；其他种类不显示", () => {
+    expect(render("text")).toContain("能看图");
+    expect(render("agent")).toContain("能看图");
+    for (const kind of ["video", "image", "audio"]) expect(render(kind)).not.toContain("能看图");
+  });
+
   test("Agent 模型没有「任务超时」：那是异步生成任务的截止时间，和对话调用无关", () => {
     expect(render("agent")).not.toContain("任务超时");
     expect(render("video")).toContain("任务超时");

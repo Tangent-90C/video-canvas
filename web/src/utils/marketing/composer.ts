@@ -429,7 +429,10 @@ export function evaluateMarketingSend(
 
   if (args.scripting) return blocked("这个项目正在写脚本，等它写完再来一轮", "warn");
   if (args.visionModels.length === 0) {
-    return blocked("没有可用的看图文本模型，请联系管理员", "bad");
+    return blocked(
+      "没有可用的看图文本模型：请在 AI 配置中启用一个 text 或 agent 模型并打开「能看图」",
+      "bad",
+    );
   }
   if (draft.textModel && !args.visionModels.some((item) => item.key === draft.textModel)) {
     return blocked("当前文本模型不能看图，换一个能看图的模型", "bad");

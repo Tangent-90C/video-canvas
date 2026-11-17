@@ -57,7 +57,7 @@ export interface Capabilities {
   context?: { window: number; output: number };
   /** 固定系统提示，仅文本；不会下发给画布 */
   system?: string;
-  /** 能不能看图，仅 agent；不能看图的模型拿不到「看图」工具 */
+  /** 能不能看图，text / agent；营销工作流和 Agent 都据此判断图片输入 */
   vision?: boolean;
   /** 能不能理解视频画面和声音，仅 Gemini 格式的 agent */
   video?: boolean;

@@ -144,6 +144,7 @@ describe("buildResultNotices", () => {
     );
     const [notice] = buildResultNotices([failed], "c1", fresh);
     expect(notice).toMatchObject({ result: true, recharge: true });
+    expect(notice!.text).not.toContain("积分已退回");
   });
 
   test("不新鲜的成功和整体失败都不冒", () => {

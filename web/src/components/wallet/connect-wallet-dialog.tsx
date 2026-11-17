@@ -45,7 +45,13 @@ export function ConnectWalletDialog() {
         text: composer.text,
         refs: composer.refs
           .filter((ref) => ref.status === "done")
-          .map((ref) => ({ kind: ref.kind, id: ref.id, assetId: ref.assetId, url: ref.url, name: ref.name })),
+          .map((ref) => ({
+            kind: ref.kind,
+            id: ref.id,
+            assetId: ref.assetId,
+            url: ref.url,
+            name: ref.name,
+          })),
         from: `${window.location.pathname}${window.location.search}`,
       });
     }

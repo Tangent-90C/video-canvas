@@ -15,6 +15,7 @@ func TestLookupModalities(t *testing.T) {
 		{" GOOGLE/GEMINI-2.5-FLASH:free@eu ", true, true, true},
 		{"gemini-2.5-flash-latest", true, true, true},
 		{"gpt-4o", true, false, true},
+		{"deepseek-v4.1-flash", true, false, true},
 		{"private-model-no-match", false, false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

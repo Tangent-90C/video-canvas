@@ -16,6 +16,7 @@ import (
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/pkg/outbound"
+	"video-canvas/internal/provider/modelmeta"
 	"video-canvas/internal/repository"
 )
 
@@ -127,35 +128,73 @@ type syncCatalogEntry struct {
 	SupportedProtocols []string `json:"supported_protocols"`
 }
 
+// channelSyncState 汇总一次渠道同步的已有模型、已占用 key 和下一个排序值。
+type channelSyncState struct {
+	versions map[string]string
+	haveUp   map[string]bool
+	taken    map[string]bool
+	nextSort int
+	result   *SyncChannelModelsResult
+}
+
 // SyncChannelModels 为渠道执行一键同步：拉目录 → 按协议映射 → 创建并启用模型。
 // 渠道下已有同名上游模型的跳过；协议没有启用中的插件可承接、或目录里声明了我们不支持的协议时跳过并说明原因。
 func (s *AIConfigService) SyncChannelModels(ctx context.Context, actorID uint64, channelKey string) (*SyncChannelModelsResult, error) {
-	// 1. 渠道必须存在且启用，Key 已设置（目录接口用渠道 Key 鉴权）
+	ch, key, err := s.syncChannelSource(ctx, channelKey)
+	if err != nil {
+		return nil, err
+	}
+	versions, err := s.syncPluginVersions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	entries, err := syncFetchCatalog(ctx, ch.BaseURL, key)
+	if err != nil {
+		return nil, err
+	}
+	state, err := s.newChannelSyncState(ctx, channelKey, versions)
+	if err != nil {
+		return nil, err
+	}
+	for _, entry := range entries {
+		if err := s.syncChannelEntry(ctx, actorID, channelKey, entry, state); err != nil {
+			return nil, err
+		}
+	}
+	s.finishChannelSync(ctx, channelKey, actorID, state.result)
+	return state.result, nil
+}
+
+// syncChannelSource 读取并校验收目录所需的渠道和 Key。
+func (s *AIConfigService) syncChannelSource(ctx context.Context, channelKey string) (*model.AIChannel, string, error) {
 	ch, err := s.channels.GetChannel(ctx, channelKey)
 	if err != nil {
-		return nil, aiNotFound(err)
+		return nil, "", aiNotFound(err)
 	}
 	if !ch.Enabled {
-		return nil, errcode.ErrChannelDisabled
+		return nil, "", errcode.ErrChannelDisabled
 	}
 	key, err := s.Get(ctx, model.ChannelSecretName(channelKey))
 	if err != nil {
-		return nil, errcode.ErrConfigInvalid.WithMsg("渠道 Key 未设置，无法拉取模型目录")
+		return nil, "", errcode.ErrConfigInvalid.WithMsg("渠道 Key 未设置，无法拉取模型目录")
 	}
-	// 2. 每个承接插件的最新版本（模型固定版本用）；插件停用则该协议整体跳过
+	return ch, key, nil
+}
+
+// syncPluginVersions 返回每个承接插件的最新版本；插件停用或没有版本时记为空串。
+func (s *AIConfigService) syncPluginVersions(ctx context.Context) (map[string]string, error) {
 	versions := map[string]string{}
 	for _, rule := range syncModelRules {
 		if _, done := versions[rule.plugin]; done {
 			continue
 		}
+		versions[rule.plugin] = ""
 		p, err := s.plugins.GetPlugin(ctx, rule.plugin)
 		if err != nil || !p.Enabled {
-			versions[rule.plugin] = ""
 			continue
 		}
 		vs, err := s.plugins.ListVersions(ctx, rule.plugin)
 		if err != nil || len(vs) == 0 {
-			versions[rule.plugin] = ""
 			continue
 		}
 		latest := vs[0]
@@ -166,12 +205,11 @@ func (s *AIConfigService) SyncChannelModels(ctx context.Context, actorID uint64,
 		}
 		versions[rule.plugin] = latest.Version
 	}
-	// 3. 拉目录
-	entries, err := syncFetchCatalog(ctx, ch.BaseURL, key)
-	if err != nil {
-		return nil, err
-	}
-	// 4. 逐个映射、建模型、启用
+	return versions, nil
+}
+
+// newChannelSyncState 汇总渠道已有上游模型、全部已占用 key 和当前最大排序值。
+func (s *AIConfigService) newChannelSyncState(ctx context.Context, channelKey string, versions map[string]string) (*channelSyncState, error) {
 	have, maxSort, err := s.channelModels(ctx, channelKey)
 	if err != nil {
 		return nil, err
@@ -188,67 +226,92 @@ func (s *AIConfigService) SyncChannelModels(ctx context.Context, actorID uint64,
 	for _, p := range ptrs {
 		taken[p.Key] = true
 	}
-	res := &SyncChannelModelsResult{Created: []SyncedModel{}, Skipped: []SkippedSyncModel{}}
-	for _, entry := range entries {
-		if entry.ID == "" {
-			continue
-		}
-		if syncSkipModelRe.MatchString(entry.ID) {
-			res.Skipped = append(res.Skipped, SkippedSyncModel{Model: entry.ID, Reason: "语音合成模型，本站暂不提供"})
-			continue
-		}
-		rule := pickSyncRule(entry.SupportedProtocols)
-		if rule == nil {
-			res.Skipped = append(res.Skipped, SkippedSyncModel{Model: entry.ID, Reason: "没有可承接的协议：" + strings.Join(entry.SupportedProtocols, "、")})
-			continue
-		}
-		version := versions[rule.plugin]
-		if version == "" {
-			res.Skipped = append(res.Skipped, SkippedSyncModel{Model: entry.ID, Reason: "协议插件 " + rule.plugin + " 未启用"})
-			continue
-		}
-		rule.version = version
-		if haveUp[entry.ID] {
-			res.Skipped = append(res.Skipped, SkippedSyncModel{Model: entry.ID, Reason: "该渠道下已有这个上游模型"})
-			continue
-		}
-		modelKey := importModelKey(entry.ID, channelKey, taken)
-		maxSort += 10
-		body, err := syncModelBody(modelKey, channelKey, entry, *rule, maxSort)
-		if err != nil {
-			return nil, err
-		}
-		// 启用检查过了才直接上线；没过就先建成未启用，把原因带回给运营
-		enabled := true
-		enableIssue := ""
-		if _, err := s.checkEnableable(ctx, modelKey, body); err != nil {
-			enabled = false
-			enableIssue = err.Error()
-		}
-		meta, err := aiParseMeta(body)
-		if err != nil {
-			res.Skipped = append(res.Skipped, SkippedSyncModel{Model: entry.ID, Reason: err.Error()})
-			continue
-		}
-		if _, err := s.repo.SaveModel(ctx, repository.SaveModelInput{
-			Pointer: aiPointer(meta), Body: body, CreatedBy: actorID, Note: "从渠道一键同步",
-			InitialEnabled: enabled, InitialSort: maxSort,
-		}); err != nil {
-			return nil, err
-		}
-		taken[modelKey] = true
-		haveUp[entry.ID] = true
-		res.Created = append(res.Created, SyncedModel{
-			Key: modelKey, UpstreamModel: entry.ID, Kind: rule.kind,
-			Label: syncLabel(entry), Enabled: enabled, EnableIssue: enableIssue,
-		})
+	return &channelSyncState{
+		versions: versions,
+		haveUp:   haveUp,
+		taken:    taken,
+		nextSort: maxSort,
+		result:   &SyncChannelModelsResult{Created: []SyncedModel{}, Skipped: []SkippedSyncModel{}},
+	}, nil
+}
+
+// syncChannelEntry 尝试把一个上游模型映射并保存为本站模型；不可承接时记入跳过原因。
+func (s *AIConfigService) syncChannelEntry(
+	ctx context.Context,
+	actorID uint64,
+	channelKey string,
+	entry syncCatalogEntry,
+	state *channelSyncState,
+) error {
+	if entry.ID == "" {
+		return nil
 	}
+	if syncSkipModelRe.MatchString(entry.ID) {
+		state.skip(entry.ID, "语音合成模型，本站暂不提供")
+		return nil
+	}
+	rule := pickSyncRule(entry.SupportedProtocols)
+	if rule == nil {
+		state.skip(entry.ID, "没有可承接的协议："+strings.Join(entry.SupportedProtocols, "、"))
+		return nil
+	}
+	version := state.versions[rule.plugin]
+	if version == "" {
+		state.skip(entry.ID, "协议插件 "+rule.plugin+" 未启用")
+		return nil
+	}
+	rule.version = version
+	if state.haveUp[entry.ID] {
+		state.skip(entry.ID, "该渠道下已有这个上游模型")
+		return nil
+	}
+	modelKey := importModelKey(entry.ID, channelKey, state.taken)
+	state.nextSort += 10
+	body, err := syncModelBody(modelKey, channelKey, entry, *rule, state.nextSort)
+	if err != nil {
+		return err
+	}
+	enabled, enableIssue := s.syncModelEnabled(ctx, modelKey, body)
+	meta, err := aiParseMeta(body)
+	if err != nil {
+		state.skip(entry.ID, err.Error())
+		return nil
+	}
+	if _, err := s.repo.SaveModel(ctx, repository.SaveModelInput{
+		Pointer: aiPointer(meta), Body: body, CreatedBy: actorID, Note: "从渠道一键同步",
+		InitialEnabled: enabled, InitialSort: state.nextSort,
+	}); err != nil {
+		return err
+	}
+	state.taken[modelKey] = true
+	state.haveUp[entry.ID] = true
+	state.result.Created = append(state.result.Created, SyncedModel{
+		Key: modelKey, UpstreamModel: entry.ID, Kind: rule.kind,
+		Label: syncLabel(entry), Enabled: enabled, EnableIssue: enableIssue,
+	})
+	return nil
+}
+
+// syncModelEnabled 通过启用前置检查时直接上线；没过则先建为未启用，并把原因带回给运营。
+func (s *AIConfigService) syncModelEnabled(ctx context.Context, modelKey string, body []byte) (bool, string) {
+	if _, err := s.checkEnableable(ctx, modelKey, body); err != nil {
+		return false, err.Error()
+	}
+	return true, ""
+}
+
+// skip 记录一个未创建的上游模型和原因。
+func (s *channelSyncState) skip(model, reason string) {
+	s.result.Skipped = append(s.result.Skipped, SkippedSyncModel{Model: model, Reason: reason})
+}
+
+// finishChannelSync 在确实新建模型时刷新注册表并记录结果。
+func (s *AIConfigService) finishChannelSync(ctx context.Context, channelKey string, actorID uint64, res *SyncChannelModelsResult) {
 	if len(res.Created) > 0 {
 		s.notifyChanged(ctx, "sync models "+channelKey)
 	}
 	logger.Info("渠道一键同步模型", zap.String("channel", channelKey), zap.Uint64("admin_id", actorID),
 		zap.Int("created", len(res.Created)), zap.Int("skipped", len(res.Skipped)))
-	return res, nil
 }
 
 // syncSkipModelRe 是目录里「协议标注与真实能力不符」的模型：TTS / 音色模型在目录里标的是
@@ -310,6 +373,13 @@ func syncModelBody(key, channelKey string, entry syncCatalogEntry, rule syncMode
 			window = syncContextWindowMax
 		}
 		caps = fmt.Sprintf(rule.caps, window)
+	}
+	// 上游目录不一定逐项声明 modalities，但内置模型库能识别多模态文本模型（如 deepseek-v4.1-flash）。
+	// 文本模型也可以看图；营销工作室会据此选择它，而不是强迫每个模型都手工建一份 Agent。
+	if rule.kind == "text" {
+		if modalities, ok := modelmeta.LookupModalities(entry.ID); ok && modalities.Vision {
+			caps = strings.Replace(caps, `"context":`, `"vision":true,"context":`, 1)
+		}
 	}
 	body := map[string]any{
 		"key": key, "kind": rule.kind, "label": syncLabel(entry), "hint": syncHint(entry),

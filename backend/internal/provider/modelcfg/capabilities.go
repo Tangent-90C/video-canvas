@@ -56,7 +56,7 @@ type Capabilities struct {
 	Params  ParamSet     `json:"params,omitempty"`  // 生成参数：有序，书写顺序 = 画布参数面板的显示顺序
 	Context *ContextSpec `json:"context,omitempty"` // 上下文能力，仅 text / agent
 	System  string       `json:"system,omitempty"`  // 固定系统提示，仅 text，用户看不到
-	Vision  bool         `json:"vision,omitempty"`  // 能不能看图，仅 agent；不能看图的模型不会收到「看图」工具
+	Vision  bool         `json:"vision,omitempty"`  // 能不能看图，text / agent；营销工作流和 Agent 都据此决定是否能输入图片
 	Video   bool         `json:"video,omitempty"`   // 能不能理解视频画面和声音，仅 Gemini 格式的 agent
 	// PromptFormat 是视频模型的提示词写法，短剧分镜据此选模板：空 = 通用，seedance，h3；仅 video
 	PromptFormat string `json:"prompt_format,omitempty"`

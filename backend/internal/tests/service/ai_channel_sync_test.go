@@ -256,5 +256,38 @@ func TestSyncChannelModelsPluginDisabled(t *testing.T) {
 	}
 }
 
+// 目录里的多模态文本模型（如 deepseek-v4.1-flash）同步成 text 时也要带上看图能力。
+func TestSyncChannelModelsTextVisionFromModelMeta(t *testing.T) {
+	ctx := context.Background()
+	const catalog = `{"data":[{"id":"deepseek-v4.1-flash","name":"DeepSeek V4.1 Flash","description":"原生多模态","context_length":1000000,"supported_protocols":["openai:chat-completions"]}]}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(catalog))
+	}))
+	defer srv.Close()
+	cfg, repo, _ := newSyncEnv(t, srv.URL)
+
+	res, err := cfg.SyncChannelModels(ctx, 5, "main")
+	if err != nil || len(res.Created) != 1 {
+		t.Fatalf("同步失败：res=%+v err=%v", res, err)
+	}
+	cur, err := repo.GetModelConfig(ctx, res.Created[0].Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body struct {
+		Kind         string `json:"kind"`
+		Capabilities struct {
+			Vision bool `json:"vision"`
+		} `json:"capabilities"`
+	}
+	if err := json.Unmarshal(cur.BodyJSON, &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Kind != "text" || !body.Capabilities.Vision {
+		t.Fatalf("deepseek-v4.1-flash 应同步为 text + vision：%+v", body)
+	}
+}
+
 // 编译期确认 AIConfigService 仍实现渠道服务依赖的接口。
 var _ AIChannelModels = (*AIConfigService)(nil)

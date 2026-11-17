@@ -59,7 +59,9 @@ export default function TokenPayPage() {
   }, []);
 
   useEffect(() => {
-    void getAuthConfig().then(setAuth).catch(() => setAuth(null));
+    void getAuthConfig()
+      .then(setAuth)
+      .catch(() => setAuth(null));
   }, []);
   useEffect(() => {
     void reloadWallet();
@@ -216,7 +218,8 @@ function WalletSettings({
             状态：
             {channel ? (
               <span className="text-foreground">
-                已配置（{channel.enabled ? "启用中" : "已停用"}，Key {channel.secret_set ? "已设置" : "未设置"}）
+                已配置（{channel.enabled ? "启用中" : "已停用"}，Key{" "}
+                {channel.secret_set ? "已设置" : "未设置"}）
               </span>
             ) : (
               <span className="text-foreground">未配置——填好下面三项即可一次开通全部模型</span>
@@ -224,7 +227,11 @@ function WalletSettings({
           </span>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          <FormField label="网关地址" htmlFor="tokenpay-base-url" hint="TokenDance 网关，一般不用改">
+          <FormField
+            label="网关地址"
+            htmlFor="tokenpay-base-url"
+            hint="TokenDance 网关，一般不用改"
+          >
             <Input
               id="tokenpay-base-url"
               value={baseUrl}
@@ -272,7 +279,11 @@ function WalletSettings({
         </div>
       </CardContent>
       <CardFooter className="gap-2">
-        <Button variant="outline" disabled={!canWrite || !dirty || saving || syncing} onClick={() => void save(false)}>
+        <Button
+          variant="outline"
+          disabled={!canWrite || !dirty || saving || syncing}
+          onClick={() => void save(false)}
+        >
           {saving && <Loader2 className="animate-spin" />}
           保存
         </Button>

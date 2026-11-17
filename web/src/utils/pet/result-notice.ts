@@ -123,7 +123,9 @@ export function buildResultNotices(
       const reason = view.status === "succeeded" ? patch.error : failMessage(view);
       out.push({
         level: "error",
-        text: `生成失败，积分已退回：${reason || "生成失败"}`,
+        text: view.wallet
+          ? `生成失败：${reason || "生成失败"}`
+          : `生成失败，积分已退回：${reason || "生成失败"}`,
         id: `result:failed:${view.id}`,
         nodeIds: [nodeId],
         petOnly: true,
@@ -135,12 +137,14 @@ export function buildResultNotices(
 
   // 批次里有失败的、节点却已经有结果：用一条提示说清楚（沿用原 toast）
   for (const [nodeId, messages] of Object.entries(failedBatchMembers([...events]))) {
-    const recharge = events.some(
-      (event) => event.nodeId === nodeId && needsWalletRecharge(event.view),
-    );
+    const nodeEvents = events.filter((event) => event.nodeId === nodeId);
+    const recharge = nodeEvents.some((event) => needsWalletRecharge(event.view));
+    const refunded = nodeEvents.some((event) => !event.view.wallet);
     out.push({
       level: "warning",
-      text: `有 ${messages.length} 张生成失败，积分已退回：${messages[0]}`,
+      text: refunded
+        ? `有 ${messages.length} 张生成失败，积分已退回：${messages[0]}`
+        : `有 ${messages.length} 张生成失败：${messages[0]}`,
       id: `batch-failed:${nodeId}:${events.find((e) => e.nodeId === nodeId)?.view.id}`,
       nodeIds: [nodeId],
       petOnly: false,

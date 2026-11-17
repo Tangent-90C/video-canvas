@@ -101,6 +101,24 @@ func TestCtxCarriesCorrelationFields(t *testing.T) {
 	}
 }
 
+func TestUserIDOf(t *testing.T) {
+	ctx := logger.WithUser(context.Background(), 3)
+	if got := logger.UserIDOf(ctx); got != 3 {
+		t.Fatalf("没有运行对象时应取登录态用户，got=%d", got)
+	}
+	ctx, run := logger.BeginRun(ctx, logger.RunRef{Kind: "gen", ID: "a1", UserID: 7})
+	if got := logger.UserIDOf(ctx); got != 7 {
+		t.Fatalf("运行用户应优先，got=%d", got)
+	}
+	run.SetUser(9)
+	if got := logger.UserIDOf(ctx); got != 9 {
+		t.Fatalf("运行中后补的用户应生效，got=%d", got)
+	}
+	if got := logger.UserIDOf(context.Background()); got != 0 {
+		t.Fatalf("没有用户上下文应返回 0，got=%d", got)
+	}
+}
+
 func TestRunRefFieldsWinOverPlainContext(t *testing.T) {
 	readApp, _ := setup(t, false)
 	ctx := logger.WithUser(context.Background(), 1)

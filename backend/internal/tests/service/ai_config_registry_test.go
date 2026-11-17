@@ -113,6 +113,54 @@ func TestAIConfigService_Registry_ListModels(t *testing.T) {
 	})
 }
 
+// TestAIConfigService_Registry_InfersTextVisionFromModelMeta 验证已入库的旧文本模型
+// 即使能力里没写 vision，也会按上游模型的真实多模态能力在运行时补成可看图；不改数据库配置。
+func TestAIConfigService_Registry_InfersTextVisionFromModelMeta(t *testing.T) {
+	ctx := context.Background()
+	svc, repo, _ := aicNewSvc()
+	aicSeedChannel(t, svc, repo, "c1", true)
+
+	body := string(aicKindBody("m-vision-text", "c1", "text", 1))
+	body = strings.Replace(body, `"upstream_model":"kling-v2"`, `"upstream_model":"deepseek-v4.1-flash"`, 1)
+	body = strings.Replace(body, `"context":`, `"vision":false,"context":`, 1)
+	aicEnableBody(t, svc, json.RawMessage(body))
+
+	list, err := svc.ListModels(ctx, "text")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || !list[0].Capabilities.Vision {
+		t.Fatalf("旧文本模型的清单能力应按上游补成可看图：%+v", list)
+	}
+	snap, err := svc.Snapshot(ctx, "m-vision-text")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !snap.Model.Capabilities.Vision {
+		t.Fatalf("旧文本模型的任务快照也应可看图：%+v", snap.Model.Capabilities)
+	}
+}
+
+// TestAIConfigService_Registry_DoesNotGuessUnknownVision 验证模型库没识别出能力时不猜测，
+// 避免把本来不能看图的文本模型误打开。
+func TestAIConfigService_Registry_DoesNotGuessUnknownVision(t *testing.T) {
+	ctx := context.Background()
+	svc, repo, _ := aicNewSvc()
+	aicSeedChannel(t, svc, repo, "c1", true)
+
+	body := string(aicKindBody("m-unknown-text", "c1", "text", 1))
+	body = strings.Replace(body, `"upstream_model":"kling-v2"`, `"upstream_model":"private-model-no-match"`, 1)
+	aicEnableBody(t, svc, json.RawMessage(body))
+
+	list, err := svc.ListModels(ctx, "text")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].Capabilities.Vision {
+		t.Fatalf("未知模型不应被猜测为可看图：%+v", list)
+	}
+}
+
 func TestAIConfigService_Registry_Snapshot(t *testing.T) {
 	ctx := context.Background()
 	svc, repo, _ := aicNewSvc()

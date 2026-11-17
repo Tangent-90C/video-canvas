@@ -146,6 +146,34 @@ func TestClient_BinaryResponseOnlyRecordsSize(t *testing.T) {
 	}
 }
 
+// 充值会话响应含支付链接：敏感客户端仍记 ext.call 元数据，但不能把请求 / 响应体写进 payload.log。
+func TestSensitiveClient_DoesNotLogBodies(t *testing.T) {
+	readApp, readPayload := logFiles(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"payment_url":"weixin://pay/secret"}`))
+	}))
+	defer srv.Close()
+
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/payment/sessions", strings.NewReader(`{"amount":30}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := outbound.SensitiveClient("tokenpay.recharge", nil).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if !strings.Contains(string(body), "weixin://pay/secret") {
+		t.Fatalf("敏感客户端不能改变响应：%s", body)
+	}
+	if calls := extCalls(readApp()); len(calls) != 1 || calls[0]["purpose"] != "tokenpay.recharge" {
+		t.Fatalf("仍应记录调用元数据：%v", calls)
+	}
+	if payload := readPayload(); len(payload) != 0 {
+		t.Fatalf("敏感请求不应写 payload.log：%v", payload)
+	}
+}
+
 func TestClient_FailuresAreWarn(t *testing.T) {
 	readApp, _ := logFiles(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

@@ -69,12 +69,19 @@ export function createWalletRechargeStore(overrides: Partial<WalletRechargeApi> 
   const api: WalletRechargeApi = { createWalletRecharge, getWalletRecharge, ...overrides };
   /** 到账后继续原任务的回调不上屏，只放在 store 内存里 */
   let onPaid: (() => void | Promise<void>) | null = null;
+  /** 避免 3 秒轮询在慢网络下重叠请求 */
+  let refreshing = false;
 
   const settle = (
     session: WalletRechargeSession,
     set: (value: Partial<WalletRechargeState>) => void,
   ) => {
-    set({ session, phase: rechargePhase(session.status), errorMessage: "" });
+    set({
+      session,
+      phase: rechargePhase(session.status),
+      errorMessage: "",
+      hasContinuation: !!onPaid,
+    });
     if (session.status === "paid") void useWalletStore.getState().fetchBalance();
   };
 
@@ -113,21 +120,31 @@ export function createWalletRechargeStore(overrides: Partial<WalletRechargeApi> 
 
     refresh: async (silent = true) => {
       const current = get().session;
-      if (!current || get().phase !== "pending") return;
+      if (!current || get().phase !== "pending" || refreshing) return;
+      refreshing = true;
       try {
         const next = await api.getWalletRecharge(current.id, silent);
         settle(
           {
             ...next,
+            amount: next.amount || current.amount,
             paymentUrl: next.paymentUrl ?? current.paymentUrl,
             alipayUrl: next.alipayUrl ?? current.alipayUrl,
+            expiresAt: Number.isFinite(next.expiresAt) ? next.expiresAt : current.expiresAt,
           },
           set,
         );
       } catch (error) {
+        if (error instanceof ApiError && error.code === 40016) {
+          set({ open: false });
+          useWalletStore.getState().openPrompt();
+          return;
+        }
         if (!silent) {
           set({ errorMessage: error instanceof Error ? error.message : "查询充值状态失败" });
         }
+      } finally {
+        refreshing = false;
       }
     },
 

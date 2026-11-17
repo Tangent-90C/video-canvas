@@ -70,8 +70,15 @@ export function useMarketingComposer(project?: Project) {
   const refreshCredits = useCreditsStore((state) => state.refresh);
 
   const video = useRemoteModels("video");
-  const text = useRemoteModels("agent");
-  const vision = useMemo(() => visionModels(text.models), [text.models]);
+  const agentText = useRemoteModels("agent");
+  const plainText = useRemoteModels("text");
+  const textModels = useMemo(
+    () => [...agentText.models, ...plainText.models],
+    [agentText.models, plainText.models],
+  );
+  const vision = useMemo(() => visionModels(textModels), [textModels]);
+  const textStatus =
+    agentText.status === "loading" || plainText.status === "loading" ? "loading" : "ready";
 
   const productCount = dock ? project.productAssets.length : products.length;
   const hasModelImage = !!modelSlot || !!project?.modelAsset;
@@ -439,7 +446,7 @@ export function useMarketingComposer(project?: Project) {
     videoModel,
     support,
     textModels: vision,
-    textStatus: text.status,
+    textStatus,
     credits,
     available,
     state,

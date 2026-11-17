@@ -4,7 +4,15 @@ import { readOutputs } from "@/utils/canvas/outputs";
 
 /** 提交失败后要在提交处就地告诉用户的话 */
 export type SubmitErrorInfo = {
-  kind: "credits" | "limit" | "unavailable" | "invalid" | "asset" | "wallet" | "network" | "unknown";
+  kind:
+    | "credits"
+    | "limit"
+    | "unavailable"
+    | "invalid"
+    | "asset"
+    | "wallet"
+    | "network"
+    | "unknown";
   message: string;
 };
 

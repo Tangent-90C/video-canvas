@@ -39,11 +39,23 @@ function fakeApi() {
     api: {
       getWalletConnection: async () => {
         calls.view += 1;
-        return { enabled: true, connected: false, app_url: "https://canvas.tan90.site", key_masked: "", connected_at: "" };
+        return {
+          enabled: true,
+          connected: false,
+          app_url: "https://canvas.tan90.site",
+          key_masked: "",
+          connected_at: "",
+        };
       },
       connectTokenPay: async (flow: string, code: string) => {
         calls.connect.push([flow, code]);
-        return { enabled: true, connected: true, app_url: "https://canvas.tan90.site", key_masked: "tk-…9", connected_at: "" };
+        return {
+          enabled: true,
+          connected: true,
+          app_url: "https://canvas.tan90.site",
+          key_masked: "tk-…9",
+          connected_at: "",
+        };
       },
       disconnectTokenPay: async () => {
         calls.disconnect += 1;

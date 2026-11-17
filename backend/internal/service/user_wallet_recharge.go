@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	// tokenPayRechargeURL 是 TokenDance Agent 支付会话接口，见 https://tokendance.space/docs/agent-payment。
-	tokenPayRechargeURL = "https://tokendance.space/portal/api/v1/payment/sessions"
+	// walletRechargeURL 是 TokenDance Agent 支付会话接口，见 https://tokendance.space/docs/agent-payment。
+	walletRechargeURL = "https://tokendance.space/portal/api/v1/payment/sessions"
 	// tokenPayRechargeTimeout 覆盖创建与查单；充值请求由用户主动等待，但不能无限拖住弹窗。
 	tokenPayRechargeTimeout = 15 * time.Second
 	// 单次充值金额边界，单位元。
@@ -28,7 +28,7 @@ const (
 )
 
 // tokenPayRechargeHTTP 是充值会话的出站客户端，和余额 / 调用记录分开记录 purpose。
-var tokenPayRechargeHTTP = outbound.Client("tokenpay.recharge", &http.Client{Timeout: tokenPayRechargeTimeout})
+var tokenPayRechargeHTTP = outbound.SensitiveClient("tokenpay.recharge", &http.Client{Timeout: tokenPayRechargeTimeout})
 
 // WalletRechargeView 是返回给前端的 TokenDance 充值会话；不包含上游 status_url 与任何 Key。
 type WalletRechargeView struct {
@@ -61,7 +61,10 @@ func (s *UserWalletService) Recharge(ctx context.Context, userID uint64, amount 
 	if err != nil {
 		return nil, err
 	}
-	payload, _ := json.Marshal(map[string]int{"amount": amount})
+	payload, err := json.Marshal(map[string]int{"amount": amount})
+	if err != nil {
+		return nil, err
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.rechargeURL, strings.NewReader(string(payload)))
 	if err != nil {
 		return nil, err

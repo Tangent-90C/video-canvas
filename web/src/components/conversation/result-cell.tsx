@@ -134,7 +134,7 @@ export function ResultCell({
           view={{
             phase: "failed",
             message: cell.message,
-            refunded: true,
+            refunded: (task?.charged_credits ?? 0) === 0 && task?.credits !== 0,
             taskRef: cell.taskRef,
             ...(cell.walletRecharge ? { walletRecharge: true } : {}),
           }}

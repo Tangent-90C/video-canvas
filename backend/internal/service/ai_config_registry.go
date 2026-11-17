@@ -13,6 +13,7 @@ import (
 	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/provider"
 	"video-canvas/internal/provider/modelcfg"
+	"video-canvas/internal/provider/modelmeta"
 	"video-canvas/internal/repository"
 )
 
@@ -36,6 +37,19 @@ func upstreamModelOf(cfg *modelcfg.ModelConfig) string {
 		return ""
 	}
 	return cfg.Channels[0].UpstreamModel
+}
+
+// inferEffectiveCapabilities 只修正 Registry 内存里的有效能力，不回写模型配置。
+// 已入库的文本模型可能是在自动识别多模态之前同步的，vision 缺省为 false；上游模型库确认能看图时，
+// 清单、营销选模和任务快照都应使用真实能力，否则明明可用的模型会被误判成不可用。
+func inferEffectiveCapabilities(cfg *modelcfg.ModelConfig) {
+	if cfg.Kind != modelcfg.KindText || cfg.Capabilities.Vision {
+		return
+	}
+	modalities, ok := modelmeta.LookupModalities(upstreamModelOf(cfg))
+	if ok && modalities.Vision {
+		cfg.Capabilities.Vision = true
+	}
 }
 
 // aiRegistryState 是一次完整加载得到的只读内存状态，替换时整体换指针，读方无需加锁遍历。
@@ -166,6 +180,7 @@ func (s *AIConfigService) buildState(rows []repository.PublishedModel, deps *aiR
 			}
 			continue
 		}
+		inferEffectiveCapabilities(cfg)
 		m := &aiRegModel{key: row.Key, enabled: row.Enabled, sort: row.Sort, revisionID: row.RevisionID, cfg: cfg,
 			rt: modelRuntime(cfg, deps)}
 		if ch := deps.channelOf(cfg); ch != nil {

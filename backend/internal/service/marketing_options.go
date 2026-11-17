@@ -34,15 +34,15 @@ func (s *MarketingService) Options() *model.MarketingOptions {
 type textNeed int
 
 const (
-	needAny    textNeed = iota // 任意 Agent 模型
+	needAny    textNeed = iota // 任意文本 / Agent 模型
 	needVision                 // 能看图
 	needVideo                  // 优先能看视频，退回能看图（再用截帧）
 )
 
-// pickTextModel 选环节用的文本模型：用户选的满足能力就用它，否则取第一个满足的 Agent 模型，都没有返回 68003。
+// pickTextModel 选环节用的文本模型：用户选的满足能力就用它，否则取第一个满足的文本 / Agent 模型，都没有返回 68003。
 // 拆解（needVideo）优先 Video=true 的模型；都不能看视频时退回 Vision 的模型，这时需要服务器能截帧。
 func (s *MarketingService) pickTextModel(ctx context.Context, want string, need textNeed) (*provider.Snapshot, error) {
-	snaps, err := s.agentSnapshots(ctx, want)
+	snaps, err := s.chatSnapshots(ctx, want)
 	if err != nil {
 		return nil, err
 	}
@@ -60,9 +60,9 @@ func (s *MarketingService) pickTextModel(ctx context.Context, want string, need 
 	return nil, errcode.ErrMarketingNoTextModel
 }
 
-// agentSnapshots 返回可用的 Agent 模型快照：用户选的排第一，其余按清单顺序。
-func (s *MarketingService) agentSnapshots(ctx context.Context, want string) ([]*provider.Snapshot, error) {
-	list, err := s.models.ListModels(ctx, modelcfg.KindAgent)
+// chatSnapshots 返回可用于文本环节的文本 / Agent 模型快照：用户选的排第一，其余按清单顺序。
+func (s *MarketingService) chatSnapshots(ctx context.Context, want string) ([]*provider.Snapshot, error) {
+	list, err := s.models.ListModels(ctx, "")
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +86,7 @@ func (s *MarketingService) agentSnapshots(ctx context.Context, want string) ([]*
 		if err != nil {
 			return nil, err
 		}
-		if snap != nil && snap.Model.Kind == modelcfg.KindAgent {
+		if snap != nil && (snap.Model.Kind == modelcfg.KindAgent || snap.Model.Kind == modelcfg.KindText) {
 			snaps = append(snaps, snap)
 		}
 	}

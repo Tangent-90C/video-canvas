@@ -13,6 +13,7 @@ import (
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/logger"
+	"video-canvas/internal/provider/modelcfg"
 	. "video-canvas/internal/service"
 )
 
@@ -337,6 +338,17 @@ func TestMarketing_NoTextModel(t *testing.T) {
 	delete(env.models.Snapshots, "text-a")
 	_, err := env.svc.CreateProject(context.Background(), env.user, &model.CreateMarketingProjectReq{ProductAssetIDs: []uint64{1}, Settings: mktSettings()})
 	wantMktCode(t, err, errcode.ErrMarketingNoTextModel.Code)
+}
+
+func TestMarketing_AcceptsTextKindVisionModel(t *testing.T) {
+	env := newMktEnv(t, 200)
+	env.models.Snapshots["text-a"].Model.Kind = modelcfg.KindText
+	_, err := env.svc.CreateProject(context.Background(), env.user, &model.CreateMarketingProjectReq{
+		ProductAssetIDs: []uint64{1}, Settings: mktSettings(),
+	})
+	if err != nil {
+		t.Fatalf("text + vision 模型应可用于营销文本环节：%v", err)
+	}
 }
 
 func TestMarketing_Cancel_StopsRunningAndRefunds(t *testing.T) {

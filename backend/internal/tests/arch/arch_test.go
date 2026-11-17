@@ -104,11 +104,11 @@ func scanFile(fset *token.FileSet, f *ast.File, rel string) []violation {
 	zapName := names["go.uber.org/zap"]
 	inLogger := strings.HasPrefix(rel, "pkg/logger/")
 
-	// 1. 直接交给 outbound.Client / outbound.Transport 的参数范围不算绕过
+	// 1. 直接交给 outbound.Client / outbound.SensitiveClient / outbound.Transport 的参数范围不算绕过
 	type span struct{ from, to token.Pos }
 	var wrapped []span
 	ast.Inspect(f, func(n ast.Node) bool {
-		if call, ok := n.(*ast.CallExpr); ok && len(outboundName) > 0 && isSel(call.Fun, outboundName, "Client", "Transport") {
+		if call, ok := n.(*ast.CallExpr); ok && len(outboundName) > 0 && isSel(call.Fun, outboundName, "Client", "SensitiveClient", "Transport") {
 			wrapped = append(wrapped, span{call.Lparen, call.Rparen})
 		}
 		return true
@@ -135,11 +135,11 @@ func scanFile(fset *token.FileSet, f *ast.File, rel string) []violation {
 		switch x := n.(type) {
 		case *ast.CompositeLit:
 			if len(httpName) > 0 && isSel(x.Type, httpName, "Client", "Transport") && !outboundOK && !inWrapped(x.Pos()) {
-				add(x, "自己构造了 http.Client / http.Transport：外部调用请用 outbound.Client（E9、E10）")
+				add(x, "自己构造了 http.Client / http.Transport：外部调用请用 outbound.Client 或 outbound.SensitiveClient（E9、E10）")
 			}
 		case *ast.SelectorExpr:
 			if len(httpName) > 0 && isSel(x, httpName, "DefaultClient", "DefaultTransport", "Get", "Post", "PostForm", "Head") && !outboundOK && !inWrapped(x.Pos()) {
-				add(x, "用了 http 包的默认客户端：外部调用请用 outbound.Client（E9、E10）")
+				add(x, "用了 http 包的默认客户端：外部调用请用 outbound.Client 或 outbound.SensitiveClient（E9、E10）")
 			}
 		case *ast.CallExpr:
 			if len(netguardName) > 0 && isSel(x.Fun, netguardName, "NewClient", "NewTransport") && !netguardOK && !outboundOK && !inWrapped(x.Pos()) {

@@ -10,12 +10,7 @@ import { estimateCost, formatYuan, matchRecordCost } from "@/utils/wallet/cost";
  * 一条调用记录。真实上游的 model_id 是不透明内部 id（如 01KMM9…），模型名在 model_slug 里——
  * 线上实测踩过：按 model_id 匹配永远匹配不上，界面全显示「—」。
  */
-const usage = (
-  model: string,
-  at: string,
-  cost: number,
-  success = true,
-): WalletUsageItem => ({
+const usage = (model: string, at: string, cost: number, success = true): WalletUsageItem => ({
   model_id: `internal-${model}`,
   model_slug: model,
   created_at: at,
@@ -76,12 +71,7 @@ describe("matchRecordCost：把 TokenDance 调用记录对到本站记录上", (
       usage(SEEDREAM, at(1), 0.22),
     ];
     const tasks = [1, 2, 3, 4].map((n) => task(n, at(n - 1), at(n)));
-    const cost = matchRecordCost(
-      record(4, [at(0), at(1), at(2), at(3)]),
-      tasks,
-      items,
-      SEEDREAM,
-    );
+    const cost = matchRecordCost(record(4, [at(0), at(1), at(2), at(3)]), tasks, items, SEEDREAM);
     expect(cost).toBeCloseTo(0.88, 10);
   });
 
@@ -170,7 +160,12 @@ describe("matchRecordCost：把 TokenDance 调用记录对到本站记录上", (
       // 第一格提交失败（tasks[0] 为 null），只有第二格有任务
       tasks: [null, { id: 2 } as TaskView],
     } as RecordDto;
-    const cost = matchRecordCost(rec, [task(2, "2026-11-17T12:00:00Z", "2026-11-17T12:00:05Z")], items, SEEDREAM);
+    const cost = matchRecordCost(
+      rec,
+      [task(2, "2026-11-17T12:00:00Z", "2026-11-17T12:00:05Z")],
+      items,
+      SEEDREAM,
+    );
     expect(cost).toBe(0.22);
   });
 
@@ -207,7 +202,9 @@ describe("estimateCost：下单前的预估（同模型最近真实花费的均�
   });
 
   test("只有失败记录：null（花费 0 不能当单价）", () => {
-    expect(estimateCost([usage(SEEDREAM, "2026-11-17T17:21:17Z", 0, false)], SEEDREAM, 1)).toBeNull();
+    expect(
+      estimateCost([usage(SEEDREAM, "2026-11-17T17:21:17Z", 0, false)], SEEDREAM, 1),
+    ).toBeNull();
   });
 });
 

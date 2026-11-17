@@ -283,10 +283,10 @@ function PromptFooter({
                 busy
                   ? "生成中"
                   : // 钱包任务不扣平台积分，「X 积分」对它没有意义
-                    (walletEstimate
-                      ? `${secondarySubmit.blockedReason ?? "生成"} · 约 ${walletEstimate}`
-                      : (secondarySubmit.blockedReason ??
-                        `形象 ${credits ?? "—"} 积分，音色约 ${secondarySubmit.extraCredits} 积分`))
+                    walletEstimate
+                    ? `${secondarySubmit.blockedReason ?? "生成"} · 约 ${walletEstimate}`
+                    : (secondarySubmit.blockedReason ??
+                      `形象 ${credits ?? "—"} 积分，音色约 ${secondarySubmit.extraCredits} 积分`)
               }
               blocked={busy || !!secondarySubmit.blockedReason}
               busy={busy}

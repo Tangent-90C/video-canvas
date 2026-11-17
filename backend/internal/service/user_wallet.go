@@ -25,19 +25,19 @@ import (
 
 const (
 	// TokenPay 相关的固定上游地址：授权页、授权码交换接口（见 https://tokendance.space/docs/api-key-oauth）。
-	tokenPayAuthBase        = "https://tokendance.space/auth"
-	tokenPayExchangeDefault = "https://tokendance.space/portal/api/v1/auth/keys"
-	tokenPayProviderName    = "tokendance"
+	walletAuthBase        = "https://tokendance.space/auth"
+	walletExchangeDefault = "https://tokendance.space/portal/api/v1/auth/keys"
+	tokenPayProviderName  = "tokendance"
 	// tokenPayVerifierBytes 是 PKCE code_verifier 的随机字节数：base64url 无填充编码后 43 个字符，落在上游要求的 43–128 区间。
 	tokenPayVerifierBytes = 32
 	// tokenPayExchangeTimeout 是授权码交换请求的超时：上游要求 code 在 10 分钟内使用，交换本身要快。
 	tokenPayExchangeTimeout = 15 * time.Second
-	// tokenPayBalanceURL 是官方开放平台的余额查询（见 https://tokendance.space/docs/open-api）：用用户自己的 Key 查余额与已消耗。
+	// walletBalanceURL 是官方开放平台的余额查询（见 https://tokendance.space/docs/open-api）：用用户自己的 Key 查余额与已消耗。
 	// 注意是 /portal 前缀：一级域名下的 /api/v1/... 是官网前端路由，会返回 HTML（SPA fallback）而不是 JSON。
-	tokenPayBalanceURL = "https://tokendance.space/portal/api/v1/user/balance"
-	// tokenPayUsageURL 是官方开放平台的调用记录（同上，/portal 前缀）：逐条真实花费的唯一来源。
+	walletBalanceURL = "https://tokendance.space/portal/api/v1/user/balance"
+	// walletUsageURL 是官方开放平台的调用记录（同上，/portal 前缀）：逐条真实花费的唯一来源。
 	// 钱包场景没有「平台积分 × 汇率」这回事——用户在自己 TokenDance 账号里付多少钱，这里就显示多少钱。
-	tokenPayUsageURL = "https://tokendance.space/portal/api/v1/usage"
+	walletUsageURL = "https://tokendance.space/portal/api/v1/usage"
 	// tokenPayBalanceTimeout 是余额查询的超时：它挂在多个页面的加载路径上，不能拖慢首屏。
 	tokenPayBalanceTimeout = 8 * time.Second
 	// tokenPayUsageTimeout 是调用记录查询的超时：记录列表页要等它，比余额宽松一些。
@@ -127,19 +127,19 @@ type walletBalanceEntry struct {
 func NewUserWalletService(deps UserWalletDeps) *UserWalletService {
 	exchangeURL := deps.ExchangeURL
 	if exchangeURL == "" {
-		exchangeURL = tokenPayExchangeDefault
+		exchangeURL = walletExchangeDefault
 	}
 	balanceURL := deps.BalanceURL
 	if balanceURL == "" {
-		balanceURL = tokenPayBalanceURL
+		balanceURL = walletBalanceURL
 	}
 	usageURL := deps.UsageURL
 	if usageURL == "" {
-		usageURL = tokenPayUsageURL
+		usageURL = walletUsageURL
 	}
 	rechargeURL := deps.RechargeURL
 	if rechargeURL == "" {
-		rechargeURL = tokenPayRechargeURL
+		rechargeURL = walletRechargeURL
 	}
 	return &UserWalletService{
 		repo:        deps.Repo,
@@ -321,10 +321,10 @@ type WalletUsage struct {
 	// ModelID 是 TokenDance 内部模型 id（不透明，如 01KMM9…），**不是**模型名，不能拿来匹配
 	ModelID string `json:"model_id"`
 	// ModelSlug 是模型别名（如 seedream-5.0-lite），与本站模型的 upstream_model 一致；上游只对有别名的模型给
-	ModelSlug   string    `json:"model_slug"`
-	CreatedAt   time.Time `json:"created_at"` // UTC，调用完成时间
-	Success     bool      `json:"success"`
-	CostYuan    float64   `json:"cost_yuan"`
+	ModelSlug string    `json:"model_slug"`
+	CreatedAt time.Time `json:"created_at"` // UTC，调用完成时间
+	Success   bool      `json:"success"`
+	CostYuan  float64   `json:"cost_yuan"`
 }
 
 // Usage 拉用户的调用记录：未启用 / 未连接返回空视图（不报错，页面照常渲染）；
@@ -467,7 +467,7 @@ func (s *UserWalletService) Start(ctx context.Context, userID uint64, next strin
 	q.Set("code_challenge_method", "S256")
 	q.Set("app_url", s.appURL)
 	q.Set("key_name", s.keyName)
-	return tokenPayAuthBase + "?" + q.Encode(), nil
+	return walletAuthBase + "?" + q.Encode(), nil
 }
 
 // Connect 用回调带回的一次性授权码交换 Key：验 flow 归属与一次性，换到的 Key 加密入库，元数据落 user_wallets。

@@ -15,6 +15,7 @@ type UserWalletRepository struct {
 	db *gorm.DB
 }
 
+// NewUserWalletRepository 创建用户钱包仓储。
 func NewUserWalletRepository(db *gorm.DB) *UserWalletRepository { return &UserWalletRepository{db: db} }
 
 // GetByUser 取用户连接的钱包；没有连接返回 ErrNotFound。
