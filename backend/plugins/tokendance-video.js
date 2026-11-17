@@ -32,7 +32,7 @@ module.exports = {
     apiVersion: 1,
     key: "tokendance-video",
     name: "TokenDance · 视频",
-    version: "1.0.0",
+    version: "1.1.0", // 1.1.0：按官方约束加分辨率封顶（-fast/-mini 最高 720p）与时长下限
     vendor: "tokendance",
     description: "TokenDance（词元跳动）Seedance 视频生成（异步）",
     auth: { type: "bearer" },
