@@ -311,6 +311,7 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		channels.PUT("/:key/secret-key", superOnly, h.AdminChannel.SetSecretKey)
 		channels.POST("/:key/pull-models", h.AdminChannel.PullModels)
 		channels.POST("/:key/models/import", h.AdminChannel.ImportModels)
+		channels.POST("/:key/models/sync", h.AdminChannel.SyncModels)
 		channels.PUT("/:key/models/sort", h.AdminChannel.SetModelOrder)
 		channels.GET("/:key/delete-check", superOnly, h.AdminChannel.DeleteCheck)
 		channels.DELETE("/:key", superOnly, h.AdminChannel.Delete)

@@ -27,6 +27,7 @@ import type {
   PluginUploadResult,
   PluginView,
   PullModelsResult,
+  SyncModelsResult,
   SaveModelResult,
   TestRunTrace,
   UpgradeModelsResult,
@@ -314,6 +315,16 @@ export const importChannelModels = async (
   const result = await service.post<ImportModelsResult | null>(ep.channelImportModels(key), {
     ids,
   });
+  return { created: result?.created ?? [], skipped: result?.skipped ?? [] };
+};
+
+/**
+ * 一键同步（admin 也能调）：拉上游模型目录，按 supported_protocols 自动建模型并启用；已有的跳过
+ * @param key 渠道 key
+ * @returns 新建（含启用状态与未启用原因）与跳过的上游模型
+ */
+export const syncChannelModels = async (key: string): Promise<SyncModelsResult> => {
+  const result = await service.post<SyncModelsResult | null>(ep.channelSyncModels(key), undefined);
   return { created: result?.created ?? [], skipped: result?.skipped ?? [] };
 };
 

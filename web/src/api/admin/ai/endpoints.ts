@@ -25,6 +25,7 @@
  *   PUT    /admin/ai/channels/sort                     渠道顺序，body = {keys: 全部渠道的新顺序}
  *   POST   /admin/ai/channels/:key/pull-models         向上游拉取模型清单（不落库）
  *   POST   /admin/ai/channels/:key/models/import       导入所选模型为“待配置”，body = {ids}
+ *   POST   /admin/ai/channels/:key/models/sync         一键同步：按上游目录自动建模型并启用
  *   PUT    /admin/ai/channels/:key/models/sort         渠道内模型顺序，body = {keys: 该渠道全部模型的新顺序}
  *   GET    /admin/ai/models                            模型分页列表（?q=&kind=&channel=&status=&page=&page_size=）
  *   GET    /admin/ai/models/options                    全部模型的列表项（不分页）
@@ -65,6 +66,7 @@ export const adminAiEndpoints = {
   channelSort: () => `${P}/channels/sort`,
   channelPullModels: (key: string) => `${channel(key)}/pull-models`,
   channelImportModels: (key: string) => `${channel(key)}/models/import`,
+  channelSyncModels: (key: string) => `${channel(key)}/models/sync`,
   channelModelSort: (key: string) => `${channel(key)}/models/sort`,
 
   models: () => `${P}/models`,

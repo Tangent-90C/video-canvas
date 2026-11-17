@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Plus, RefreshCw } from "lucide-react";
+import { Box, Plus, RefreshCw, WandSparkles } from "lucide-react";
 import { useSearchParams } from "react-router";
+import { toast } from "sonner";
 
-import { listModels, setChannelModelOrder } from "@/api/admin/ai";
+import { listModels, setChannelModelOrder, syncChannelModels } from "@/api/admin/ai";
 import type { ChannelOption, ModelListItem, PluginView } from "@/api/admin/ai/type.d";
 import {
   EmptyState,
@@ -13,6 +14,7 @@ import {
 } from "@/components/admin-ui/empty-state";
 import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
+import { errorMessage } from "@/utils/admin/errors";
 import { clearListParams } from "@/utils/admin/list-params";
 import { modelListQuery } from "@/utils/admin/model-list";
 
@@ -177,12 +179,41 @@ function PanelBody({
 
   const empty = list.state === "ready" && !list.filtering && list.total === 0;
 
+  // ---- 一键同步（仅钱包渠道显示）：拉上游目录按 supported_protocols 自动建模型并启用
+  const [syncing, setSyncing] = useState(false);
+  const syncAll = async () => {
+    if (syncing) return;
+    setSyncing(true);
+    const id = toast.loading(`正在同步「${channel.name}」的全部模型…`);
+    try {
+      const res = await syncChannelModels(channel.key);
+      const disabled = res.created.filter((item) => !item.enabled).length;
+      const parts = [`新建 ${res.created.length} 个模型`];
+      if (disabled > 0) parts.push(`${disabled} 个未能自动启用（原因见模型列表）`);
+      if (res.skipped.length > 0) parts.push(`跳过 ${res.skipped.length} 个`);
+      toast.success(`同步完成：${parts.join("，")}`, { id });
+      reloadAll();
+      onChanged();
+    } catch (cause) {
+      toast.error(errorMessage(cause, "同步失败"), { id });
+    } finally {
+      if (aliveRef.current) setSyncing(false);
+    }
+  };
+  const walletChannel = !!channel.wallet_enabled;
+
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-3" aria-label="模型管理">
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="text-base font-semibold">模型管理</h2>
         <Tag className="tabular-nums">{count}</Tag>
         <div className="ml-auto flex flex-wrap items-center gap-2">
+          {walletChannel && (
+            <Button variant="outline" disabled={syncing} onClick={() => void syncAll()}>
+              <WandSparkles />
+              {syncing ? "同步中…" : "同步全部模型"}
+            </Button>
+          )}
           <Button variant="outline" onClick={onPull}>
             <RefreshCw />
             拉取模型
@@ -208,6 +239,12 @@ function PanelBody({
             </EmptyStateDescription>
           )}
           <EmptyStateActions>
+            {walletChannel && (
+              <Button disabled={syncing} onClick={() => void syncAll()}>
+                <WandSparkles />
+                同步全部模型
+              </Button>
+            )}
             <Button onClick={onPull}>
               <RefreshCw />
               拉取模型

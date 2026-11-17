@@ -193,3 +193,23 @@ func (s *AIChannelService) ImportModels(ctx context.Context, actorID uint64, key
 	aiAudit(ctx, s.audit, actorID, model.AuditModelImport, model.AuditTargetChannel, key, map[string]any{"created": created, "skipped": len(res.Skipped)})
 	return res, nil
 }
+
+// SyncModels 一键同步：拉上游 /v1/models 目录，按每个模型声明的 supported_protocols 自动选插件与协议设置，
+// 套每类默认能力与定价，创建并直接启用。渠道下已有的同名上游模型跳过。渠道不存在返回 ErrChannelNotFound。
+func (s *AIChannelService) SyncModels(ctx context.Context, actorID uint64, key string) (*SyncChannelModelsResult, error) {
+	// 渠道必须存在
+	if _, err := s.load(ctx, key); err != nil {
+		return nil, err
+	}
+	res, err := s.models.SyncChannelModels(ctx, actorID, key)
+	if err != nil {
+		return nil, err
+	}
+	created := make([]string, 0, len(res.Created))
+	for _, c := range res.Created {
+		created = append(created, c.Key)
+	}
+	aiAudit(ctx, s.audit, actorID, model.AuditModelSync, model.AuditTargetChannel, key,
+		map[string]any{"created": created, "skipped": len(res.Skipped)})
+	return res, nil
+}

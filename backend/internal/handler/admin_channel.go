@@ -219,6 +219,20 @@ func (h *AdminChannelHandler) ImportModels(c *gin.Context) {
 	response.OK(c, res)
 }
 
+// SyncModels 一键同步：拉上游模型目录，按 supported_protocols 自动建模型并启用；渠道下已有的跳过。
+func (h *AdminChannelHandler) SyncModels(c *gin.Context) {
+	key, ok := pathKey(c)
+	if !ok {
+		return
+	}
+	res, err := h.svc.SyncModels(c.Request.Context(), currentUserID(c), key)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, res)
+}
+
 // DeleteCheck 删除渠道前的预检：返回阻断删除的原因，blockers 为空数组表示可以删。
 func (h *AdminChannelHandler) DeleteCheck(c *gin.Context) {
 	key, ok := pathKey(c)

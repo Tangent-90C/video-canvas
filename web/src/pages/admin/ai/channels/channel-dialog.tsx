@@ -138,6 +138,15 @@ function ChannelForm({
   const built = useMemo(() => buildChannelRequest(form, channel), [form, channel]);
   const errors = attempted && !built.ok ? built.errors : {};
 
+  // 「钱包渠道」是 TokenDance 专属选项：Base URL 指向 tokendance.space 时才显示，别的渠道不用看它
+  const showWalletSwitch = (() => {
+    try {
+      return new URL(form.baseUrl).hostname === "tokendance.space" || new URL(form.baseUrl).hostname.endsWith(".tokendance.space");
+    } catch {
+      return false;
+    }
+  })();
+
   const patch = (next: Partial<ChannelFormState>) => {
     setForm((prev) => {
       return { ...prev, ...next };
@@ -344,24 +353,24 @@ function ChannelForm({
           <Label htmlFor="channel-enabled">启用</Label>
         </div>
 
-        <div className="grid gap-1">
-          <div className="flex items-center gap-2 text-sm">
-            <Switch
-              id="channel-wallet"
-              checked={form.walletEnabled}
-              disabled={busy}
-              onCheckedChange={(checked) => patch({ walletEnabled: checked })}
-            />
-            <Label htmlFor="channel-wallet">钱包渠道</Label>
+        {showWalletSwitch && (
+          <div className="grid gap-1">
+            <div className="flex items-center gap-2 text-sm">
+              <Switch
+                id="channel-wallet"
+                checked={form.walletEnabled}
+                disabled={busy}
+                onCheckedChange={(checked) => patch({ walletEnabled: checked })}
+              />
+              <Label htmlFor="channel-wallet">钱包渠道</Label>
+            </div>
+            <p className="text-muted-foreground text-xs">
+              开启后，这个渠道的模型由发起生成的用户自己的 TokenDance
+              额度支付（用户需先在个人中心连接钱包），平台不冻结、不扣积分，调用量经 X-App-URL
+              归因计入分润；保存后可在模型管理里「同步全部模型」一键上架。
+            </p>
           </div>
-          <p className="text-muted-foreground text-xs">
-            开启后，这个渠道上的模型由发起生成用户自己的 TokenDance Key
-            支付（需要用户在个人中心连接钱包），平台不冻结、不扣积分，用量经
-            TokenPay 归因后计入分润。建议 Base URL 填
-            https://tokendance.space/gateway，并在自定义请求头里加
-            X-App-URL 指向本站对外地址；渠道 Key 留给「拉取模型」用。
-          </p>
-        </div>
+        )}
       </div>
 
       <DialogFooter className="m-0 rounded-none">

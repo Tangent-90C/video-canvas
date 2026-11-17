@@ -640,9 +640,9 @@ func (o *operation) requestError(phase string, err error) error {
 // 出现时直接采用；responseHeaders 里的键已转小写。
 const (
 	recoveryActionHeader   = "tokendance-recovery-action"
-	recoveryTopUpBalance   = "top_up_balance"    // 账户余额不足：Key 仍有效，引导充值
+	recoveryTopUpBalance   = "top_up_balance"      // 账户余额不足：Key 仍有效，引导充值
 	recoveryReauthorizeKey = "reauthorize_api_key" // Key 缺失 / 失效 / 被禁用：重新授权
-	recoveryKeyQuota       = "api_key_quota"     // 达到日 / 周 / 月额度：等待刷新或重新授权
+	recoveryKeyQuota       = "api_key_quota"       // 达到日 / 周 / 月额度：等待刷新或重新授权
 )
 
 // classifyHTTPError 把上游的非 2xx 响应转成分类错误：插件写了 classifyError 用它的分类与原文，否则按默认规则分类。

@@ -15,6 +15,7 @@ import (
 //   - top_up_balance → provider_balance（钱包任务文案「余额不足，请充值」）
 //   - reauthorize_api_key → secret_unavailable（钱包任务文案「请重新连接钱包」）
 //   - api_key_quota → key_quota（等待额度刷新或重新授权）
+//
 // 同一判定对钱包任务和普通渠道任务都生效（渠道无关，认头不认渠道）。
 func TestTokendanceRecoveryActionHeader(t *testing.T) {
 	cases := []struct {

@@ -15,6 +15,7 @@ const (
 	AuditChannelSecKey   = "channel.secret_key"    // 设置 / 清除渠道 Secret Key（不记值）
 	AuditChannelSort     = "channel.sort"          // 调整渠道顺序（detail 含新顺序）
 	AuditModelImport     = "model.import"          // 从渠道拉取并导入模型（target 是渠道，detail 含新建的模型 key）
+	AuditModelSync       = "model.sync"            // 渠道一键同步模型：按上游目录自动建模型并启用（target 是渠道，detail 含新建与跳过数）
 	AuditModelProtocol   = "model.protocol"        // 模型的协议（插件 / 版本）变化（detail 含前后值）
 	AuditPluginUpgrade   = "plugin.upgrade_models" // 批量把模型升级到插件的新版本
 	AuditChannelEnable   = "channel.enable"        // 启用 / 停用渠道

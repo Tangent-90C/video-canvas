@@ -57,6 +57,8 @@ type AIChannelModels interface {
 	ChannelUpstreamModels(ctx context.Context, channelKey string) (map[string]bool, error)
 	// ImportChannelModels 为渠道创建一批未启用、未选协议的“待配置”模型；渠道下已有的上游模型名跳过。
 	ImportChannelModels(ctx context.Context, actorID uint64, channelKey string, ids []string) (*ImportModelsResult, error)
+	// SyncChannelModels 一键同步：拉上游模型目录，按 supported_protocols 自动建模型并启用；已有的跳过。
+	SyncChannelModels(ctx context.Context, actorID uint64, channelKey string) (*SyncChannelModelsResult, error)
 }
 
 // AIChannelService 管理渠道：创建 / 更新 / 详情 / 列表 / 删除、设置 Key 与 Secret Key、渠道顺序、拉取并导入模型。

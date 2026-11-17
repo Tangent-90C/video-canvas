@@ -274,6 +274,21 @@ export interface ImportModelsResult {
   skipped: string[];
 }
 
+/** POST /admin/ai/channels/:key/models/sync 的结果：一键同步（按上游目录自动建模型并启用） */
+export interface SyncModelsResult {
+  /** 新建的模型；enabled 为 false 时看 enable_issue */
+  created: Array<{
+    key: string;
+    upstream_model: string;
+    kind: string;
+    label: string;
+    enabled: boolean;
+    enable_issue?: string;
+  }>;
+  /** 跳过的上游模型与原因（已存在 / 没有可承接的协议 / 插件未启用） */
+  skipped: Array<{ model: string; reason: string }>;
+}
+
 /** POST /admin/ai/plugins/:key/upgrade-models 的结果：逐个处理，失败不中断 */
 export interface UpgradeModelsResult {
   /** 实际升到的版本 */
