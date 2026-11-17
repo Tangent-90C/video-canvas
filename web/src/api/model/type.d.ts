@@ -133,4 +133,6 @@ export interface ModelInfo {
   capabilities: Capabilities;
   /** 钱包渠道的模型：用发起用户自己的 TokenDance Key 支付，不消耗平台积分；未连接钱包的用户不展示 */
   wallet?: boolean;
+  /** 上游模型名：钱包模型用它匹配 TokenDance 调用记录的 model_id，把真实花费对到本站记录上 */
+  upstream_model?: string;
 }

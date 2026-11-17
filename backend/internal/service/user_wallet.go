@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -34,10 +35,21 @@ const (
 	// tokenPayBalanceURL 是官方开放平台的余额查询（见 https://tokendance.space/docs/open-api）：用用户自己的 Key 查余额与已消耗。
 	// 注意是 /portal 前缀：一级域名下的 /api/v1/... 是官网前端路由，会返回 HTML（SPA fallback）而不是 JSON。
 	tokenPayBalanceURL = "https://tokendance.space/portal/api/v1/user/balance"
+	// tokenPayUsageURL 是官方开放平台的调用记录（同上，/portal 前缀）：逐条真实花费的唯一来源。
+	// 钱包场景没有「平台积分 × 汇率」这回事——用户在自己 TokenDance 账号里付多少钱，这里就显示多少钱。
+	tokenPayUsageURL = "https://tokendance.space/portal/api/v1/usage"
 	// tokenPayBalanceTimeout 是余额查询的超时：它挂在多个页面的加载路径上，不能拖慢首屏。
 	tokenPayBalanceTimeout = 8 * time.Second
+	// tokenPayUsageTimeout 是调用记录查询的超时：记录列表页要等它，比余额宽松一些。
+	tokenPayUsageTimeout = 12 * time.Second
 	// tokenPayBalanceTTL 是余额的进程内缓存时长：上游限流同一用户 1QPS，多个页面同时加载只会打一次。
 	tokenPayBalanceTTL = 60 * time.Second
+	// tokenPayUsageTTL 是调用记录的缓存时长：同样受 1QPS 限制，且记录不会秒级变化。
+	tokenPayUsageTTL = 60 * time.Second
+	// tokenPayUsageLimit 是每次拉取的记录条数：上游 limit 上限 500。
+	tokenPayUsageLimit = 500
+	// tokenPayUsageWindow 是拉取的时间窗：只覆盖最近的记录，更早的显示「—」而不是无限翻页（1QPS 下翻页会把页面拖死）。
+	tokenPayUsageWindow = "30d"
 	// tokenPayMicrosPerYuan 是上游金额单位（微元）与元的换算：1 元 = 1e6 微元。
 	tokenPayMicrosPerYuan = 1_000_000
 )
@@ -47,6 +59,9 @@ var tokenPayHTTP = outbound.Client("tokenpay", &http.Client{Timeout: tokenPayExc
 
 // tokenPayBalanceHTTP 是余额查询的出站客户端（单独 purpose，日志里能和授权交换区分）。
 var tokenPayBalanceHTTP = outbound.Client("tokenpay.balance", &http.Client{Timeout: tokenPayBalanceTimeout})
+
+// tokenPayUsageHTTP 是调用记录查询的出站客户端。
+var tokenPayUsageHTTP = outbound.Client("tokenpay.usage", &http.Client{Timeout: tokenPayUsageTimeout})
 
 // UserWalletRepo 用户钱包元数据的仓储契约（service 层依赖接口，见 repository.UserWalletRepository）。
 type UserWalletRepo interface {
@@ -65,12 +80,6 @@ type WalletSecrets interface {
 	Get(ctx context.Context, name string) (string, error)
 }
 
-// WalletPricing 是钱包余额展示需要的定价换算：后台「定价设置」的 1 元 = N 积分。
-// 钱包任务的「预估花费（元）」由平台积分价 ÷ 它得到。
-type WalletPricing interface {
-	Get(ctx context.Context) (*model.PricingSettingsView, error)
-}
-
 // UserWalletService 用户 TokenPay（TokenDance）钱包：发起授权、用一次性授权码交换 Key 并加密保存、断开。
 // Key 密文存 ai_secrets（wallet:<user_id>），钱包渠道的任务执行时取它支付上游；平台不冻结、不扣积分。
 type UserWalletService struct {
@@ -81,11 +90,13 @@ type UserWalletService struct {
 	keyName     string // 授权页展示的应用名
 	exchangeURL string // 授权码交换接口；默认 TokenDance 官方地址，测试可注入
 	balanceURL  string // 余额查询接口；默认 TokenDance 官方地址，测试可注入
-	pricing     WalletPricing
+	usageURL    string // 调用记录接口；默认 TokenDance 官方地址，测试可注入
 	now         func() time.Time
 
 	balMu    sync.Mutex
 	balCache map[uint64]walletBalanceEntry // 余额缓存：上游 1QPS 限流，按用户缓存
+	useMu    sync.Mutex
+	useCache map[uint64]walletUsageEntry // 调用记录缓存：同样受 1QPS 限制
 }
 
 // UserWalletDeps 是钱包服务的依赖。
@@ -95,11 +106,12 @@ type UserWalletDeps struct {
 	Flows    cache.OAuthFlowStore // OAuth 授权流程（PKCE verifier + 发起用户），Redis / 内存实现
 	AppURL   string
 	KeyName  string
-	Pricing  WalletPricing // 定价设置（余额页的「积分折元」汇率）；可空，空时用默认汇率
 	// ExchangeURL 覆盖授权码交换接口；测试注入假上游用，生产留空
 	ExchangeURL string
 	// BalanceURL 覆盖余额查询接口；测试注入假上游用，生产留空
 	BalanceURL string
+	// UsageURL 覆盖调用记录接口；测试注入假上游用，生产留空
+	UsageURL string
 }
 
 // walletBalanceEntry 是某个用户的余额缓存：值与存入时间。
@@ -118,6 +130,10 @@ func NewUserWalletService(deps UserWalletDeps) *UserWalletService {
 	if balanceURL == "" {
 		balanceURL = tokenPayBalanceURL
 	}
+	usageURL := deps.UsageURL
+	if usageURL == "" {
+		usageURL = tokenPayUsageURL
+	}
 	return &UserWalletService{
 		repo:        deps.Repo,
 		secrets:     deps.Secrets,
@@ -126,9 +142,10 @@ func NewUserWalletService(deps UserWalletDeps) *UserWalletService {
 		keyName:     deps.KeyName,
 		exchangeURL: exchangeURL,
 		balanceURL:  balanceURL,
-		pricing:     deps.Pricing,
+		usageURL:    usageURL,
 		now:         time.Now,
 		balCache:    map[uint64]walletBalanceEntry{},
+		useCache:    map[uint64]walletUsageEntry{},
 	}
 }
 
@@ -173,14 +190,12 @@ func (s *UserWalletService) View(ctx context.Context, userID uint64) (*WalletVie
 	return view, nil
 }
 
-// WalletBalance 是钱包余额视图：TokenDance 账户的余额与已消耗（元），以及「积分折元」汇率。
-// 前端用汇率把模型的本平台积分价换算成预估花费（元）。
+// WalletBalance 是钱包余额视图：TokenDance 账户的余额与已消耗（元）。
 type WalletBalance struct {
-	Enabled       bool    `json:"enabled"`
-	Connected     bool    `json:"connected"`
-	BalanceYuan   float64 `json:"balance_yuan"`   // 账户剩余额度（元）
-	UsedYuan      float64 `json:"used_yuan"`      // 账户已消耗（元）
-	YuanPerCredit float64 `json:"yuan_per_credit"` // 1 平台积分折多少元（预估花费用）
+	Enabled     bool    `json:"enabled"`
+	Connected   bool    `json:"connected"`
+	BalanceYuan float64 `json:"balance_yuan"` // 账户剩余额度（元）
+	UsedYuan    float64 `json:"used_yuan"`    // 账户已消耗（元）
 	// Stale 为 true 表示这次是降级数据：上游查询失败但有旧缓存，或刚连上还没查到。
 	// 前端照常展示，只在 tooltip 里说明「可能不是最新」。
 	Stale bool `json:"stale"`
@@ -208,8 +223,7 @@ func (s *UserWalletService) Balance(ctx context.Context, userID uint64) (*Wallet
 		return &view, nil
 	}
 
-	rate := s.yuanPerCredit(ctx)
-	view := WalletBalance{Enabled: true, Connected: true, YuanPerCredit: rate}
+	view := WalletBalance{Enabled: true, Connected: true}
 	key, err := s.secrets.Get(ctx, model.WalletSecretName(userID))
 	if err != nil || key == "" {
 		// Key 读不到（存储异常）：告诉前端已连接但余额查不到
@@ -273,23 +287,143 @@ func (s *UserWalletService) fetchBalance(ctx context.Context, key string) (balan
 	return microsToYuan(body.Balance.Balance), microsToYuan(body.Balance.CreditsUsed), nil
 }
 
-// yuanPerCredit 取「1 平台积分折多少元」：后台定价设置的 1 元 = N 积分 → 1/N。
-// 拿不到（服务未注入 / 查询失败）时用默认汇率，前端预估照常展示。
-func (s *UserWalletService) yuanPerCredit(ctx context.Context) float64 {
-	const defaultCreditsPerYuan = 100
-	if s.pricing == nil {
-		return 1.0 / defaultCreditsPerYuan
-	}
-	view, err := s.pricing.Get(ctx)
-	if err != nil || view == nil || view.CreditsPerYuan == nil || *view.CreditsPerYuan <= 0 {
-		return 1.0 / defaultCreditsPerYuan
-	}
-	return 1.0 / *view.CreditsPerYuan
-}
-
 // microsToYuan 把上游的微元金额换算成元。
 func microsToYuan(micros int64) float64 {
 	return float64(micros) / tokenPayMicrosPerYuan
+}
+
+// walletUsageEntry 是某个用户的调用记录缓存：值与存入时间。
+type walletUsageEntry struct {
+	at   time.Time
+	view WalletUsageView
+}
+
+// WalletUsageView 是用户 TokenDance 账号的调用记录：逐条真实花费， newest first。
+// 界面上的金额只认它——钱包任务不扣平台积分，「平台积分 × 汇率」在本部署不存在。
+type WalletUsageView struct {
+	Enabled   bool          `json:"enabled"`
+	Connected bool          `json:"connected"`
+	Items     []WalletUsage `json:"items"`
+	// Stale 为 true 表示这次是降级数据：上游查询失败但有旧缓存。前端照常展示旧记录。
+	Stale bool `json:"stale"`
+}
+
+// WalletUsage 是一条上游调用记录（金额单位：元）。
+type WalletUsage struct {
+	// ModelID 是 TokenDance 内部模型 id，与本站模型的 upstream_model 一致（同步时就用它）
+	ModelID   string    `json:"model_id"`
+	CreatedAt time.Time `json:"created_at"` // UTC，调用完成时间
+	Success   bool      `json:"success"`
+	CostYuan  float64   `json:"cost_yuan"`
+}
+
+// Usage 拉用户的调用记录：未启用 / 未连接返回空视图（不报错，页面照常渲染）；
+// 已连接则用用户自己的 Key 调上游，60 秒内直接取缓存（上游限流同一用户 1QPS）。
+// 上游失败时返回旧缓存并标 Stale；没有缓存就返回空列表，绝不把失败透传给页面。
+func (s *UserWalletService) Usage(ctx context.Context, userID uint64) (*WalletUsageView, error) {
+	if !s.Enabled() {
+		return &WalletUsageView{}, nil
+	}
+	if _, err := s.repo.GetByUser(ctx, userID); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return &WalletUsageView{Enabled: true}, nil
+		}
+		return nil, err
+	}
+
+	s.useMu.Lock()
+	cached, ok := s.useCache[userID]
+	s.useMu.Unlock()
+	if ok && s.now().Sub(cached.at) < tokenPayUsageTTL {
+		view := cached.view
+		return &view, nil
+	}
+
+	key, err := s.secrets.Get(ctx, model.WalletSecretName(userID))
+	if err != nil || key == "" {
+		// Key 读不到（存储异常）：已连接但记录查不到
+		view := WalletUsageView{Enabled: true, Connected: true, Stale: true}
+		if ok {
+			view = cached.view
+			view.Stale = true
+		}
+		return &view, nil
+	}
+	items, err := s.fetchUsage(ctx, key)
+	if err != nil {
+		view := WalletUsageView{Enabled: true, Connected: true, Stale: true}
+		if ok {
+			view = cached.view
+			view.Stale = true
+		}
+		return &view, nil
+	}
+	view := WalletUsageView{Enabled: true, Connected: true, Items: items}
+	s.useMu.Lock()
+	s.useCache[userID] = walletUsageEntry{at: s.now(), view: view}
+	s.useMu.Unlock()
+	return &view, nil
+}
+
+// walletUsageUpstream 是上游调用记录响应（见 https://tokendance.space/docs/open-api）。
+type walletUsageUpstream struct {
+	Items []struct {
+		ModelID    string `json:"model_id"`
+		CreatedAt  string `json:"created_at"` // UTC ISO 8601
+		Cost       int64  `json:"cost"`       // 微元
+		Error      string `json:"error"`      // 仅失败请求有
+		Successful *bool  `json:"is_success"` // 缺省时按「有没有 error」判断
+	} `json:"items"`}
+
+// usageSucceeded 判断一条记录是否成功：上游给了 is_success 就认它，否则按有没有 error 字段。
+func usageSucceeded(flag *bool, errText string) bool {
+	if flag != nil {
+		return *flag
+	}
+	return strings.TrimSpace(errText) == ""
+}
+
+// fetchUsage 调上游调用记录接口，返回换算成元的记录（newest first，原样保留顺序）。
+func (s *UserWalletService) fetchUsage(ctx context.Context, key string) ([]WalletUsage, error) {
+	q := url.Values{}
+	q.Set("limit", strconv.Itoa(tokenPayUsageLimit))
+	q.Set("window", tokenPayUsageWindow)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.usageURL+"?"+q.Encode(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+key)
+	req.Header.Set("Accept", "application/json")
+	resp, err := tokenPayUsageHTTP.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("上游调用记录接口返回 HTTP %d", resp.StatusCode)
+	}
+	var body walletUsageUpstream
+	if err := json.Unmarshal(raw, &body); err != nil {
+		return nil, err
+	}
+	out := make([]WalletUsage, 0, len(body.Items))
+	for _, item := range body.Items {
+		at, err := time.Parse(time.RFC3339, item.CreatedAt)
+		if err != nil {
+			continue // 时间解析不了就没法匹配，跳过这条
+		}
+		out = append(out, WalletUsage{
+			ModelID:   item.ModelID,
+			CreatedAt: at.UTC(),
+			Success:   usageSucceeded(item.Successful, item.Error),
+			CostYuan:  microsToYuan(item.Cost),
+		})
+	}
+	return out, nil
 }
 
 // Start 发起授权：生成 PKCE verifier 与 state，返回跳转 TokenDance 授权页的地址。
@@ -360,11 +494,14 @@ func (s *UserWalletService) Disconnect(ctx context.Context, userID uint64) error
 	return nil
 }
 
-// forgetBalance 清掉某个用户的余额缓存：连接状态变化后旧余额不能再用。
+// forgetBalance 清掉某个用户的余额与调用记录缓存：连接状态变化后旧数据不能再用。
 func (s *UserWalletService) forgetBalance(userID uint64) {
 	s.balMu.Lock()
 	delete(s.balCache, userID)
 	s.balMu.Unlock()
+	s.useMu.Lock()
+	delete(s.useCache, userID)
+	s.useMu.Unlock()
 }
 
 // exchange 用一次性授权码 + PKCE verifier 向 TokenDance 换 API Key；403 表示 code 无效 / 过期 / verifier 不匹配。

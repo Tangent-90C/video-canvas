@@ -30,6 +30,14 @@ type aiRegModel struct {
 // available 判断模型当前能否接新任务：已上架，且渠道、插件都可用。
 func (m *aiRegModel) available() bool { return m.enabled && m.rt != nil }
 
+// upstreamModelOf 取模型的第一个渠道引用里的上游模型名：钱包模型用它匹配 TokenDance 调用记录的 model_id。
+func upstreamModelOf(cfg *modelcfg.ModelConfig) string {
+	if len(cfg.Channels) == 0 {
+		return ""
+	}
+	return cfg.Channels[0].UpstreamModel
+}
+
 // aiRegistryState 是一次完整加载得到的只读内存状态，替换时整体换指针，读方无需加锁遍历。
 type aiRegistryState struct {
 	loadedAt time.Time
@@ -54,7 +62,8 @@ func (s *AIConfigService) ListModels(ctx context.Context, kind string) ([]provid
 		out = append(out, provider.ModelInfo{
 			Key: m.key, Kind: m.cfg.Kind, Label: m.cfg.Label, Hint: m.cfg.Hint,
 			Vendor: m.cfg.Vendor, Tags: nonNilTags(m.cfg.Tags),
-			Pricing: m.cfg.Pricing.Public(), Capabilities: m.cfg.Capabilities.Public(),
+			UpstreamModel: upstreamModelOf(m.cfg),
+			Pricing:       m.cfg.Pricing.Public(), Capabilities: m.cfg.Capabilities.Public(),
 			Wallet: m.rt.Channel.Wallet,
 		})
 	}

@@ -281,6 +281,8 @@ type ModelInfo struct {
 	Pricing      modelcfg.Pricing      `json:"pricing"` // 不含积分成本
 	Capabilities modelcfg.Capabilities `json:"capabilities"`
 	Wallet       bool                  `json:"wallet,omitempty"` // 钱包渠道的模型：用发起用户自己的 TokenDance Key 支付，不扣平台积分
+	// UpstreamModel 是上游模型名：钱包模型用它匹配 TokenDance 调用记录里的 model_id，把真实花费对到本站记录上
+	UpstreamModel string `json:"upstream_model,omitempty"`
 }
 
 // Registry 只读访问“已发布”的模型配置。实现方缓存编译结果，发布 / 回滚 / 渠道变更后热生效。

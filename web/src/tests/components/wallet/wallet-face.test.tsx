@@ -1,22 +1,23 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { yuanEstimate } from "@/utils/pricing/quote";
+import { formatYuan } from "@/utils/wallet/cost";
 import { deriveTaskStatus, deriveVideoNodeView } from "@/utils/tasks/node-view";
 import type { TaskView } from "@/api/generation-task/type";
 
-describe("钱包模型的预估花费（元）", () => {
-  test("积分 × 汇率 = 元；按量级选小数位", () => {
-    expect(yuanEstimate(4, 1 / 200)).toBe("≈¥0.02"); // 4 积分 ÷ 200 = 0.02
-    expect(yuanEstimate(20, 1 / 200)).toBe("≈¥0.10"); // 0.1
-    expect(yuanEstimate(1200, 1 / 200)).toBe("≈¥6.0"); // 6
-    expect(yuanEstimate(40000, 1 / 200)).toBe("≈¥200"); // 200 起取整
-    expect(yuanEstimate(1, 1 / 1000)).toBe("≈¥0.001"); // 极小值保留三位
+describe("钱包场景的金额文案（元）", () => {
+  // 来源只有 TokenDance 的真实花费：不再有「平台积分 × 汇率」这回事
+  test("按量级选小数位", () => {
+    expect(formatYuan(0.22)).toBe("¥0.22"); // 图片按张：TokenDance 真实单价
+    expect(formatYuan(0.1)).toBe("¥0.10");
+    expect(formatYuan(6)).toBe("¥6.0");
+    expect(formatYuan(200)).toBe("¥200"); // 整数起取整
+    expect(formatYuan(0.0012)).toBe("¥0.0012"); // 极小值保留四位
   });
 
-  test("汇拿不到（余额没加载）或零积分时返回空串，调用方显示「—」", () => {
-    expect(yuanEstimate(4, undefined)).toBe("");
-    expect(yuanEstimate(0, 1 / 200)).toBe("");
+  test("零与负数显示 ¥0，不出现负号", () => {
+    expect(formatYuan(0)).toBe("¥0");
+    expect(formatYuan(-1)).toBe("¥0");
   });
 });
 

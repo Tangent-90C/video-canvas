@@ -32,10 +32,9 @@ import { TAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useComposerStore } from "@/store/composer";
 import { useCreditsStore } from "@/store/credits";
-import { useWalletStore } from "@/store/wallet";
 import { takeComposerDraft } from "@/utils/home/carry";
 import { evaluateSend, type ComposerRef } from "@/utils/conversation/submission";
-import { yuanEstimate } from "@/utils/pricing/quote";
+import { useWalletCostEstimate } from "@/hooks/use-wallet-cost";
 
 /** 输入框最多长到多高（px），再长就在框里滚动 */
 const MAX_HEIGHT = 240;
@@ -78,7 +77,6 @@ export function Composer({
   const addRef = useComposerStore((state) => state.addRef);
   const available = useCreditsStore((state) => state.credits?.available ?? null);
   const refreshCredits = useCreditsStore((state) => state.refresh);
-  const yuanPerCredit = useWalletStore((state) => state.balance?.yuan_per_credit);
 
   const { models, status } = useRemoteModels(mode);
   /** 记住的模型已下线或没记过：取清单第一个（后台的排序） */
@@ -118,11 +116,12 @@ export function Composer({
     () => evaluateSend({ model, text, params, refs, available, sending }),
     [model, text, params, refs, available, sending],
   );
-  /** 钱包模型：不显示平台积分，显示「≈¥X」预估花费（实际以 TokenDance 账单为准） */
+  /**
+   * 钱包模型：不显示平台积分，显示这次大约花多少钱（元）——取同模型最近几次真实花费的均价。
+   * 记录已经生成出来的，卡片上显示的是匹配到的真实花费（见 conversation/record-view）。
+   */
   const isWalletModel = !!model?.wallet;
-  const walletEstimate = isWalletModel
-    ? yuanEstimate(state.creditsTotal, yuanPerCredit)
-    : "";
+  const walletEstimate = useWalletCostEstimate(model?.upstream_model, state.count);
   const showCredits = !!model && !isWalletModel && state.creditsTotal > 0;
 
   /** 余额没拿到时拉一次：发送前要知道够不够 */
@@ -298,7 +297,7 @@ export function Composer({
         <div className="flex-1" />
         {isWalletModel && walletEstimate ? (
           <span
-            title="预估花费：按平台折算价估算，实际以 TokenDance 账单为准；用你自己的 TokenDance 额度"
+            title="预估花费：按你最近的 TokenDance 实际扣费估算；生成后记录卡片上显示真实花费"
             className="text-muted-foreground mr-1 inline-flex items-center gap-1 text-[13px] tabular-nums"
           >
             <Wallet className="size-3.5" />

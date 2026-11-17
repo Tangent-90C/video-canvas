@@ -146,6 +146,8 @@ function AssetList({ items }: { items: AssetItem[] }) {
     (item: AssetItem) => {
       const model =
         imageModels.models.find((m) => m.key === item.data.model) ?? imageModels.models[0];
+      // 钱包模型不扣平台积分，没有积分可估
+      if (model?.wallet) return 0;
       return lowestUnit(model?.pricing);
     },
     [imageModels.models],
@@ -154,7 +156,10 @@ function AssetList({ items }: { items: AssetItem[] }) {
   const estimate = selectedItems.reduce((sum, item) => sum + unitOf(item), 0);
   /** 含音色时再加上每个角色一段音频（取第一个音频模型，和详情页默认一致） */
   const voiceEstimate =
-    estimate + selectedItems.length * lowestUnit(audioModels.models[0]?.pricing);
+    estimate +
+    (audioModels.models[0]?.wallet
+      ? 0
+      : selectedItems.length * lowestUnit(audioModels.models[0]?.pricing));
   /** 能框选、全选的：当前显示出来的可生成卡片 */
   const selectable = useMemo(() => {
     const ids = new Set(candidates.map((item) => item.id));

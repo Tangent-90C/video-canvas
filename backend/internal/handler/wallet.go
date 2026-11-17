@@ -63,6 +63,17 @@ func (h *WalletHandler) Balance(c *gin.Context) {
 	response.OK(c, v)
 }
 
+// Usage 返回用户的 TokenDance 调用记录（GET /wallet/tokenpay/usage）：逐条真实花费，
+// 是钱包界面所有金额的唯一来源。未启用 / 未连接返回空列表，上游失败返回旧缓存并标 stale。
+func (h *WalletHandler) Usage(c *gin.Context) {
+	v, err := h.svc.Usage(c.Request.Context(), currentUserID(c))
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, v)
+}
+
 // Disconnect 断开钱包（DELETE /wallet/tokenpay/connection）：删除本地保存的 Key 与元数据。
 func (h *WalletHandler) Disconnect(c *gin.Context) {
 	if err := h.svc.Disconnect(c.Request.Context(), currentUserID(c)); err != nil {

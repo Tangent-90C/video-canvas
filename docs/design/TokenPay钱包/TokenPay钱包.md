@@ -87,6 +87,7 @@ ALTER TABLE generation_tasks ADD COLUMN wallet bool NOT NULL DEFAULT false;
 | POST | `/api/v1/wallet/tokenpay/connect` | `{flow, code}` 换 Key 入库 |
 | GET | `/api/v1/wallet/tokenpay/connection` | `{enabled, connected, app_url, key_masked, connected_at}` |
 | GET | `/api/v1/wallet/tokenpay/balance` | `{enabled, connected, balance_yuan, used_yuan, yuan_per_credit, stale}`（用户自己的 Key 查上游，60s 缓存，失败降级不报错） |
+| GET | `/api/v1/wallet/tokenpay/usage?limit=` | 代理上游调用记录（真实花费），60s 缓存，见 §9 |
 | DELETE | `/api/v1/wallet/tokenpay/connection` | 断开 |
 
 ### 4.3 错误码（`backend/internal/pkg/errcode/errcode.go`）
@@ -161,3 +162,73 @@ ALTER TABLE generation_tasks ADD COLUMN wallet bool NOT NULL DEFAULT false;
 - Agent 对话（llmgateway）走用户钱包：llmgateway 按 token 计费，与冻结/结算体系不同，需要单独改造。
 - 服务费比例收取、TokenDance 兑换码/支付会话充值引导。
 - 语音复刻、联网搜索等非四类能力；kling/vidu 走 TokenDance 网关的插件。
+
+## 9. 平台积分在钱包场景的残留（2026-11-17 全站扫描）
+
+**结论先行：本部署的平台积分体系对钱包用户是作废的，任何由「平台积分 × 汇率」得出的金额都是编造的数字。**
+用户实测：seedream-5.0-lite 在 TokenDance 真实收费 ¥0.22/张，而按平台定价（4 积分）× 默认汇率（1 元 = 100 积分，`pricing_credits_per_yuan` 本部署未配置、后端写死默认值）算出来是 ¥0.04，差 5.5 倍。金额的唯一来源必须是 TokenDance 自己。
+
+### 9.1 真实数据源：调用记录接口
+
+`GET https://tokendance.space/portal/api/v1/usage`（Bearer = 用户自己的钱包 Key，与模型调用同一个 Key）：
+
+| 字段 | 说明 |
+| --- | --- |
+| `items[].cost` | **真实花费，单位微元（1 元 = 1e6）** |
+| `items[].model_id` | TokenDance 内部模型 id，与本站模型的 `upstream_model` 一致（同步时就用它） |
+| `items[].created_at` | UTC ISO 8601 |
+| `items[].is_success` | 是否成功 |
+| `items[].input_tokens` / `output_tokens` | 图片模型也有（seedream 按输出 token 计费，16.4K → ¥0.22） |
+| `id` | 分页游标 |
+
+约束：按 `id` 倒序返回；`start_id` / `end_id` 游标翻页（只增 `offset` 会跨页重复或遗漏）；`window` 支持 `1h`/`24h`/`7d` 或 `YYYYMMDD-YYYYMMDD`；`model_id` / `is_success` 可精确过滤；`limit` 1–500；**同一用户 1QPS，超出 429**；官方暂无聚合接口（按天/小时/Top 模型统计未开放）。
+
+### 9.2 待清理清单
+
+**A. 折算汇率链路（数字错误，必须删）**
+
+| # | 位置 | 现状 | 处置 |
+| --- | --- | --- | --- |
+| A1 | `backend/internal/service/user_wallet.go` `Balance` | 下发 `yuan_per_credit`（来自 `pricing_credits_per_yuan`，未配置时默认 100） | **已删**（v0.6.29）；「全局汇率」在本部署不存在 |
+| A2 | `web/src/utils/pricing/quote.ts` `yuanEstimate()` | 积分 × 汇率 | **已删**（v0.6.29） |
+| A3 | `web/src/utils/conversation/cell.ts` `recordWalletCost()` | v0.6.28 新增，用 A2 算记录花费 | **已删**（v0.6.29），改为 `utils/wallet/cost.ts` 的 `matchRecordCost` |
+| A4 | `web/src/components/home/composer.tsx` | 输入卡片旁「≈¥X」 | **已改**（v0.6.29）：同模型历史均价 |
+| A5 | `web/src/components/canvas/node-prompt-input.tsx` | 画布节点发送键旁「≈¥X」 | **已改**（v0.6.29）：同上 |
+| A6 | `web/src/components/canvas/node-prompt-input.tsx` | `PromptFooter`/`SubmitPill` 同上 | **已改**（v0.6.29）：同上 |
+| A7 | `web/src/components/conversation/record-view.tsx` | 记录卡片「≈¥X」 | **已改**（v0.6.29）：匹配到的真实花费（¥0.22，不再 ≈） |
+
+**B. 平台积分价在钱包场景的展示（无意义，须屏蔽或替换）**
+
+| # | 位置 | 现状 | 处置 |
+| --- | --- | --- | --- |
+| B1 | `web/src/components/canvas/node-prompt-input.tsx` | 节点模型下拉 `{priceLabel ?? "${credits} 积分"}`，**钱包模型漏屏蔽**，会显示「4 积分」「2 积分/秒」 | **已改**（v0.6.29）：钱包模型不显示价格行 |
+| B2 | `web/src/components/canvas-editor/character-detail-dialog.tsx` | 音频模型下拉 `{label} · {priceLabel(pricing)}`，无 wallet 判断 | **已改**（v0.6.29）：钱包模型去掉价格 |
+| B3 | `web/src/components/canvas-editor/character-node.tsx` | 「含音色」`extraCredits = lowestUnit(pricing)` | **已改**（v0.6.29）：钱包模型不计平台积分 |
+| B4 | `web/src/components/canvas/node-prompt-input.tsx` | 「含音色」title 文案「形象 X 积分，音色约 Y 积分」 | **已改**（v0.6.29）：钱包模型改写为「约 ¥X」 |
+| B5 | `web/src/pages/drama/workspace/assets-overlay.tsx` | 短剧批量生成「X 积分起」估算 | **已改**（v0.6.29）：钱包模型不计入积分估算 |
+| B6 | `web/src/hooks/use-models.ts` | `toModelOption` 给所有模型（含钱包）算 `credits`/`priceLabel` | **已改**（v0.6.29）：钱包模型不算（治本），改带 `upstream_model` |
+
+**C. 已正确、不用改**
+
+- `components/home/composer-model.tsx:127`：钱包模型显示「用你自己的 TokenDance 额度」而非积分价。
+- `pages/canvas/agent/model-popover.tsx:58`：已有 `!m.wallet` 屏蔽。
+- `components/drama/video-model-menu.tsx:130`：只显示「钱包」徽标与连接提示，不显示积分。
+- 右上角余额/已消耗（v0.6.26 / v0.6.27）：来自真实 balance 接口，正确。
+
+### 9.3 实现（v0.6.29 完成）
+
+1. **后端**：`UserWalletService.Usage(ctx, userID)` 代理 `/portal/api/v1/usage`（`limit=500&window=30d`，新 outbound purpose `tokenpay.usage`），进程内缓存 60s（与 balance 同一策略，规避 1QPS），失败返回旧缓存。handler `GET /wallet/tokenpay/usage`。
+2. **前端 store**：`useWalletStore` 加 `usage` 状态与 `fetchUsage()`，刷新时机与 `fetchBalance` 一致（`useRemoteModels` 里一起拉、连上钱包后立刻拉、断开清空）。
+3. **匹配（纯函数，可测）**：`web/src/utils/wallet/cost.ts` `matchRecordCost(record, tasks, usage, upstreamModel)` —— 对每个有任务的格子，在 usage 里找 `model_id === upstream_model`、`created_at ∈ [submitted_at - 5 分钟容差, finished_at ?? deadline_at ?? submitted_at + 30 分钟]`、且未被其它格子占用的最小时间差项；`cost_yuan` 求和。一格格不上返回 null（界面显示「—」，不猜半个金额）。
+4. **预估（下单前，usage 里还没有这条）**：`estimateCost(usage, upstreamModel, count)` = 同模型最近 10 次**成功**项的平均花费 × 数量。固定价模型（图片按张、音频按次）均值即真实单价。
+5. **上游模型名**：`provider.ModelInfo` 新增公开字段 `upstream_model`（`ListModels` 从 `cfg.Channels[0].UpstreamModel` 取），前端 `toModelOption` 透传；模型清单的「不泄露内部字段」测试已同步更新（该字段现在是有意公开的）。
+6. **限额**：`limit=500` 覆盖不到的历史记录显示「—」，不翻页（避免 1QPS 下把页面拖慢）。
+
+匹配用到的字段：任务的 `submitted_at`（排队中还没有就退到 `created_at`）作为窗口起点，`finished_at` / `deadline_at` 作为终点。
+
+### 9.4 验收
+
+- 记录卡片显示 ¥0.22（与 TokenDance 门户「调用记录」逐条一致），不再是 ¥0.04。
+- 输入卡片 / 画布节点下单前显示同模型历史均价。
+- 全站再无「平台积分 × 汇率」得出的金额；钱包模型下拉、角色卡、短剧批量生成不出现积分。
+- 普通（BYOK）渠道任务的积分显示与冻结/结算不受影响。

@@ -12,12 +12,14 @@ const EMPTY_ENTRY: ModelsEntry = { status: "idle", models: [], loadedAt: 0 };
 export const toModelOption = (info: ModelInfo): ModelOption => ({
   id: info.key,
   label: info.label,
-  credits: lowestUnit(info.pricing),
-  priceLabel: priceLabel(info.pricing),
+  // 钱包模型不扣平台积分：不算积分价（算了也没处显示，只会误导），只带上游模型名供匹配真实花费
+  credits: info.wallet ? 0 : lowestUnit(info.pricing),
+  priceLabel: info.wallet ? undefined : priceLabel(info.pricing),
   hint: info.hint,
   vendor: info.vendor,
   tags: info.tags,
   wallet: info.wallet,
+  upstream_model: info.upstream_model,
 });
 
 /**
@@ -32,14 +34,18 @@ export function useRemoteModels(kind: string, enabled = true) {
   const walletConnected = useWalletStore((state) => !!state.view?.connected);
   const fetchWallet = useWalletStore((state) => state.fetch);
   const fetchBalance = useWalletStore((state) => state.fetchBalance);
+  const fetchUsage = useWalletStore((state) => state.fetchUsage);
 
   useEffect(() => {
     if (enabled) void load(kind);
     // 钱包模型的可见性取决于连接状态；接口有去重，多处调用只发一次请求
     if (enabled) void fetchWallet();
-    // 余额：右上角与预估花费要用；后端 60s 缓存，多个页面同时加载只打一次上游
-    if (enabled && walletConnected) void fetchBalance();
-  }, [enabled, kind, load, fetchWallet, fetchBalance, walletConnected]);
+    // 余额与调用记录：右上角、预估花费、记录卡片的真实花费都要；后端 60s 缓存，多个页面同时加载只打一次上游
+    if (enabled && walletConnected) {
+      void fetchBalance();
+      void fetchUsage();
+    }
+  }, [enabled, kind, load, fetchWallet, fetchBalance, fetchUsage, walletConnected]);
 
   const reload = useCallback(() => load(kind, true), [kind, load]);
   const options = useMemo(

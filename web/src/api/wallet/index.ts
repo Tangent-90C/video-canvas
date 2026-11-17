@@ -34,7 +34,7 @@ export const connectTokenPay = (flow: string, code: string) =>
 /** 查询当前钱包状态 */
 export const getWalletConnection = () => service.get<WalletView>("/wallet/tokenpay/connection");
 
-/** 钱包余额视图：TokenDance 账户余额与已消耗（元），以及「积分折元」汇率 */
+/** 钱包余额视图：TokenDance 账户余额与已消耗（元） */
 export interface WalletBalance {
   /** 本站是否启用了钱包连接 */
   enabled: boolean;
@@ -44,8 +44,6 @@ export interface WalletBalance {
   balance_yuan: number;
   /** 账户已消耗（元） */
   used_yuan: number;
-  /** 1 平台积分折多少元（钱包模型的预估花费用） */
-  yuan_per_credit: number;
   /** 降级数据（上游查询失败 / Key 读不到）：可能不是最新 */
   stale: boolean;
 }
@@ -55,6 +53,36 @@ export interface WalletBalance {
  * 未启用 / 未连接返回降级视图，不报错。
  */
 export const getWalletBalance = () => service.get<WalletBalance>("/wallet/tokenpay/balance");
+
+/** 一条上游调用记录：金额单位元，created_at 是 UTC RFC3339 */
+export interface WalletUsageItem {
+  /** TokenDance 内部模型 id，与本站模型的 upstream_model 一致 */
+  model_id: string;
+  created_at: string;
+  /** 是否成功 */
+  success: boolean;
+  /** 真实花费（元） */
+  cost_yuan: number;
+}
+
+/** 调用记录视图：钱包界面所有金额的唯一来源 */
+export interface WalletUsage {
+  /** 本站是否启用了钱包连接 */
+  enabled: boolean;
+  /** 当前用户是否已连接 */
+  connected: boolean;
+  /** 调用记录，newest first */
+  items: WalletUsageItem[];
+  /** 降级数据（上游查询失败）：展示的是旧缓存 */
+  stale: boolean;
+}
+
+/**
+ * 查询调用记录（Bearer 是用户自己的 TokenDance Key，后端代理 + 60 秒缓存）。
+ * 钱包任务不扣平台积分，「花了多少钱」只认这里的逐条真实花费。
+ * 未启用 / 未连接返回空列表，上游失败返回旧缓存并标 stale。
+ */
+export const getWalletUsage = () => service.get<WalletUsage>("/wallet/tokenpay/usage");
 
 /** 断开钱包：删除本站保存的 Key 与授权信息 */
 export const disconnectTokenPay = () => service.delete<void>("/wallet/tokenpay/connection");

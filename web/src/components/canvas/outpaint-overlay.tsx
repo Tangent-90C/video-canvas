@@ -115,6 +115,7 @@ export function OutpaintOverlay({ id, data }: { id: string; data: CanvasNodeData
     const count = fanoutCount(caps, spec.params);
     return {
       total: one * count,
+      count,
       isMax: model.pricing?.billing === "token",
       detail: model.pricing?.billing === "token" ? "按 Token 预估上限" : `${one} 积分`,
     };
@@ -206,6 +207,7 @@ export function OutpaintOverlay({ id, data }: { id: string; data: CanvasNodeData
             credits={price?.total}
             creditsIsMax={price?.isMax}
             creditsDetail={price?.detail}
+            count={price?.count}
             availableCredits={availableCredits}
             onSubmit={submit}
             canSubmit={!blockedReason}

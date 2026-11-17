@@ -18,6 +18,8 @@ export type ModelOption = {
   tags?: readonly string[];
   /** 钱包模型：用用户自己的 TokenDance 额度，不消耗平台积分 */
   wallet?: boolean;
+  /** 上游模型名；钱包模型用它匹配 TokenDance 调用记录，算真实花费 */
+  upstream_model?: string;
 };
 
 /**

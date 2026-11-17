@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { motion } from "motion/react";
 import {
   CircleStop,
@@ -40,10 +40,11 @@ import { cn } from "@/lib/utils";
 import { useConversationRecordsStore } from "@/store/conversation-records";
 import { useWalletStore } from "@/store/wallet";
 import { downloadMedia } from "@/utils/canvas/download";
-import { recordActive, recordCredits, recordWalletCost } from "@/utils/conversation/cell";
+import { recordActive, recordCredits } from "@/utils/conversation/cell";
 import { recordPreviewItems } from "@/utils/conversation/preview-items";
 import { restoreComposer } from "@/utils/conversation/restore";
 import { isCancelableTask } from "@/utils/tasks/status";
+import { formatYuan, matchRecordCost } from "@/utils/wallet/cost";
 import { useAssetUrls } from "@/hooks/use-asset-urls";
 import { paramSummary } from "@/utils/tasks/capabilities";
 
@@ -149,8 +150,13 @@ export function RecordView({
   const cancelable = tasks.some(isCancelableTask);
   const credits = recordCredits(tasks);
   const model = models.find((item) => item.key === record.modelId);
-  const yuanPerCredit = useWalletStore((state) => state.balance?.yuan_per_credit);
-  const walletCost = recordWalletCost(record, model, yuanPerCredit);
+  // 钱包记录：真实花费来自 TokenDance 调用记录（用户在自己账号里付的钱），不是平台积分折算
+  const usage = useWalletStore((state) => state.usage);
+  const walletCost = useMemo(() => {
+    if (!model?.wallet) return null;
+    const yuan = matchRecordCost(record, tasks, usage?.items ?? [], model.upstream_model ?? "");
+    return yuan === null ? null : formatYuan(yuan);
+  }, [model, record, tasks, usage]);
   const offline = isModelOffline(
     record,
     status === "ready" ? models.map((item) => item.key) : null,
@@ -200,14 +206,14 @@ export function RecordView({
           {summary && <span className={META_ITEM}>{summary}</span>}
           {refCount > 0 && <span className={META_ITEM}>参考 {refCount} 个</span>}
           {tasks.length > 0 &&
-            // 钱包记录扣的是用户自己的 TokenDance 额度：不显示平台积分，改显示这条花了多少钱
+            // 钱包记录扣的是用户自己的 TokenDance 额度：不显示平台积分，显示这条真实花了多少钱
             (model?.wallet ? (
               <span
                 className={cn(META_ITEM, "inline-flex items-center gap-0.5 tabular-nums")}
-                title="预估花费，实际以 TokenDance 账单为准；用你自己的 TokenDance 额度"
+                title="这次生成的真实花费（来自你的 TokenDance 账单）"
               >
                 <Wallet className="size-3" />
-                {walletCost || "—"}
+                {walletCost ?? "—"}
               </span>
             ) : (
               <span

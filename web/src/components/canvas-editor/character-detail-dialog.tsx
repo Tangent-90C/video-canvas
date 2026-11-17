@@ -316,7 +316,9 @@ export function CharacterDetailDialog({
                   <SelectContent>
                     {voiceGen.models.map((item) => (
                       <SelectItem key={item.key} value={item.key}>
-                        {item.label} · {priceLabel(item.pricing)}
+                        {/* 钱包模型不扣平台积分，平台积分价对它没有意义 */}
+                        {item.label}
+                        {item.wallet ? "" : ` · ${priceLabel(item.pricing)}`}
                       </SelectItem>
                     ))}
                   </SelectContent>

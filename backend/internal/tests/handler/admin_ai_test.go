@@ -301,16 +301,21 @@ func TestAIModelHandler_List(t *testing.T) {
 		if caps, _ := m["capabilities"].(map[string]any); caps == nil || caps["prompt"] == nil || caps["ops"] == nil {
 			t.Fatalf("应包含 capabilities：%v", m)
 		}
-		for _, bad := range []string{"params", "channel", "plugin", "secret", "instanceType", "kling", "sk-super-secret", "base_url", "upstream", "cost", "保密的系统提示"} {
+		// upstream_model 是公开字段（钱包模型用它匹配 TokenDance 调用记录），
+		// 所以这里不再把 "upstream" / 上游模型名当泄露；真正要守住的是渠道、插件、凭证与积分成本
+		for _, bad := range []string{"params", "channel", "plugin", "secret", "instanceType", "sk-super-secret", "base_url", "cost", "保密的系统提示"} {
 			if strings.Contains(r.Raw, bad) {
 				t.Fatalf("/models 响应泄露了 %q：%s", bad, r.Raw)
 			}
 		}
+		if m["upstream_model"] != "kling-v2" {
+			t.Fatalf("应公开 upstream_model：%v", m)
+		}
 		if tags, ok := m["tags"].([]any); !ok || len(tags) != 0 {
 			t.Fatalf("没有标签时 tags 应为 []：%v", m["tags"])
 		}
-		if len(m) != 8 {
-			t.Fatalf("公开字段应恰好 8 个（key/kind/label/hint/vendor/tags/capabilities/pricing），实际 %d：%v", len(m), m)
+		if len(m) != 9 {
+			t.Fatalf("公开字段应恰好 9 个（key/kind/label/hint/vendor/tags/capabilities/pricing/upstream_model），实际 %d：%v", len(m), m)
 		}
 	})
 	t.Run("kind=text 合法：文本节点能拿到清单", func(t *testing.T) {

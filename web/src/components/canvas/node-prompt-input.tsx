@@ -1,10 +1,9 @@
-import { yuanEstimate } from "@/utils/pricing/quote";
 import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import { motion } from "motion/react";
 import { ArrowUp, ChevronDown, Loader2, Maximize2, Sparkle, Wallet } from "lucide-react";
 
 import { VendorAvatar } from "@/components/admin-ui/vendor-avatar";
-import { useWalletStore } from "@/store/wallet";
+import { useWalletCostEstimate } from "@/hooks/use-wallet-cost";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import {
   DropdownMenu,
@@ -53,6 +52,8 @@ export type NodeModelOption = {
   tags?: readonly string[];
   /** TokenPay 钱包模型：用用户自己的 TokenDance 额度，不消耗平台积分 */
   wallet?: boolean;
+  /** 上游模型名；钱包模型用它匹配 TokenDance 调用记录，算真实花费 */
+  upstream_model?: string;
 };
 
 /** 面板底栏上的纯文字按钮样式（无描边，只有悬停底色），模型、参数摘要这类按钮共用 */
@@ -109,6 +110,8 @@ type NodePromptInputProps = {
   creditsIsMax?: boolean;
   /** 合计积分的组成说明，如「5 积分/秒 × 5 秒 × 4 个」，放在悬停提示里 */
   creditsDetail?: string;
+  /** 生成数量（一次提交拆成几个任务）；钱包模型的预估花费按它乘 */
+  count?: number;
   /** 当前可用积分，放在悬停提示里 */
   availableCredits?: number | null;
   /** 提示词框禁用（比如提示词由上游连线提供），placeholder 会换成 promptNote */
@@ -159,6 +162,8 @@ type PromptFooterProps = {
   creditsIsMax?: boolean;
   /** 积分与发送键的悬停说明 */
   creditsTitle: string;
+  /** 钱包模型的预估花费（元，如「¥0.22」）；普通渠道模型不传，此时显示平台积分 */
+  walletEstimate?: string | null;
   /** 发送键不可点：不能提交，或正在忙 */
   blocked: boolean;
   /** 提交在路上或正在生成：发送键转圈 */
@@ -184,12 +189,12 @@ function PromptFooter({
   credits,
   creditsIsMax,
   creditsTitle,
+  walletEstimate,
   blocked,
   busy,
   onSubmit,
   secondarySubmit,
 }: PromptFooterProps) {
-  const yuanPerCredit = useWalletStore((state) => state.balance?.yuan_per_credit);
   return (
     <div className="flex min-w-0 flex-col gap-3">
       {notice && (
@@ -253,7 +258,8 @@ function PromptFooter({
                       )}
                     </span>
                     <span className="text-muted-foreground ml-auto text-xs">
-                      {item.priceLabel ?? `${item.credits} 积分`}
+                      {/* 钱包模型不扣平台积分，平台积分价对它没有意义，不显示价格行 */}
+                      {item.wallet ? "" : (item.priceLabel ?? `${item.credits} 积分`)}
                     </span>
                   </DropdownMenuRadioItem>
                 ))}
@@ -272,22 +278,25 @@ function PromptFooter({
               label={secondarySubmit.label}
               credits={credits === undefined ? undefined : credits + secondarySubmit.extraCredits}
               creditsIsMax={creditsIsMax}
-              wallet={model?.wallet}
+              walletEstimate={walletEstimate}
               title={
                 busy
                   ? "生成中"
-                  : (secondarySubmit.blockedReason ??
-                    `形象 ${credits ?? "—"} 积分，音色约 ${secondarySubmit.extraCredits} 积分`)
+                  : // 钱包任务不扣平台积分，「X 积分」对它没有意义
+                    (walletEstimate
+                      ? `${secondarySubmit.blockedReason ?? "生成"} · 约 ${walletEstimate}`
+                      : (secondarySubmit.blockedReason ??
+                        `形象 ${credits ?? "—"} 积分，音色约 ${secondarySubmit.extraCredits} 积分`))
               }
               blocked={busy || !!secondarySubmit.blockedReason}
               busy={busy}
               onClick={secondarySubmit.onSubmit}
             />
           )}
-          {model?.wallet ? (
+          {walletEstimate ? (
             <span className="text-muted-foreground flex items-center gap-1 text-[13px] font-medium tabular-nums">
               <Wallet className="size-3.5" />
-              {yuanEstimate(credits ?? 0, yuanPerCredit) || "—"}
+              {walletEstimate}
             </span>
           ) : (
             <span className="text-muted-foreground flex items-center gap-1 text-[13px] font-medium tabular-nums">
@@ -331,7 +340,7 @@ function SubmitPill({
   blocked,
   busy,
   onClick,
-  wallet,
+  walletEstimate,
 }: {
   label: string;
   credits?: number;
@@ -341,18 +350,16 @@ function SubmitPill({
   blocked: boolean;
   busy?: boolean;
   onClick: () => void;
-  /** 钱包模型：星星与积分换成预估花费（元） */
-  wallet?: boolean;
+  /** 钱包模型的预估花费（元）；给了就不显示平台积分 */
+  walletEstimate?: string | null;
 }) {
-  const yuanPerCredit = useWalletStore((state) => state.balance?.yuan_per_credit);
-  const estimate = wallet ? yuanEstimate(credits ?? 0, yuanPerCredit) : "";
   return (
     // 不能点的按钮收不到鼠标事件，悬停说明挂在外层
     <span className="flex items-center gap-3" title={title}>
-      {wallet ? (
+      {walletEstimate ? (
         <span className="text-muted-foreground flex items-center gap-1 text-[13px] font-medium tabular-nums">
           <Wallet className="size-3.5" />
-          {estimate || "—"}
+          {walletEstimate}
         </span>
       ) : (
         <span className="text-muted-foreground flex items-center gap-1 text-[13px] font-medium tabular-nums">
@@ -410,6 +417,7 @@ export function NodePromptInput({
   credits: creditsOverride,
   creditsIsMax,
   creditsDetail,
+  count,
   availableCredits,
   promptDisabled,
   promptNote,
@@ -460,6 +468,8 @@ export function NodePromptInput({
   const busy = running || submitting;
   const credits = creditsOverride ?? model?.credits;
   const blocked = !canSubmit || busy;
+  // 钱包模型：显示预估花费（元）而不是平台积分——它不扣平台积分，积分价对它没有意义
+  const walletEstimate = useWalletCostEstimate(model?.upstream_model, count ?? 1);
 
   const submit = () => {
     if (!blocked) onSubmit?.();
@@ -473,9 +483,11 @@ export function NodePromptInput({
   const creditsTitle =
     credits === undefined
       ? hint
-      : `${hint} · ${creditsIsMax ? "最多冻结" : "本次消耗"} ${credits} 积分${creditsDetail ? `（${creditsDetail}）` : ""}${
-          creditsIsMax ? "，完成后按实际用量结算" : ""
-        }${availableCredits == null ? "" : `，当前可用 ${availableCredits}`}`;
+      : walletEstimate
+        ? `${hint} · 约 ${walletEstimate}（按你最近的 TokenDance 实际扣费估算）`
+        : `${hint} · ${creditsIsMax ? "最多冻结" : "本次消耗"} ${credits} 积分${creditsDetail ? `（${creditsDetail}）` : ""}${
+            creditsIsMax ? "，完成后按实际用量结算" : ""
+          }${availableCredits == null ? "" : `，当前可用 ${availableCredits}`}`;
   const promptPlaceholder = promptDisabled && promptNote ? promptNote : placeholder;
   const length = promptTextLength(value);
   const nearLimit = length > PROMPT_MAX_LENGTH * PROMPT_WARN_RATIO;
@@ -490,6 +502,7 @@ export function NodePromptInput({
     credits,
     creditsIsMax,
     creditsTitle,
+    walletEstimate,
     blocked: !!blocked,
     busy,
     onSubmit: submit,

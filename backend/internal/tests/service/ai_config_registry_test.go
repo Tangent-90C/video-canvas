@@ -101,10 +101,14 @@ func TestAIConfigService_Registry_ListModels(t *testing.T) {
 			t.Fatalf("capabilities 应带上：%+v", m.Capabilities)
 		}
 		b, _ := json.Marshal(list)
-		for _, bad := range []string{"channel", "kling", "instanceType", "sk-c1", "upstream"} {
+		// upstream_model 是公开字段（钱包模型用它匹配 TokenDance 调用记录），不再当泄露
+		for _, bad := range []string{"channel", "instanceType", "sk-c1"} {
 			if strings.Contains(string(b), bad) {
 				t.Fatalf("清单不应泄露 %q：%s", bad, b)
 			}
+		}
+		if m.UpstreamModel != "kling-v2" {
+			t.Fatalf("应公开 upstream_model：%+v", m)
 		}
 	})
 }

@@ -225,6 +225,7 @@ export function TaskPromptPanel({
         credits={vm.price?.total}
         creditsIsMax={vm.price?.isMax}
         creditsDetail={vm.price?.detail}
+        count={vm.price?.count}
         availableCredits={vm.availableCredits}
         running={vm.running}
         submitting={vm.submitting}

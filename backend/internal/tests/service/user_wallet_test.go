@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -115,18 +116,11 @@ func newWalletService(t *testing.T, upstreamKey string) (*UserWalletService, *fa
 	return svc, repo, secrets, flows
 }
 
-// fakeWalletPricing 实现 WalletPricing：1 元 = N 积分。
-type fakeWalletPricing struct{ creditsPerYuan *float64 }
-
-func (p fakeWalletPricing) Get(_ context.Context) (*model.PricingSettingsView, error) {
-	return &model.PricingSettingsView{CreditsPerYuan: p.creditsPerYuan}, nil
-}
-
-// newBalanceService 组装带余额上游的服务：balance 上游返回固定余额，pricing 可注入。
+// newBalanceService 组装带余额上游的服务：balance 上游返回固定余额。
 // 生产的 balanceURL 是 https://tokendance.space/portal/api/v1/user/balance——
 // 必须带 /portal 前缀：一级域名下的 /api/v1/... 是官网前端路由，返回 HTML 而不是 JSON（线上实测踩过）。
 // 同时断言请求路径是 /portal/api/v1/user/balance（一级域名下的 /api/v1 是官网 HTML 页，不是 API）。
-func newBalanceService(t *testing.T, credits, used int64, creditsPerYuan *float64) (*UserWalletService, *fakeWalletRepo) {
+func newBalanceService(t *testing.T, credits, used int64) (*UserWalletService, *fakeWalletRepo) {
 	t.Helper()
 	balance := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer tk-live" {
@@ -147,17 +141,15 @@ func newBalanceService(t *testing.T, credits, used int64, creditsPerYuan *float6
 		AppURL:     "https://app.example.com",
 		KeyName:    "连镜",
 		BalanceURL: balance.URL,
-		Pricing:    fakeWalletPricing{creditsPerYuan: creditsPerYuan},
 	})
 	repo.row = &model.UserWallet{UserID: 7, Provider: "tokendance", AppURL: "https://app.example.com", KeyMasked: "tk-l…"}
 	return svc, repo
 }
 
-// Balance：已连接时查上游余额（微元→元），汇率来自定价设置。
+// Balance：已连接时查上游余额（微元→元），60 秒内命中缓存。
 func TestUserWalletBalance(t *testing.T) {
 	ctx := context.Background()
-	rate := 200.0
-	svc, _ := newBalanceService(t, 12_500_000, 3_000_000, &rate) // 12.5 元剩、3 元已用
+	svc, _ := newBalanceService(t, 12_500_000, 3_000_000) // 12.5 元剩、3 元已用
 
 	view, err := svc.Balance(ctx, 7)
 	if err != nil {
@@ -169,8 +161,8 @@ func TestUserWalletBalance(t *testing.T) {
 	if view.BalanceYuan != 12.5 || view.UsedYuan != 3 {
 		t.Fatalf("余额换算不对：%+v", view)
 	}
-	if view.YuanPerCredit != 1.0/200 || view.Stale {
-		t.Fatalf("汇率 / stale 不对：%+v", view)
+	if view.Stale {
+		t.Fatalf("不应标 stale：%+v", view)
 	}
 
 	// 60 秒内第二次走缓存：上游计数不再增长（换个余额也不变）
@@ -186,10 +178,9 @@ func TestUserWalletBalance(t *testing.T) {
 // Balance 的降级：未启用、未连接、上游挂、Key 读不到——都不报错，页面照常渲染。
 func TestUserWalletBalanceFallbacks(t *testing.T) {
 	ctx := context.Background()
-	rate := 100.0
 
 	// 未连接（仓储无行）
-	svc, _ := newBalanceService(t, 1, 0, &rate)
+	svc, _ := newBalanceService(t, 1, 0)
 	view, err := svc.Balance(ctx, 9)
 	if err != nil || !view.Enabled || view.Connected {
 		t.Fatalf("未连接应降级：%+v err=%v", view, err)
@@ -204,7 +195,7 @@ func TestUserWalletBalanceFallbacks(t *testing.T) {
 	secrets := &fakeWalletSecrets{saved: map[string]string{model.WalletSecretName(7): "tk-live"}}
 	svc2 := NewUserWalletService(UserWalletDeps{
 		Repo: repo, Secrets: secrets, Flows: &fakeFlows{}, AppURL: "https://app.example.com",
-		BalanceURL: broken.URL, Pricing: fakeWalletPricing{creditsPerYuan: &rate},
+		BalanceURL: broken.URL,
 	})
 	view, err = svc2.Balance(ctx, 7)
 	if err != nil || !view.Connected || !view.Stale {
@@ -215,9 +206,111 @@ func TestUserWalletBalanceFallbacks(t *testing.T) {
 	noKey := &fakeWalletSecrets{saved: map[string]string{}}
 	svc3 := NewUserWalletService(UserWalletDeps{
 		Repo: repo, Secrets: noKey, Flows: &fakeFlows{}, AppURL: "https://app.example.com",
-		BalanceURL: broken.URL, Pricing: fakeWalletPricing{creditsPerYuan: &rate},
+		BalanceURL: broken.URL,
 	})
 	view, err = svc3.Balance(ctx, 7)
+	if err != nil || !view.Connected || !view.Stale {
+		t.Fatalf("Key 读不到应 stale 降级：%+v err=%v", view, err)
+	}
+}
+
+// newUsageService 组装带调用记录上游的服务：usage 上游返回给定记录，并断言请求带了
+// limit / window 查询参数与用户自己的 Key（钱包场景所有金额都来自这里，不是平台积分 × 汇率）。
+func newUsageService(t *testing.T, items []map[string]any, got *url.Values) (*UserWalletService, *fakeWalletRepo) {
+	t.Helper()
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer tk-live" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		if got != nil {
+			*got = r.URL.Query()
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"items": items, "total": 0})
+	}))
+	t.Cleanup(up.Close)
+	repo := &fakeWalletRepo{row: &model.UserWallet{UserID: 7, Provider: "tokendance"}}
+	secrets := &fakeWalletSecrets{saved: map[string]string{model.WalletSecretName(7): "tk-live"}}
+	svc := NewUserWalletService(UserWalletDeps{
+		Repo: repo, Secrets: secrets, Flows: &fakeFlows{}, AppURL: "https://app.example.com",
+		UsageURL: up.URL,
+	})
+	return svc, repo
+}
+
+// Usage：已连接时拉上游调用记录，微元→元，保留 newest first 顺序；失败调用也带上（花费为 0）。
+func TestUserWalletUsage(t *testing.T) {
+	ctx := context.Background()
+	var q url.Values
+	svc, _ := newUsageService(t, []map[string]any{
+		{"model_id": "seedream-5.0-lite", "created_at": "2026-11-17T12:15:40Z", "cost": 220_000, "is_success": true},
+		{"model_id": "seedream-5.0-lite", "created_at": "2026-11-17T10:08:10Z", "cost": 220_000, "is_success": true},
+		{"model_id": "seedream-5.0-lite", "created_at": "2026-11-17T09:21:17Z", "cost": 0, "error": "upstream says no"},
+	}, &q)
+
+	view, err := svc.Usage(ctx, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !view.Enabled || !view.Connected || view.Stale {
+		t.Fatalf("形态不对：%+v", view)
+	}
+	if len(view.Items) != 3 {
+		t.Fatalf("应带回 3 条：%+v", view.Items)
+	}
+	// 真实单价：seedream 每张 0.22 元（用户在自己 TokenDance 账号里付的钱）
+	if view.Items[0].ModelID != "seedream-5.0-lite" || view.Items[0].CostYuan != 0.22 {
+		t.Fatalf("金额换算或顺序不对：%+v", view.Items[0])
+	}
+	if view.Items[2].Success || view.Items[2].CostYuan != 0 {
+		t.Fatalf("失败记录应标失败且 0 元：%+v", view.Items[2])
+	}
+	// 分页参数：limit 500 + window 30d（不无限翻页，1QPS 限制下翻页会把页面拖死）
+	if q.Get("limit") != "500" || q.Get("window") != "30d" {
+		t.Fatalf("查询参数不对：%v", q)
+	}
+
+	// 60 秒内第二次走缓存
+	view2, err := svc.Usage(ctx, 7)
+	if err != nil || len(view2.Items) != 3 {
+		t.Fatalf("应命中缓存：%+v err=%v", view2, err)
+	}
+}
+
+// Usage 的降级：未连接、上游挂、Key 读不到——都不报错；上游挂时返回旧缓存并标 stale。
+func TestUserWalletUsageFallbacks(t *testing.T) {
+	ctx := context.Background()
+
+	// 未连接
+	svc, _ := newUsageService(t, nil, nil)
+	view, err := svc.Usage(ctx, 9)
+	if err != nil || !view.Enabled || view.Connected || len(view.Items) != 0 {
+		t.Fatalf("未连接应降级：%+v err=%v", view, err)
+	}
+
+	// 上游 500 + 无缓存：stale + 空列表
+	broken := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer broken.Close()
+	repo := &fakeWalletRepo{row: &model.UserWallet{UserID: 7, Provider: "tokendance"}}
+	secrets := &fakeWalletSecrets{saved: map[string]string{model.WalletSecretName(7): "tk-live"}}
+	svc2 := NewUserWalletService(UserWalletDeps{
+		Repo: repo, Secrets: secrets, Flows: &fakeFlows{}, AppURL: "https://app.example.com",
+		UsageURL: broken.URL,
+	})
+	view, err = svc2.Usage(ctx, 7)
+	if err != nil || !view.Connected || !view.Stale || len(view.Items) != 0 {
+		t.Fatalf("上游失败应 stale 降级：%+v err=%v", view, err)
+	}
+
+	// Key 读不到：已连接 + stale
+	noKey := &fakeWalletSecrets{saved: map[string]string{}}
+	svc4 := NewUserWalletService(UserWalletDeps{
+		Repo: repo, Secrets: noKey, Flows: &fakeFlows{}, AppURL: "https://app.example.com",
+		UsageURL: broken.URL,
+	})
+	view, err = svc4.Usage(ctx, 7)
 	if err != nil || !view.Connected || !view.Stale {
 		t.Fatalf("Key 读不到应 stale 降级：%+v err=%v", view, err)
 	}
