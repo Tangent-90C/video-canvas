@@ -52,6 +52,17 @@ func (h *WalletHandler) Connection(c *gin.Context) {
 	response.OK(c, v)
 }
 
+// Balance 返回钱包余额与已消耗（GET /wallet/tokenpay/balance）：未启用 / 未连接返回降级视图，
+// 不报错；上游查询失败时返回旧缓存并标 stale。
+func (h *WalletHandler) Balance(c *gin.Context) {
+	v, err := h.svc.Balance(c.Request.Context(), currentUserID(c))
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, v)
+}
+
 // Disconnect 断开钱包（DELETE /wallet/tokenpay/connection）：删除本地保存的 Key 与元数据。
 func (h *WalletHandler) Disconnect(c *gin.Context) {
 	if err := h.svc.Disconnect(c.Request.Context(), currentUserID(c)); err != nil {

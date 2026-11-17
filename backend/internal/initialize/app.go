@@ -119,6 +119,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		Flows:   cache.NewOAuthFlowStore(rdb),
 		AppURL:  cfg.TokenPay.AppURL,
 		KeyName: cfg.TokenPay.KeyName,
+		Pricing: pricingSvc, // 余额页的「积分折元」汇率（预估花费用）
 	})
 
 	// 素材存储：存储配置在数据库里（后台“存储配置”管理），密钥复用 AI 配置的加密存储（ai_secrets），

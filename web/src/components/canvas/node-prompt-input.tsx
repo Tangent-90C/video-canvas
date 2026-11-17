@@ -1,8 +1,10 @@
+import { yuanEstimate } from "@/utils/pricing/quote";
 import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import { motion } from "motion/react";
-import { ArrowUp, ChevronDown, Loader2, Maximize2, Sparkle } from "lucide-react";
+import { ArrowUp, ChevronDown, Loader2, Maximize2, Sparkle, Wallet } from "lucide-react";
 
 import { VendorAvatar } from "@/components/admin-ui/vendor-avatar";
+import { useWalletStore } from "@/store/wallet";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import {
   DropdownMenu,
@@ -49,6 +51,8 @@ export type NodeModelOption = {
   vendor?: string;
   /** 展示标签 */
   tags?: readonly string[];
+  /** TokenPay 钱包模型：用用户自己的 TokenDance 额度，不消耗平台积分 */
+  wallet?: boolean;
 };
 
 /** 面板底栏上的纯文字按钮样式（无描边，只有悬停底色），模型、参数摘要这类按钮共用 */
@@ -185,6 +189,7 @@ function PromptFooter({
   onSubmit,
   secondarySubmit,
 }: PromptFooterProps) {
+  const yuanPerCredit = useWalletStore((state) => state.balance?.yuan_per_credit);
   return (
     <div className="flex min-w-0 flex-col gap-3">
       {notice && (
@@ -267,6 +272,7 @@ function PromptFooter({
               label={secondarySubmit.label}
               credits={credits === undefined ? undefined : credits + secondarySubmit.extraCredits}
               creditsIsMax={creditsIsMax}
+              wallet={model?.wallet}
               title={
                 busy
                   ? "生成中"
@@ -278,13 +284,20 @@ function PromptFooter({
               onClick={secondarySubmit.onSubmit}
             />
           )}
-          <span className="text-muted-foreground flex items-center gap-1 text-[13px] font-medium tabular-nums">
-            <Sparkle
-              className={cn("size-3.5", blocked ? "fill-muted-foreground" : "fill-credit")}
-              strokeWidth={0}
-            />
-            {credits === undefined ? "—" : `${creditsIsMax ? "≤" : ""}${credits}`}
-          </span>
+          {model?.wallet ? (
+            <span className="text-muted-foreground flex items-center gap-1 text-[13px] font-medium tabular-nums">
+              <Wallet className="size-3.5" />
+              {yuanEstimate(credits ?? 0, yuanPerCredit) || "—"}
+            </span>
+          ) : (
+            <span className="text-muted-foreground flex items-center gap-1 text-[13px] font-medium tabular-nums">
+              <Sparkle
+                className={cn("size-3.5", blocked ? "fill-muted-foreground" : "fill-credit")}
+                strokeWidth={0}
+              />
+              {credits === undefined ? "—" : `${creditsIsMax ? "≤" : ""}${credits}`}
+            </span>
+          )}
           <motion.button
             type="button"
             whileTap={blocked ? undefined : { scale: 0.92 }}
@@ -318,6 +331,7 @@ function SubmitPill({
   blocked,
   busy,
   onClick,
+  wallet,
 }: {
   label: string;
   credits?: number;
@@ -327,17 +341,28 @@ function SubmitPill({
   blocked: boolean;
   busy?: boolean;
   onClick: () => void;
+  /** 钱包模型：星星与积分换成预估花费（元） */
+  wallet?: boolean;
 }) {
+  const yuanPerCredit = useWalletStore((state) => state.balance?.yuan_per_credit);
+  const estimate = wallet ? yuanEstimate(credits ?? 0, yuanPerCredit) : "";
   return (
     // 不能点的按钮收不到鼠标事件，悬停说明挂在外层
     <span className="flex items-center gap-3" title={title}>
-      <span className="text-muted-foreground flex items-center gap-1 text-[13px] font-medium tabular-nums">
-        <Sparkle
-          className={cn("size-3.5", blocked ? "fill-muted-foreground" : "fill-credit")}
-          strokeWidth={0}
-        />
-        {credits === undefined ? "—" : `${creditsIsMax ? "≤" : ""}${credits}`}
-      </span>
+      {wallet ? (
+        <span className="text-muted-foreground flex items-center gap-1 text-[13px] font-medium tabular-nums">
+          <Wallet className="size-3.5" />
+          {estimate || "—"}
+        </span>
+      ) : (
+        <span className="text-muted-foreground flex items-center gap-1 text-[13px] font-medium tabular-nums">
+          <Sparkle
+            className={cn("size-3.5", blocked ? "fill-muted-foreground" : "fill-credit")}
+            strokeWidth={0}
+          />
+          {credits === undefined ? "—" : `${creditsIsMax ? "≤" : ""}${credits}`}
+        </span>
+      )}
       <motion.button
         type="button"
         whileTap={blocked ? undefined : { scale: 0.92 }}

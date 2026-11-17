@@ -121,7 +121,13 @@ export function ModelMenu({
                     )}
                   </span>
                   <span className="text-muted-foreground text-xs leading-snug">
-                    {[model.hint, priceLabel(model.pricing)].filter(Boolean).join(" · ")}
+                    {[
+                      model.hint,
+                      // 钱包模型用用户自己的 TokenDance 额度，平台积分价对它没有意义
+                      model.wallet ? "用你自己的 TokenDance 额度" : priceLabel(model.pricing),
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
                   </span>
                 </span>
               </DropdownMenuRadioItem>

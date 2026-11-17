@@ -2,6 +2,7 @@ import type { TaskView } from "@/api/generation-task/type";
 import { getActiveGenerationTasks, getGenerationTasksByIds } from "@/api/generation-task";
 import { useCreditsStore } from "@/store/credits";
 import { useTasksStore } from "@/store/tasks";
+import { useWalletStore } from "@/store/wallet";
 import { findStaleActiveIds } from "@/utils/tasks/reconcile";
 import { isFreshTerminalTransition } from "@/utils/tasks/toast-policy";
 import { matchesTaskId } from "@/utils/tasks/status";
@@ -11,7 +12,8 @@ export type TaskSource = "live" | "reconcile";
 
 /**
  * 所有任务快照的唯一入口：合并进 store；
- * 刚进入终态的顺便刷新积分（生成结果不弹通知）。
+ * 刚进入终态的顺便刷新积分（生成结果不弹通知）；连着钱包的也刷新余额
+ * （钱包任务花的是用户自己的 TokenDance 额度，终态后数字要动）。
  */
 export function handleTaskView(view: TaskView, source: TaskSource) {
   const applied = useTasksStore.getState().upsert(view);
@@ -19,6 +21,7 @@ export function handleTaskView(view: TaskView, source: TaskSource) {
   if (!isFreshTerminalTransition(applied.prev, applied.view, source)) return;
 
   void useCreditsStore.getState().refresh();
+  if (useWalletStore.getState().view?.connected) void useWalletStore.getState().fetchBalance();
 }
 
 /**

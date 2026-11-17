@@ -114,6 +114,19 @@ export function priceLabel(pricing: Pricing | undefined) {
   return `${min} ${unit}${varies ? "起" : ""}`;
 }
 
+/**
+ * 钱包模型的预估花费（元）：平台积分价 × 「1 积分折元」汇率（后台定价设置）。
+ * 这是平台折算价，不是 TokenDance 真实价目，界面标注「预估」、tooltip 说明以实际账单为准。
+ * @param credits 本地计价的积分（quote 的结果）
+ * @param yuanPerCredit 汇率；拿不到（余额没加载）时按 0 显示「—」由调用方处理
+ */
+export function yuanEstimate(credits: number, yuanPerCredit: number | undefined) {
+  if (!yuanPerCredit) return "";
+  const yuan = credits * yuanPerCredit;
+  if (yuan <= 0) return "";
+  return `≈¥${yuan < 0.01 ? yuan.toFixed(3).replace(/0+$/, "").replace(/\.$/, "") : yuan < 1 ? yuan.toFixed(2) : yuan < 100 ? yuan.toFixed(1) : Math.round(yuan).toString()}`;
+}
+
 /** 价格的排序值（用于「默认模型」等场景的比较）：最低单价 */
 export const lowestUnit = (pricing: Pricing | undefined) =>
   !pricing || pricing.billing === "token" ? 0 : basePrice(pricing).min;

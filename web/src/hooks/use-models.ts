@@ -31,12 +31,15 @@ export function useRemoteModels(kind: string, enabled = true) {
   const load = useModelsStore((state) => state.load);
   const walletConnected = useWalletStore((state) => !!state.view?.connected);
   const fetchWallet = useWalletStore((state) => state.fetch);
+  const fetchBalance = useWalletStore((state) => state.fetchBalance);
 
   useEffect(() => {
     if (enabled) void load(kind);
     // 钱包模型的可见性取决于连接状态；接口有去重，多处调用只发一次请求
     if (enabled) void fetchWallet();
-  }, [enabled, kind, load, fetchWallet]);
+    // 余额：右上角与预估花费要用；后端 60s 缓存，多个页面同时加载只打一次上游
+    if (enabled && walletConnected) void fetchBalance();
+  }, [enabled, kind, load, fetchWallet, fetchBalance, walletConnected]);
 
   const reload = useCallback(() => load(kind, true), [kind, load]);
   const options = useMemo(

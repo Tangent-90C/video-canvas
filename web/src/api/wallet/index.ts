@@ -34,5 +34,27 @@ export const connectTokenPay = (flow: string, code: string) =>
 /** 查询当前钱包状态 */
 export const getWalletConnection = () => service.get<WalletView>("/wallet/tokenpay/connection");
 
+/** 钱包余额视图：TokenDance 账户余额与已消耗（元），以及「积分折元」汇率 */
+export interface WalletBalance {
+  /** 本站是否启用了钱包连接 */
+  enabled: boolean;
+  /** 当前用户是否已连接 */
+  connected: boolean;
+  /** 账户剩余额度（元） */
+  balance_yuan: number;
+  /** 账户已消耗（元） */
+  used_yuan: number;
+  /** 1 平台积分折多少元（钱包模型的预估花费用） */
+  yuan_per_credit: number;
+  /** 降级数据（上游查询失败 / Key 读不到）：可能不是最新 */
+  stale: boolean;
+}
+
+/**
+ * 查询钱包余额（Bearer 是用户自己的 TokenDance Key，后端代理 + 60 秒缓存）。
+ * 未启用 / 未连接返回降级视图，不报错。
+ */
+export const getWalletBalance = () => service.get<WalletBalance>("/wallet/tokenpay/balance");
+
 /** 断开钱包：删除本站保存的 Key 与授权信息 */
 export const disconnectTokenPay = () => service.delete<void>("/wallet/tokenpay/connection");

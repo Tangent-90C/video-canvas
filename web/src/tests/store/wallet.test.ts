@@ -139,6 +139,65 @@ describe("钱包 store：连接弹窗", () => {
     expect(store.getState().status).toBe("ready");
   });
 
+  test("fetchBalance 拉余额；失败时不影响（balance 保持 null）", async () => {
+    const balance = {
+      enabled: true,
+      connected: true,
+      balance_yuan: 12.5,
+      used_yuan: 3,
+      yuan_per_credit: 0.005,
+      stale: false,
+    };
+    const store = createWalletStore({
+      getWalletBalance: async () => balance,
+      disconnectTokenPay: async () => {},
+    } as never);
+    await store.getState().fetchBalance();
+    expect(store.getState().balance?.balance_yuan).toBe(12.5);
+    expect(store.getState().balance?.yuan_per_credit).toBe(0.005);
+
+    // 断开钱包时清掉余额
+    await store.getState().disconnect();
+    expect(store.getState().balance).toBeNull();
+
+    // 拉取失败不炸，balance 保持原值（null）
+    const broken = createWalletStore({
+      getWalletBalance: async () => {
+        throw new Error("network");
+      },
+      disconnectTokenPay: async () => {},
+    } as never);
+    await broken.getState().fetchBalance();
+    expect(broken.getState().balance).toBeNull();
+  });
+
+  test("连接成功后自动拉一次余额", async () => {
+    const calls = { balance: 0 };
+    const store = createWalletStore({
+      getWalletBalance: async () => {
+        calls.balance += 1;
+        return {
+          enabled: true,
+          connected: true,
+          balance_yuan: 1,
+          used_yuan: 0,
+          yuan_per_credit: 0.01,
+          stale: false,
+        };
+      },
+      connectTokenPay: async () => ({
+        enabled: true,
+        connected: true,
+        app_url: "https://canvas.tan90.site",
+        key_masked: "tk-…1",
+        connected_at: "",
+      }),
+      disconnectTokenPay: async () => {},
+    } as never);
+    await store.getState().connect("flow", "code");
+    expect(calls.balance).toBe(1);
+  });
+
   test("节流：已打开时 10 秒内的重复触发忽略，关掉后能再开（多个格子同时撞上未连接）", () => {
     const { api } = fakeApi();
     const store = createWalletStore(api);

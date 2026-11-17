@@ -55,7 +55,7 @@ function ModelList({
                 <span className="text-muted-foreground block truncate text-xs">{m.hint}</span>
               )}
             </span>
-            {m.priceLabel && (
+            {m.priceLabel && !m.wallet && (
               <span className="text-credit shrink-0 text-xs tabular-nums">{m.priceLabel}</span>
             )}
             <Plus className="text-muted-foreground size-4 shrink-0" />

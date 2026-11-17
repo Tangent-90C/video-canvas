@@ -3,8 +3,10 @@ import { create } from "zustand";
 import {
   connectTokenPay,
   disconnectTokenPay,
+  getWalletBalance,
   getWalletConnection,
   startTokenPayAuth,
+  type WalletBalance,
   type WalletView,
 } from "@/api/wallet";
 
@@ -16,6 +18,7 @@ export type WalletStatus = "idle" | "loading" | "ready" | "error";
 
 type WalletApi = {
   getWalletConnection: typeof getWalletConnection;
+  getWalletBalance: typeof getWalletBalance;
   connectTokenPay: typeof connectTokenPay;
   disconnectTokenPay: typeof disconnectTokenPay;
   startTokenPayAuth: typeof startTokenPayAuth;
@@ -24,6 +27,8 @@ type WalletApi = {
 type WalletState = {
   /** 当前钱包状态；未加载时为 null */
   view: WalletView | null;
+  /** 钱包余额（TokenDance 账户，元）；未加载 / 未连接为 null */
+  balance: WalletBalance | null;
   status: WalletStatus;
   /** 「连接钱包」弹窗是否打开；任何地方（生成被拦截、模型标记、个人中心）都能打开它 */
   promptOpen: boolean;
@@ -35,6 +40,8 @@ type WalletState = {
   connect: (flow: string, code: string) => Promise<WalletView>;
   /** 断开钱包 */
   disconnect: () => Promise<void>;
+  /** 拉一次余额；失败不影响页面（保留旧值或 null） */
+  fetchBalance: () => Promise<void>;
   /** 打开「连接钱包」弹窗（不跳转，用户点弹窗里的按钮才发起授权） */
   openPrompt: () => void;
   /** 关闭弹窗 */
@@ -57,6 +64,7 @@ let inflight: Promise<void> | null = null;
 export function createWalletStore(overrides: Partial<WalletApi> = {}) {
   const api: WalletApi = {
     getWalletConnection,
+    getWalletBalance,
     connectTokenPay,
     disconnectTokenPay,
     startTokenPayAuth,
@@ -65,6 +73,7 @@ export function createWalletStore(overrides: Partial<WalletApi> = {}) {
 
   return create<WalletState>((set, get) => ({
     view: null,
+    balance: null,
     status: "idle",
     promptOpen: false,
     promptAt: 0,
@@ -85,6 +94,8 @@ export function createWalletStore(overrides: Partial<WalletApi> = {}) {
     connect: async (flow, code) => {
       const view = await api.connectTokenPay(flow, code);
       set({ view, status: "ready", promptOpen: false });
+      // 连上后立刻拉一次余额：右上角与预估花费马上有数
+      void get().fetchBalance();
       return view;
     },
     disconnect: async () => {
@@ -94,7 +105,16 @@ export function createWalletStore(overrides: Partial<WalletApi> = {}) {
         view: current
           ? { ...current, connected: false, key_masked: "", connected_at: "" }
           : current,
+        balance: null,
       });
+    },
+    fetchBalance: async () => {
+      try {
+        const balance = await api.getWalletBalance();
+        set({ balance });
+      } catch {
+        // 余额拉不到不影响任何功能：预估与右上角降级为「—」
+      }
     },
     openPrompt: () => {
       // 状态还没拉过（或本站没启用）时先拉一次：弹窗要按 enabled / connected 显示对应内容

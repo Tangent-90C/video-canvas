@@ -49,7 +49,9 @@ export function deriveTaskStatus(
         snapshot?.error_message ||
         fallback?.error_message ||
         (status === "canceled" ? "已取消" : status === "expired" ? "生成超时" : "生成失败"),
-      refunded: snapshot?.charged_credits === 0,
+      // 钱包任务 credits=0、charged_credits=0：从没扣过平台积分，不该提示「积分已退回」。
+      // credits 缺失（快照没加载）时保持原行为：有 taskId 就认为已退回
+      refunded: (snapshot?.charged_credits ?? 0) === 0 && snapshot?.credits !== 0,
       taskRef: snapshot?.task_ref ?? null,
     };
   }
@@ -104,8 +106,9 @@ export function deriveVideoNodeView(
       return {
         phase: "failed",
         message: data.error || "生成失败",
-        // 有 taskId 说明是任务失败，后端已经把冻结的积分退回
-        refunded: !!data.taskId,
+        // 有 taskId 说明是任务失败，后端已经把冻结的积分退回；
+        // 钱包任务 credits=0（扣的是用户自己的 TokenDance 额度），不提示退回
+        refunded: !!data.taskId && task?.credits !== 0,
         // 任务编号用来到后端日志里定位：节点里存的是失败那一刻记下的，重开画布后也在；
         // 还没来得及存时看任务快照。没有任务的本地错误（如上传失败）为 null
         taskRef: data.taskId ? (data.errorTaskRef ?? task?.task_ref ?? null) : null,

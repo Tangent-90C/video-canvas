@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import NumberFlow from "@number-flow/react";
 import { useNavigate } from "react-router";
 import {
@@ -12,6 +12,8 @@ import {
   Sparkle,
   Sun,
   User,
+  Wallet,
+  Loader2,
 } from "lucide-react";
 
 import {
@@ -36,6 +38,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/user-avatar";
 import type { ThemeSetting } from "@/lib/theme";
 import { cn } from "@/lib/utils";
@@ -44,11 +47,13 @@ import { openPaymentStore } from "@/components/payment/payment-dialog";
 import { useCreditsStore } from "@/store/credits";
 import { useHasPendingOrder, usePaymentEnabled } from "@/store/payment";
 import { useMeStore } from "@/store/me";
+import { useWalletStore } from "@/store/wallet";
 import { useWsStore, type ConnectionState } from "@/store/ws";
 import { canEnterAdmin } from "@/utils/admin/role";
 import { displayName } from "@/utils/profile/profile-rules";
 import { logout } from "@/utils/storage/session";
 import { getRole, getToken } from "@/utils/storage/token";
+import { toast } from "sonner";
 
 const THEMES: { value: ThemeSetting; label: string; icon: typeof Sun }[] = [
   { value: "system", label: "跟随系统", icon: Monitor },
@@ -87,12 +92,45 @@ export function useCanEnterAdmin() {
   return useMemo(() => canEnterAdmin(getRole()), []);
 }
 
-/** 积分按钮里的内容：实时连接状态点 + 积分图标 + 可用积分；有待支付订单时右上角挂一个小圆点 */
-function CreditsFace({ showPendingDot }: { showPendingDot: boolean }) {
-  const credits = useCreditsStore((state) => state.credits);
+/** 把 TokenDance 余额（元）格式化成 1 位小数的短串：12.5 → "12.5"，0.03 → "0.03" */
+function formatYuan(value: number) {
+  if (value >= 100) return String(Math.round(value));
+  return String(Math.round(value * 100) / 100);
+}
+
+/** 钱包按钮的内容：连接状态点 + 钱包图标 + TokenDance 余额；未连接时显示引导 */
+function WalletFace({ showPendingDot }: { showPendingDot: boolean }) {
   const connection = useWsStore((state) => state.connection);
+  const view = useWalletStore((state) => state.view);
+  const balance = useWalletStore((state) => state.balance);
   const down = connection === "reconnecting" || connection === "closed";
   const pending = connection === "connecting" || connection === "idle";
+
+  if (!view?.connected) {
+    return (
+      <>
+        <span
+          title={WS_TEXT[connection]}
+          className={cn(
+            "size-1.5 rounded-full",
+            down
+              ? "bg-status-warning ring-status-warning/20 animate-pulse ring-3"
+              : pending
+                ? "bg-muted-foreground/50"
+                : "bg-status-success ring-status-success/15 ring-3",
+          )}
+        />
+        <Wallet className="size-4.5!" strokeWidth={2} />
+        <span className="text-[13px]">连接钱包</span>
+        {showPendingDot ? (
+          <span
+            title="有一笔待支付的充值订单"
+            className="bg-status-warning border-background absolute -top-0.5 -right-0.5 size-2.5 rounded-full border-2"
+          />
+        ) : null}
+      </>
+    );
+  }
   return (
     <>
       <span
@@ -102,35 +140,140 @@ function CreditsFace({ showPendingDot }: { showPendingDot: boolean }) {
           down
             ? "bg-status-warning ring-status-warning/20 animate-pulse ring-3"
             : pending
-              ? "bg-muted-foreground/50"
-              : "bg-status-success ring-status-success/15 ring-3",
+                ? "bg-muted-foreground/50"
+                : "bg-status-success ring-status-success/15 ring-3",
         )}
       />
-      <Sparkle className="fill-credit text-credit size-4.5!" strokeWidth={0} />
-      {credits ? (
-        <NumberFlow value={credits.available} className="tabular-nums" />
+      <Wallet className="size-4.5!" strokeWidth={2} />
+      {balance ? (
+        <NumberFlow value={balance.balance_yuan} className="tabular-nums" />
       ) : (
         <span className="text-muted-foreground">—</span>
       )}
-      {showPendingDot ? (
-        <span
-          title="有一笔待支付的充值订单"
-          className="bg-status-warning border-background absolute -top-0.5 -right-0.5 size-2.5 rounded-full border-2"
-        />
-      ) : null}
+      {balance?.stale && (
+        <span title="余额可能不是最新" className="bg-status-warning size-1.5 rounded-full" />
+      )}
     </>
   );
 }
 
-/** 积分按钮的公共样式 */
-const CREDITS_BUTTON_CLASS =
-  "text-foreground relative h-9 gap-2 pr-3 pl-2.5 font-mono text-sm font-semibold";
-
 /**
- * 积分菜单（不带胶囊）：放进任意 ChromePill 里用。
- * 支付功能开启时，点它直接打开积分商城（余额、冻结信息在商城顶部）；没开启时保持原来的余额小卡片。
+ * 钱包菜单（不带胶囊）：放进任意 ChromePill 里用。
+ * 钱包已连接：显示 TokenDance 余额与已消耗、Key 掩码、连接时间，可断开；
+ * 未连接：点了直接弹全局连接弹窗（新标签页授权）；
+ * 本站未启用钱包（tokenpay_enabled=false）：回退成原来的积分菜单。
  */
 export function CreditsMenu() {
+  const view = useWalletStore((state) => state.view);
+  const status = useWalletStore((state) => state.status);
+  const balance = useWalletStore((state) => state.balance);
+  const fetchBalance = useWalletStore((state) => state.fetchBalance);
+  const openPrompt = useWalletStore((state) => state.openPrompt);
+  const disconnect = useWalletStore((state) => state.disconnect);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const connection = useWsStore((state) => state.connection);
+  const down = connection === "reconnecting" || connection === "closed";
+
+  // 钱包状态还没拉到时先显示加载态：本站可能未启用钱包，不能闪一下「连接钱包」
+  if (status === "idle" || status === "loading") {
+    return (
+      <ChromeButton aria-label="钱包状态加载中" className={WALLET_BUTTON_CLASS} disabled>
+        <Wallet className="size-4.5!" strokeWidth={2} />
+        <span className="text-muted-foreground">—</span>
+      </ChromeButton>
+    );
+  }
+
+  // 未启用钱包的部署：保留原积分行为（积分商城 / 余额小卡片）
+  if (!view?.enabled) {
+    return <LegacyCreditsMenu />;
+  }
+
+  if (view.connected) {
+    return (
+      <Popover
+        onOpenChange={(open) => {
+          if (open) void fetchBalance();
+        }}
+      >
+        <PopoverTrigger
+          render={
+            <ChromeButton
+              aria-label={`TokenPay 钱包，余额 ${balance ? formatYuan(balance.balance_yuan) : "未知"} 元，${WS_TEXT[connection]}`}
+              className={WALLET_BUTTON_CLASS}
+            >
+              <WalletFace showPendingDot={false} />
+            </ChromeButton>
+          }
+        />
+        <PopoverContent align="end" sideOffset={10} className="w-72 gap-0 rounded-xl p-0">
+          <div className="flex items-baseline gap-2 px-4 pt-4 pb-3">
+            <span className="font-mono text-2xl font-semibold tabular-nums">
+              {balance ? `¥${formatYuan(balance.balance_yuan)}` : "—"}
+            </span>
+            <span className="text-muted-foreground text-xs">
+              TokenDance 余额{balance?.stale ? "（可能不是最新）" : ""}
+            </span>
+          </div>
+          <dl className="border-border grid grid-cols-[1fr_auto] gap-y-2 border-t px-4 py-3 text-xs">
+            <dt className="text-muted-foreground">已消耗</dt>
+            <dd className="font-mono tabular-nums">
+              {balance ? `¥${formatYuan(balance.used_yuan)}` : "—"}
+            </dd>
+            <dt className="text-muted-foreground">授权 Key</dt>
+            <dd className="font-mono">{view.key_masked || "—"}</dd>
+            <dt className="text-muted-foreground">最近连接</dt>
+            <dd className="font-mono">
+              {view.connected_at ? new Date(view.connected_at).toLocaleDateString() : "—"}
+            </dd>
+          </dl>
+          <div className="border-border flex items-center justify-between border-t px-4 py-2.5">
+            <span className="text-muted-foreground text-xs">
+              用你自己的 TokenDance 额度，不消耗平台积分
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={disconnecting}
+              onClick={() => {
+                setDisconnecting(true);
+                void disconnect()
+                  .then(() => toast.success("已断开 TokenPay 钱包"))
+                  .catch(() => toast.error("断开失败，请稍后重试"))
+                  .finally(() => setDisconnecting(false));
+              }}
+            >
+              {disconnecting ? <Loader2 className="animate-spin" /> : <LogOut />}
+              断开
+            </Button>
+          </div>
+          <p
+            className={cn(
+              "border-border flex items-center gap-2 border-t px-4 py-2.5 text-xs",
+              down ? "text-status-warning" : "text-muted-foreground",
+            )}
+          >
+            {WS_TEXT[connection]}
+          </p>
+        </PopoverContent>
+      </Popover>
+    );
+  }
+
+  // 已启用但未连接：点了弹全局连接弹窗
+  return (
+    <ChromeButton
+      aria-label={`TokenPay 钱包未连接，点击连接，${WS_TEXT[connection]}`}
+      className={WALLET_BUTTON_CLASS}
+      onClick={() => openPrompt()}
+    >
+      <WalletFace showPendingDot={false} />
+    </ChromeButton>
+  );
+}
+
+/** 原来的积分菜单：钱包未启用的部署里保留（积分商城 / 余额小卡片） */
+function LegacyCreditsMenu() {
   const payEnabled = usePaymentEnabled();
   const hasPending = useHasPendingOrder();
   const credits = useCreditsStore((state) => state.credits);
@@ -187,6 +330,49 @@ export function CreditsMenu() {
     </Popover>
   );
 }
+
+/** 积分按钮里的内容：实时连接状态点 + 积分图标 + 可用积分；有待支付订单时右上角挂一个小圆点 */
+function CreditsFace({ showPendingDot }: { showPendingDot: boolean }) {
+  const credits = useCreditsStore((state) => state.credits);
+  const connection = useWsStore((state) => state.connection);
+  const down = connection === "reconnecting" || connection === "closed";
+  const pending = connection === "connecting" || connection === "idle";
+  return (
+    <>
+      <span
+        title={WS_TEXT[connection]}
+        className={cn(
+          "size-1.5 rounded-full",
+          down
+            ? "bg-status-warning ring-status-warning/20 animate-pulse ring-3"
+            : pending
+              ? "bg-muted-foreground/50"
+              : "bg-status-success ring-status-success/15 ring-3",
+        )}
+      />
+      <Sparkle className="fill-credit text-credit size-4.5!" strokeWidth={0} />
+      {credits ? (
+        <NumberFlow value={credits.available} className="tabular-nums" />
+      ) : (
+        <span className="text-muted-foreground">—</span>
+      )}
+      {showPendingDot ? (
+        <span
+          title="有一笔待支付的充值订单"
+          className="bg-status-warning border-background absolute -top-0.5 -right-0.5 size-2.5 rounded-full border-2"
+        />
+      ) : null}
+    </>
+  );
+}
+
+/** 积分按钮的公共样式 */
+const CREDITS_BUTTON_CLASS =
+  "text-foreground relative h-9 gap-2 pr-3 pl-2.5 font-mono text-sm font-semibold";
+
+/** 钱包按钮的公共样式：余额是元（可能带小数），用等宽数字对齐 */
+const WALLET_BUTTON_CLASS =
+  "text-foreground relative h-9 gap-2 pr-3 pl-2.5 font-mono text-sm font-semibold";
 
 /** 积分胶囊：只有积分一个按钮，首页顶栏用；画布右上角把积分和头像合在一个胶囊里 */
 export function CreditsPill() {

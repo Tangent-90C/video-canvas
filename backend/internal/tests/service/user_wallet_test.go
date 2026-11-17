@@ -64,6 +64,13 @@ func (s *fakeWalletSecrets) SetSecret(_ context.Context, name, value string, _ u
 
 func (s *fakeWalletSecrets) ForgetSecret(name string) { s.forgots = append(s.forgots, name) }
 
+func (s *fakeWalletSecrets) Get(_ context.Context, name string) (string, error) {
+	if v, ok := s.saved[name]; ok {
+		return v, nil
+	}
+	return "", errors.New("secret not found: " + name)
+}
+
 // fakeFlows 实现 cache.OAuthFlowStore：固定一个发起用户（userID），行为同真实实现——state 匹配 + 发起人匹配才通过，消费即销毁。
 type fakeFlows struct {
 	userID   uint64
@@ -106,6 +113,111 @@ func newWalletService(t *testing.T, upstreamKey string) (*UserWalletService, *fa
 		ExchangeURL: upstream.URL,
 	})
 	return svc, repo, secrets, flows
+}
+
+// fakeWalletPricing 实现 WalletPricing：1 元 = N 积分。
+type fakeWalletPricing struct{ creditsPerYuan *float64 }
+
+func (p fakeWalletPricing) Get(_ context.Context) (*model.PricingSettingsView, error) {
+	return &model.PricingSettingsView{CreditsPerYuan: p.creditsPerYuan}, nil
+}
+
+// newBalanceService 组装带余额上游的服务：balance 上游返回固定余额，pricing 可注入。
+func newBalanceService(t *testing.T, credits, used int64, creditsPerYuan *float64) (*UserWalletService, *fakeWalletRepo) {
+	t.Helper()
+	balance := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer tk-live" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"balance": map[string]any{"credits": credits + used, "credits_used": used, "balance": credits},
+		})
+	}))
+	t.Cleanup(balance.Close)
+	repo := &fakeWalletRepo{}
+	secrets := &fakeWalletSecrets{saved: map[string]string{model.WalletSecretName(7): "tk-live"}}
+	svc := NewUserWalletService(UserWalletDeps{
+		Repo:       repo,
+		Secrets:    secrets,
+		Flows:      &fakeFlows{},
+		AppURL:     "https://app.example.com",
+		KeyName:    "连镜",
+		BalanceURL: balance.URL,
+		Pricing:    fakeWalletPricing{creditsPerYuan: creditsPerYuan},
+	})
+	repo.row = &model.UserWallet{UserID: 7, Provider: "tokendance", AppURL: "https://app.example.com", KeyMasked: "tk-l…"}
+	return svc, repo
+}
+
+// Balance：已连接时查上游余额（微元→元），汇率来自定价设置。
+func TestUserWalletBalance(t *testing.T) {
+	ctx := context.Background()
+	rate := 200.0
+	svc, _ := newBalanceService(t, 12_500_000, 3_000_000, &rate) // 12.5 元剩、3 元已用
+
+	view, err := svc.Balance(ctx, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !view.Enabled || !view.Connected {
+		t.Fatalf("应已连接：%+v", view)
+	}
+	if view.BalanceYuan != 12.5 || view.UsedYuan != 3 {
+		t.Fatalf("余额换算不对：%+v", view)
+	}
+	if view.YuanPerCredit != 1.0/200 || view.Stale {
+		t.Fatalf("汇率 / stale 不对：%+v", view)
+	}
+
+	// 60 秒内第二次走缓存：上游计数不再增长（换个余额也不变）
+	view2, err := svc.Balance(ctx, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view2.BalanceYuan != view.BalanceYuan {
+		t.Fatalf("应命中缓存：%+v", view2)
+	}
+}
+
+// Balance 的降级：未启用、未连接、上游挂、Key 读不到——都不报错，页面照常渲染。
+func TestUserWalletBalanceFallbacks(t *testing.T) {
+	ctx := context.Background()
+	rate := 100.0
+
+	// 未连接（仓储无行）
+	svc, _ := newBalanceService(t, 1, 0, &rate)
+	view, err := svc.Balance(ctx, 9)
+	if err != nil || !view.Enabled || view.Connected {
+		t.Fatalf("未连接应降级：%+v err=%v", view, err)
+	}
+
+	// 上游 500：stale + 零值，不报错
+	broken := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer broken.Close()
+	repo := &fakeWalletRepo{row: &model.UserWallet{UserID: 7, Provider: "tokendance"}}
+	secrets := &fakeWalletSecrets{saved: map[string]string{model.WalletSecretName(7): "tk-live"}}
+	svc2 := NewUserWalletService(UserWalletDeps{
+		Repo: repo, Secrets: secrets, Flows: &fakeFlows{}, AppURL: "https://app.example.com",
+		BalanceURL: broken.URL, Pricing: fakeWalletPricing{creditsPerYuan: &rate},
+	})
+	view, err = svc2.Balance(ctx, 7)
+	if err != nil || !view.Connected || !view.Stale {
+		t.Fatalf("上游失败应 stale 降级：%+v err=%v", view, err)
+	}
+
+	// Key 读不到（secrets 里没有）：已连接 + stale
+	noKey := &fakeWalletSecrets{saved: map[string]string{}}
+	svc3 := NewUserWalletService(UserWalletDeps{
+		Repo: repo, Secrets: noKey, Flows: &fakeFlows{}, AppURL: "https://app.example.com",
+		BalanceURL: broken.URL, Pricing: fakeWalletPricing{creditsPerYuan: &rate},
+	})
+	view, err = svc3.Balance(ctx, 7)
+	if err != nil || !view.Connected || !view.Stale {
+		t.Fatalf("Key 读不到应 stale 降级：%+v err=%v", view, err)
+	}
 }
 
 // Start 生成的授权地址带齐 PKCE 与归因参数：challenge = base64url(sha256(verifier))，回调落到 <app_url>/wallet/tokenpay/callback。
