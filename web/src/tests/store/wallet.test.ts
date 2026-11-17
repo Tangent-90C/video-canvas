@@ -78,6 +78,38 @@ describe("钱包 store：连接弹窗", () => {
     expect(redirected).toBe("https://tokendance.space/auth?code_challenge=x");
   });
 
+  test("startConnect 传入窗口时在新标签页里导航，原页面不动", async () => {
+    const { api, calls } = fakeApi();
+    const store = createWalletStore(api);
+    let tabHref = "";
+    let closed = false;
+    const win = {
+      get closed() {
+        return closed;
+      },
+      close: () => {
+        closed = true;
+      },
+      location: {
+        set href(value: string) {
+          tabHref = value;
+        },
+      },
+    } as unknown as Window;
+    await store.getState().startConnect("/", win);
+    expect(calls.start).toEqual(["/"]);
+    expect(tabHref).toBe("https://tokendance.space/auth?code_challenge=x");
+    expect(redirected).toBe(""); // 原页面没有跳走
+  });
+
+  test("startConnect 传入已关闭的窗口时降级为当前页跳转", async () => {
+    const { api } = fakeApi();
+    const store = createWalletStore(api);
+    const win = { closed: true } as unknown as Window;
+    await store.getState().startConnect("/", win);
+    expect(redirected).toBe("https://tokendance.space/auth?code_challenge=x");
+  });
+
   test("startConnect 不传 next 时用当前地址兜底", async () => {
     const { api, calls } = fakeApi();
     const store = createWalletStore(api);

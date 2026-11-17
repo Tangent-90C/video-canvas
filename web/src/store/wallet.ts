@@ -40,10 +40,12 @@ type WalletState = {
   /** 关闭弹窗 */
   closePrompt: () => void;
   /**
-   * 弹窗里点「连接」：发起授权并整页跳转到 TokenDance。
-   * next 传当前页面地址，授权完成后回到这里，用户接着做原来的事。
+   * 弹窗里点「连接」：发起授权。优先新开标签页（原页面不动，草稿不丢），
+   * 被浏览器拦了（返回 null）就退回当前页整页跳转。
+   * @param next 授权完成后（降级路径）要回来的页面
+   * @param win 点击的同步栈里开好的空白标签页；没传或不支持时走整页跳转
    */
-  startConnect: (next?: string) => Promise<void>;
+  startConnect: (next?: string, win?: Window | null) => Promise<void>;
 };
 
 let inflight: Promise<void> | null = null;
@@ -102,24 +104,40 @@ export function createWalletStore(overrides: Partial<WalletApi> = {}) {
       set({ promptOpen: true, promptAt: now });
     },
     closePrompt: () => set({ promptOpen: false }),
-    startConnect: async (next) => {
+    startConnect: async (next, win) => {
       try {
         const start = await api.startTokenPayAuth(next ?? currentPath());
-        // 跳走前关掉弹窗：回来时要么在回调页、要么回到 next 指向的页面重新打开
         set({ promptOpen: false });
+        if (win && !win.closed) {
+          // 新标签页方案：授权、登录、确认都在那边完成；原页面纹丝不动
+          win.location.href = start.auth_url;
+          return;
+        }
+        // 降级：开窗被拦（弹窗拦截 / 移动端限制），当前页整页跳转
         window.location.href = start.auth_url;
       } catch {
         // 发起失败（未启用 / 网络）：保持弹窗打开，用户可以看到错误并重试
+        // 已经开出去的空白标签关掉，别留个空页
+        if (win && !win.closed) win.close();
         throw new Error("发起授权失败，请稍后重试");
       }
     },
   }));
 }
 
-/** 当前页面地址：授权完成后回到这里，用户接着做原来的事 */
+/** 当前页面地址：授权完成后（降级路径）回到这里，用户接着做原来的事 */
 function currentPath() {
   if (typeof window === "undefined") return "/";
   return `${window.location.pathname}${window.location.search}`;
 }
+
+/**
+ * 同源广播频道名：授权在新标签页里完成后，回调页通过它通知原页面「连上了」。
+ * 原页面收到后刷新钱包状态即可——它从没离开，草稿、画布、滚动位置全在。
+ */
+export const WALLET_CHANNEL = "video-canvas:wallet";
+
+/** 授权结果广播：新标签页完成后发给原页面 */
+export type WalletAuthMessage = { type: "connected" } | { type: "failed"; reason: string };
 
 export const useWalletStore = createWalletStore();

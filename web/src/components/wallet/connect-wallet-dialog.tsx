@@ -33,10 +33,12 @@ export function ConnectWalletDialog() {
     if (open && status === "idle") void useWalletStore.getState().fetch();
   }, [open, status]);
 
-  const connect = async () => {
+  const connect = () => {
     setStarting(true);
-    // 授权是整页跳转：先把输入卡片里没发送的草稿暂存，回来后按来源页恢复，
-    // 免得用户写完提示词去连个钱包，回来字没了
+    // 先同步开空白标签：await 之后开窗会被浏览器当弹窗拦掉。被拦（null）时 store 内部
+    // 会自动降级成当前页跳转，并按老办法暂存草稿。
+    const win = window.open("", "_blank");
+    // 降级路径下原页面要离开：把没发送的草稿暂存，回来后按来源页恢复
     const composer = useComposerStore.getState();
     if (composer.text.trim()) {
       saveComposerDraft({
@@ -47,12 +49,14 @@ export function ConnectWalletDialog() {
         from: `${window.location.pathname}${window.location.search}`,
       });
     }
-    try {
-      await startConnect();
-    } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : "发起授权失败，请稍后重试");
-      setStarting(false);
-    }
+    void (async () => {
+      try {
+        await startConnect(undefined, win);
+      } catch (cause) {
+        toast.error(cause instanceof Error ? cause.message : "发起授权失败，请稍后重试");
+        setStarting(false);
+      }
+    })();
   };
 
   // 已连接（例如授权回来前在别处连上了）：直接关掉，别让用户看到无意义的弹窗
@@ -102,7 +106,7 @@ export function ConnectWalletDialog() {
           </Button>
           <Button disabled={disabled} onClick={() => void connect()}>
             {starting ? <LoaderCircle className="animate-spin" /> : <Link2 />}
-            连接 TokenDance 账号
+            在新标签页中连接
           </Button>
         </DialogFooter>
       </DialogContent>
