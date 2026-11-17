@@ -86,6 +86,7 @@ ALTER TABLE generation_tasks ADD COLUMN wallet bool NOT NULL DEFAULT false;
 | GET | `/api/v1/wallet/tokenpay/start?next=` | 生成授权地址 |
 | POST | `/api/v1/wallet/tokenpay/connect` | `{flow, code}` 换 Key 入库 |
 | GET | `/api/v1/wallet/tokenpay/connection` | `{enabled, connected, app_url, key_masked, connected_at}` |
+| GET | `/api/v1/wallet/tokenpay/balance` | `{enabled, connected, balance_yuan, used_yuan, yuan_per_credit, stale}`（用户自己的 Key 查上游，60s 缓存，失败降级不报错） |
 | DELETE | `/api/v1/wallet/tokenpay/connection` | 断开 |
 
 ### 4.3 错误码（`backend/internal/pkg/errcode/errcode.go`）
@@ -152,6 +153,8 @@ ALTER TABLE generation_tasks ADD COLUMN wallet bool NOT NULL DEFAULT false;
 - **主体在新文件**（零冲突）：插件 ×2、`cache/oauth_flow.go`、`service/user_wallet.go`、`repository/user_wallet.go`、`handler/wallet.go`、`model/user_wallet.go`、迁移、前端 wallet api/store/页面 ×2、测试 ×3。
 - **既有文件只有几行级接缝**（重做面）：`loadSecret` 分支、`TaskRef.Wallet`/`ChannelSnapshot.Wallet`/`ModelInfo.wallet` 字段、`insertAndFreeze`/`finish` 的钱包跳过、渠道 DTO 一个 bool、`auth/config` 两个返回值、路由一组。
 - 上游若重构 worker/executor 或冻结/结算流程，只需要重接这些接缝点；`IsTest` 分支是天然参照。
+
+**上游地址的 `/portal` 前缀坑（v0.6.27 踩过）**：TokenDance 的开放平台接口（授权码交换、余额查询）都在 `https://tokendance.space/portal/api/v1/...` 下；一级域名下的 `/api/v1/...` 是官网前端路由，会返回 HTML（SPA fallback，HTTP 200、`Content-Type: text/html`），后端按 JSON 解析失败后表现为「余额显示 ¥0 + 可能不是最新」。验证方式：不带 Key 请求，`/portal/...` 返回 401 JSON，一级域名返回 200 HTML。
 
 ## 8. 明确不做（二期）
 
