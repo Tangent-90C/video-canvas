@@ -39,7 +39,9 @@ docker compose pull
 docker compose up -d
 ```
 
-前端容器负责静态文件，并把 `/api/`、`/api/v1/ws` 和 `/files/` 转发到后端。素材默认存在容器的本地磁盘卷里。生产环境建议接对象存储：以超级管理员登录后台，在「系统设置 → 存储配置」里添加阿里云 OSS / 腾讯云 COS / AWS S3 / Cloudflare R2，测试连接通过后设为默认即可，不需要改环境变量也不需要重启；密钥用 `APP_AI_SECRET_KEY` 加密后存库，页面上只写不读。换存储只影响新素材，旧素材仍从原存储读取。
+前端容器负责静态文件，并把 `/api/`、`/api/v1/ws` 和 `/files/` 转发到后端。素材默认存在容器的本地磁盘卷里。
+
+> **只重建了后端之后，前端所有接口会 502**：前端 nginx 的 `proxy_pass http://backend:8080` 写的是 Docker DNS 名，而 nginx 对静态 `proxy_pass` 的域名**只在启动时解析一次并长期缓存**。后端容器被重建（换 IP）后，前端 worker 仍指着旧 IP，表现为整站能打开但所有 `/api/` 返回 502（反代层的错误页）。**改了后端的镜像或环境变量，就连前端一起重启**：`docker compose up -d backend web`。生产环境建议接对象存储：以超级管理员登录后台，在「系统设置 → 存储配置」里添加阿里云 OSS / 腾讯云 COS / AWS S3 / Cloudflare R2，测试连接通过后设为默认即可，不需要改环境变量也不需要重启；密钥用 `APP_AI_SECRET_KEY` 加密后存库，页面上只写不读。换存储只影响新素材，旧素材仍从原存储读取。
 
 > 从旧版升级：如果之前用 `APP_STORAGE_DRIVER=s3` 加 `APP_STORAGE_S3_*` 环境变量配置过对象存储（并且这些变量确实传进了后端容器），升级后首次启动会自动把它导入为一套名为「迁移自环境变量」的存储并设为默认，旧素材继续可用；导入后可以删掉这些环境变量。导入需要已配置 `APP_AI_SECRET_KEY`，否则后端会拒绝启动并说明原因。
 
@@ -90,6 +92,16 @@ docker compose --profile updater up -d    # 启动 updater
 
 - **确认生效**：`docker compose ps` 里有 `agent` 且状态是 healthy；backend 启动日志里有「画布 Agent 平台 API 已启动」。agent 的健康检查还包含一项自检：它启动后会向 backend 核对「对外 ID 的编码密钥」是否一致，**不一致时报 unhealthy**（一键升级会因此自动回退），日志里会说明怎么改。backend 默认使用镜像里配置文件的 `id_key`，agent 的 `AGENT_ID_KEY` 默认也是 `id_key`；只有你改过 backend 的密钥才需要在 `.env` 里同步设 `AGENT_ID_KEY`。
 - **不用 Agent**：`.env` 里设 `APP_AGENT_ENABLED=false`，画布里的 Agent 会提示「暂不可用」（agent 容器仍会启动，空闲时几乎不占资源）。还要在后台「AI 配置」里发布 agent 类型的模型才有可用模型。
+- **内存吃紧的机器**：Compose 默认 `AGENT_MEM_LIMIT=2g`、Node 堆上限 1536m，是按内存充足的部署给的。小机器（如 2G 内存）用 `docker-compose.override.yml` 压下来，否则要么根本起不来、要么把同机的 Postgres 挤爆：
+
+  ```yaml
+  services:
+    agent:
+      environment:
+        NODE_OPTIONS: --max-old-space-size=512
+  ```
+
+  再在 `.env` 里设 `AGENT_MEM_LIMIT=768m`。**堆上限要低于 `mem_limit`**：这样内存紧张时 Node 先抛一个可恢复的堆错误（任务失败、能重试），而不是被内核 OOM-kill 掉整个容器。实测空闲态 RSS 约 100MB，正常对话远低于这个上限。
 - **旧会话不会迁移**：从旧版本（Agent 跑在 backend 容器里）升上来之后，画布上看到的是 agent 服务里的新会话；之前保存在 backend 数据库里的旧会话不再显示（数据还在，后台的运行记录、导出和统计仍可查旧运行）。
 - **后台的「运行记录」、导出、统计**：新的运行和旧的运行在同一个列表里；新的运行比实际结束晚几秒（最多约 10 秒）出现在列表里，评价和撤销之后摘要也是这样更新。
 - **Gemini 工具调用 ID**：原始 ID 内含 `thoughtSignature`，可能长达数千字符，保留在 Agent 的 Pi 对话历史供下一次模型请求使用；发给 backend 的工具记录、画布改动和运行时间线只用确定性的短关联 ID（最多 64 字符）。审批内部仍保留原始 ID 以便恢复对话，导出的审批 ID 使用短关联 ID；不要截断原始 ID 或拿关联 ID 代替写工具的幂等键。
