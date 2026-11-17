@@ -32,7 +32,8 @@ import { TAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useComposerStore } from "@/store/composer";
 import { useCreditsStore } from "@/store/credits";
-import { evaluateSend } from "@/utils/conversation/submission";
+import { takeComposerDraft } from "@/utils/home/carry";
+import { evaluateSend, type ComposerRef } from "@/utils/conversation/submission";
 
 /** 输入框最多长到多高（px），再长就在框里滚动 */
 const MAX_HEIGHT = 240;
@@ -72,6 +73,7 @@ export function Composer({
   const setModel = useComposerStore((state) => state.setModel);
   const setParam = useComposerStore((state) => state.setParam);
   const setText = useComposerStore((state) => state.setText);
+  const addRef = useComposerStore((state) => state.addRef);
   const available = useCreditsStore((state) => state.credits?.available ?? null);
   const refreshCredits = useCreditsStore((state) => state.refresh);
 
@@ -87,6 +89,24 @@ export function Composer({
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [flash, setFlash] = useState(false);
+  /**
+   * 钱包授权是整页跳转：跳转前把没发送的草稿暂存在 sessionStorage（见 connect-wallet-dialog），
+   * 回来在这里按来源页恢复——用户写完提示词去连钱包，回来字和图都还在。
+   * 只恢复一次（take 语义），来源页不匹配就直接丢弃，不会在别的页面错填。
+   */
+  const restored = useRef(false);
+  useEffect(() => {
+    if (restored.current) return;
+    restored.current = true;
+    const draft = takeComposerDraft(`${window.location.pathname}${window.location.search}`);
+    if (!draft) return;
+    if (draft.text) setText(draft.text);
+    for (const ref of draft.refs) {
+      addRef({ kind: ref.kind as ComposerRef["kind"], id: ref.id, assetId: ref.assetId, url: ref.url, name: ref.name, status: "done" });
+    }
+    // 只在挂载时跑一次
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   /** 挂载时已有的填充次数：之前的填充不该让新挂上的输入卡片再聚焦、闪一次 */
   const seenFill = useRef(fillSeq);
   const current = CREATION_MODES.find((item) => item.id === mode) ?? CREATION_MODES[0];

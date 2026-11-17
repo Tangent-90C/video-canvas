@@ -11,7 +11,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useComposerStore } from "@/store/composer";
 import { useWalletStore } from "@/store/wallet";
+import { saveComposerDraft } from "@/utils/home/carry";
 
 /**
  * 全局「连接 TokenPay 钱包」弹窗：用户在任何地方撞见「需要连接钱包」时，就地在这里完成授权，
@@ -33,6 +35,18 @@ export function ConnectWalletDialog() {
 
   const connect = async () => {
     setStarting(true);
+    // 授权是整页跳转：先把输入卡片里没发送的草稿暂存，回来后按来源页恢复，
+    // 免得用户写完提示词去连个钱包，回来字没了
+    const composer = useComposerStore.getState();
+    if (composer.text.trim()) {
+      saveComposerDraft({
+        text: composer.text,
+        refs: composer.refs
+          .filter((ref) => ref.status === "done")
+          .map((ref) => ({ kind: ref.kind, id: ref.id, assetId: ref.assetId, url: ref.url, name: ref.name })),
+        from: `${window.location.pathname}${window.location.search}`,
+      });
+    }
     try {
       await startConnect();
     } catch (cause) {
