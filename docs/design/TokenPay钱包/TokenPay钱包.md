@@ -99,6 +99,10 @@ ALTER TABLE generation_tasks ADD COLUMN wallet bool NOT NULL DEFAULT false;
 
 ## 5. 部署与运营者配置
 
+> TokenPay 是管理后台的**一等公民配置页**（`/admin/ai/tokenpay`，侧栏「TokenPay 钱包」）：
+> 网关地址、X-App-URL 归因、TokenDance Key、启用开关在一张卡里，点「保存并开通」即建渠道
+> （key 固定 `tokenpay`）+ 存 Key + 同步全部模型。通用渠道列表、渠道表单、模型弹窗都不出现钱包渠道。
+
 ### 5.1 部署 env
 
 | 环境变量 | 说明 | 示例 |
