@@ -11,7 +11,13 @@
  *
  * 与方舟直连的差异：路径 /ark/v3/...（网关统一前缀）；其余请求/响应形状与方舟 Seedance 一致
  * （content 数组 + ratio / resolution / duration / generate_audio / watermark，参考素材角色 first_frame / last_frame /
- *   reference_image / reference_video / reference_audio）。参数取值范围交给上游 400，分辨率 / 时长由运营在模型能力里配置。
+ *   reference_image / reference_video / reference_audio）。
+ * 模型级约束（官方文档，https://tokendance.space/docs/protocol-seedance-generations.md）由插件兜底，
+ * 运营在能力里配错也不会把明显非法的值发出去：
+ *   - 模型名带 -fast / -mini：resolution 最高 720p（1080p / 4K 会被上游拒）
+ *   - 2.0 系列 duration 4-15 秒，2.5 系列 4-30 秒；插件只挡下限，上限交给任务 deadline
+ *   - 首尾帧（first_frame / last_frame）与全能参考（reference_image / video / audio）互斥，
+ *     混发时上游报错，这里按 op 择一（omni 优先参考角色，其余按图片数量定首尾帧）
  *
  * 写法说明：goja 只保证 ES5.1 + 部分 ES6，所以这里用 var / function，不用可选链与空值合并。
  *
@@ -110,18 +116,39 @@ var TASKS_PATH = "/ark/v3/generations/tasks";
 
 function buildVideoRequest(ctx) {
   var input = ctx.input || {};
-  var body = { model: ctx.model.upstreamModel, content: videoContent(input) };
+  var model = ctx.model.upstreamModel;
+  var body = { model: model, content: videoContent(input) };
 
   setIf(body, "ratio", input.aspect_ratio);
-  setIf(body, "resolution", input.resolution);
+  setIf(body, "resolution", capResolution(input.resolution, model));
   if (typeof input.duration === "number") {
-    body.duration = input.duration; // -1 表示让模型自己定时长
+    var duration = input.duration;
+    if (duration !== -1 && duration < 4) {
+      duration = 4; // 官方下限 4 秒；-1 表示让模型自己定时长，原样透传
+    }
+    body.duration = duration;
   }
   if (typeof input.generate_audio === "boolean") {
     body.generate_audio = input.generate_audio;
   }
   body.watermark = false;
   return { method: "POST", path: TASKS_PATH, json: body, timeout: 60 };
+}
+
+/**
+ * 分辨率按模型封顶：-fast / -mini 变体最高 720p（官方约束），配了更高就降级，
+ * 免得运营在能力里勾了 1080P / 4K、用户一提交就被上游拒。
+ */
+function capResolution(resolution, model) {
+  var value = firstString(resolution);
+  if (value === "") {
+    return "";
+  }
+  var name = String(model || "").toLowerCase();
+  if (/-fast|-mini/.test(name) && value !== "720p" && value !== "480p") {
+    return "720p";
+  }
+  return value;
 }
 
 // content 数组：文本在前，随后是图片 / 视频 / 音频参考。素材都用签名 URL 交给上游拉取。
@@ -223,6 +250,10 @@ function setIf(body, key, value) {
   if (value !== undefined && value !== null && value !== "") {
     body[key] = value;
   }
+}
+
+function firstString(value) {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function isArray(v) {

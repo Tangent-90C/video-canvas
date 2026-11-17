@@ -51,26 +51,36 @@ var syncModelRules = []syncModelRule{
 		pricing: `{"billing":"token","token":{"in":2,"out":8},"pending":false}`,
 	},
 	{
-		protocol: "openai:image-generations", plugin: "openai-image", kind: "image",
+		// ark 原生图像协议与 OpenAI 兼容图像协议在这个网关上是同一个接口（/ark/v3/images/generations），
+		// seedream 系同时声明两种，都交给 tokendance-image
+		protocol: "ark:image-generations", plugin: "tokendance-image", kind: "image",
 		deadline: "10m",
 		caps: `{"ops":["t2i","i2i"],"refs":{"image":{"on":true,"max":4,"max_mb":10},"audio":{"on":false,"max":0,"max_mb":0},"video":{"on":false,"max":0,"max_mb":0}},` +
 			`"prompt":{"max_length":20000},"params":{"aspect_ratio":{"type":"enum","label":"比例","open":true,"options":["Auto","1:1","16:9","9:16","4:3","3:4"],"default":"1:1"},` +
-			`"resolution":{"type":"enum","label":"清晰度","open":true,"options":["1K","2K","4K"],"default":"1K","spec":true},` +
 			`"count":{"type":"enum","label":"生成数量","open":true,"options":[1,2,4],"default":1,"fanout":true,"unit":"张"}}}`,
-		pricing: `{"billing":"per_call","unit":4,"pending":false,"tiers":[{"on":true,"when":{"resolution":"2K"},"unit":8},{"on":true,"when":{"resolution":"4K"},"unit":16}]}`,
+		pricing: `{"billing":"per_call","unit":4,"pending":false}`,
+	},
+	{
+		// ark 图像协议：size 像素制且 >= 3686400（2K 起步），没有 quality/style/n；
+		// 尺寸由 aspect_ratio 决定，故不配 resolution 参数（面板上没有它，就不会有选了没用的情况）
+		protocol: "openai:image-generations", plugin: "tokendance-image", kind: "image",
+		deadline: "10m",
+		caps: `{"ops":["t2i","i2i"],"refs":{"image":{"on":true,"max":4,"max_mb":10},"audio":{"on":false,"max":0,"max_mb":0},"video":{"on":false,"max":0,"max_mb":0}},` +
+			`"prompt":{"max_length":20000},"params":{"aspect_ratio":{"type":"enum","label":"比例","open":true,"options":["Auto","1:1","16:9","9:16","4:3","3:4"],"default":"1:1"},` +
+			`"count":{"type":"enum","label":"生成数量","open":true,"options":[1,2,4],"default":1,"fanout":true,"unit":"张"}}}`,
+		pricing: `{"billing":"per_call","unit":4,"pending":false}`,
 	},
 	{
 		protocol: "seedance:generations", plugin: "tokendance-video", kind: "video",
 		deadline: "30m",
-		caps: `{"ops":["t2v","i2v","omni"],"refs":{"image":{"on":true,"max":4,"max_mb":10},"audio":{"on":true,"max":1,"max_mb":15},"video":{"on":true,"max":1,"max_mb":100}},` +
+		caps: `{"ops":["t2v","i2v","omni"],"refs":{"image":{"on":true,"max":9,"max_mb":30},"audio":{"on":true,"max":3,"max_mb":15},"video":{"on":true,"max":3,"max_mb":200}},` +
 			`"prompt":{"max_length":20000},"params":{"aspect_ratio":{"type":"enum","label":"比例","open":true,"options":["Auto","16:9","4:3","1:1","3:4","9:16","21:9"],"default":"Auto"},` +
-			`"resolution":{"type":"enum","label":"清晰度","open":true,"options":["720P","1080P","4K"],"default":"720P","spec":true},` +
-			`"duration":{"type":"number","label":"视频时长","open":true,"min":5,"max":10,"step":1,"default":5,"unit":"秒"},` +
+			`"resolution":{"type":"enum","label":"清晰度","open":true,"options":["720P","1080P"],"default":"720P","spec":true},` +
+			`"duration":{"type":"number","label":"视频时长","open":true,"min":4,"max":15,"step":1,"default":5,"unit":"秒"},` +
 			`"generate_audio":{"type":"boolean","label":"生成音频","open":true,"default":true,"spec":true},` +
 			`"count":{"type":"enum","label":"生成数量","open":true,"options":[1,2,4],"default":1,"fanout":true,"unit":"个"}}}`,
 		pricing: `{"billing":"per_second","per_second":2,"pending":false,"tiers":[{"on":true,"when":{"generate_audio":true},"unit":3},` +
-			`{"on":true,"when":{"resolution":"1080P"},"unit":4},{"on":true,"when":{"resolution":"1080P","generate_audio":true},"unit":5},` +
-			`{"on":true,"when":{"resolution":"4K"},"unit":8}]}`,
+			`{"on":true,"when":{"resolution":"1080P"},"unit":4},{"on":true,"when":{"resolution":"1080P","generate_audio":true},"unit":5}]}`,
 	},
 	{
 		protocol: "minimax:t2a_v2", plugin: "tokendance-tts", kind: "audio",

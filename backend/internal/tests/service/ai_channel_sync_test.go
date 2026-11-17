@@ -19,6 +19,7 @@ func syncPluginMetas() map[string]json.RawMessage {
 		"openai":           []byte(`{"apiVersion":1,"key":"openai","name":"OpenAI","version":"1.0.0","auth":{"type":"bearer"},"endpoints":{"text":{"mode":"sync"}},"channelSettings":{"api":{"type":"enum","label":"接口","options":["responses","chat_completions"],"default":"responses"}}}`),
 		"openai-image":     []byte(`{"apiVersion":1,"key":"openai-image","name":"OpenAI Image","version":"1.0.0","auth":{"type":"bearer"},"endpoints":{"image":{"mode":"sync"}}}`),
 		"tokendance-video": []byte(`{"apiVersion":1,"key":"tokendance-video","name":"TokenDance Video","version":"1.0.0","auth":{"type":"bearer"},"endpoints":{"video":{"mode":"async"}}}`),
+		"tokendance-image": []byte(`{"apiVersion":1,"key":"tokendance-image","name":"TokenDance Image","version":"1.0.0","auth":{"type":"bearer"},"endpoints":{"image":{"mode":"sync"}}}`),
 		"tokendance-tts":   []byte(`{"apiVersion":1,"key":"tokendance-tts","name":"TokenDance TTS","version":"1.0.0","auth":{"type":"bearer"},"endpoints":{"audio":{"mode":"sync"}},"channelSettings":{"voice_id":{"type":"string","label":"音色","default":"male-qn-qingse"}}}`),
 	}
 }
@@ -141,9 +142,34 @@ func TestSyncChannelModels(t *testing.T) {
 		audioBody.Channels[0].Protocol.Settings["voice_id"] != "male-qn-qingse" {
 		t.Fatalf("音频模型的协议映射不对：%+v", audioBody.Channels[0].Protocol)
 	}
-	// 视频 / 图像的插件与种类
+	// 视频 / 图像的插件与种类：图像走 tokendance-image（ark 协议，2K 起步），不是 openai-image
 	if byUpstream["seedance-2.0"].Kind != "video" || byUpstream["seedream-5.0-lite"].Kind != "image" {
 		t.Fatalf("kind 映射不对：%+v", res.Created)
+	}
+	var imageBody struct {
+		Channels []struct {
+			Protocol struct {
+				Plugin   string         `json:"plugin"`
+				Settings map[string]any `json:"settings"`
+			} `json:"protocol"`
+		} `json:"channels"`
+		Capabilities struct {
+			Params json.RawMessage `json:"params"`
+		} `json:"capabilities"`
+	}
+	body, err = repo.GetModelConfig(ctx, byUpstream["seedream-5.0-lite"].Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(body.BodyJSON, &imageBody); err != nil {
+		t.Fatal(err)
+	}
+	if imageBody.Channels[0].Protocol.Plugin != "tokendance-image" {
+		t.Fatalf("图像模型应走 tokendance-image 插件：%+v", imageBody.Channels[0].Protocol)
+	}
+	// 画布面板上不该出现 resolution（ark 协议没有这个概念，给了也会被插件忽略）
+	if strings.Contains(string(imageBody.Capabilities.Params), "resolution") {
+		t.Fatalf("图像能力不该带 resolution 参数：%s", imageBody.Capabilities.Params)
 	}
 	if len(notifier.Reasons) != 1 {
 		t.Fatalf("同步后应刷新一次 Registry：%v", notifier.Reasons)
