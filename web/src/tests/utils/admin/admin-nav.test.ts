@@ -52,10 +52,11 @@ describe("后台导航", () => {
     expect(findNav("/admin/settings/version")?.item.label).toBe("版本与升级");
   });
 
-  test("AI 配置分组：总览、任务队列、模型渠道、插件、技能、运行记录、分析令牌；独立的“模型”页已并入渠道页，不再有单独的 Agent 分组", () => {
+  test("AI 配置分组：总览、TokenPay 钱包、任务队列、模型渠道、插件、技能、运行记录、分析令牌；独立的“模型”页已并入渠道页，不再有单独的 Agent 分组", () => {
     const group = ADMIN_NAV.find((item) => item.label === "AI 配置");
     expect(group?.items.map((item) => [item.to, item.label])).toEqual([
       ["ai/overview", "总览"],
+      ["ai/tokenpay", "TokenPay 钱包"],
       ["ai/queue", "任务队列"],
       ["ai/channels", "模型渠道"],
       ["ai/plugins", "插件"],

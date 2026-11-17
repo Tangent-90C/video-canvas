@@ -5,6 +5,7 @@ import { DialogHost } from "@/components/dialog-host";
 import { WsRuntime } from "@/components/ws-runtime";
 import AdminLayout from "@/pages/admin/layout";
 import ChannelsPage from "@/pages/admin/ai/channels";
+import TokenPayPage from "@/pages/admin/ai/tokenpay";
 import { channelsPagePath, legacyModelsRedirect } from "@/utils/admin/channel-route";
 import PluginsPage from "@/pages/admin/ai/plugins";
 import ImageProcessorPage from "@/pages/admin/image-processor";
@@ -165,6 +166,8 @@ export const router = createBrowserRouter([
               { path: "ai/models", element: <LegacyModelsRedirect /> },
               // 旧链接：新建模型曾占用这个地址，现在模型在渠道与模型主从页里管理
               { path: "ai/models/new", element: <Navigate to={channelsPagePath()} replace /> },
+              // TokenPay 钱包是一等公民的独立配置页（底层是自动管理的钱包渠道，通用渠道页看不到它）
+              { path: "ai/tokenpay", element: <TokenPayPage /> },
               { path: "ai/channels", element: <ChannelsPage /> },
               { path: "ai/plugins", element: <PluginsPage /> },
               { path: "agent", element: <Navigate to="skills" replace /> },

@@ -54,7 +54,8 @@ export function useAdminCatalog(enabled: boolean): AdminCatalog {
     try {
       const list = await listChannelOptions();
       if (!aliveRef.current) return;
-      setChannels(list);
+      // 钱包渠道由 TokenPay 专属页管理（/admin/ai/tokenpay），通用渠道页与模型弹窗不出现它
+      setChannels(list.filter((item) => !item.wallet_enabled));
       setChannelsStatus("ready");
     } catch {
       if (aliveRef.current) setChannelsStatus((prev) => (prev === "ready" ? prev : "error"));

@@ -37,6 +37,7 @@ export const ADMIN_NAV: AdminNavSection[] = [
     label: "AI 配置",
     items: [
       { to: "ai/overview", label: "总览", icon: LayoutDashboard },
+      { to: "ai/tokenpay", label: "TokenPay 钱包", icon: Wallet },
       { to: "ai/queue", label: "任务队列", icon: ListOrdered },
       { to: "ai/channels", label: "模型渠道", icon: RadioTower },
       { to: "ai/plugins", label: "插件", icon: Puzzle },
