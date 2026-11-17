@@ -34,7 +34,8 @@ func syncCatalogServer(t *testing.T) *httptest.Server {
 			{"id":"seedream-5.0-lite","name":"ByteDance: Seedream 5.0 lite","context_length":0,"supported_protocols":["ark:image-generations","openai:image-generations"]},
 			{"id":"seedance-2.0","name":"ByteDance: Seedance 2.0","context_length":0,"supported_protocols":["seedance:generations"]},
 			{"id":"minimax-speech-2.8-hd","name":"MiniMax: Speech-2.8-HD","context_length":0,"supported_protocols":["minimax:t2a_v2"]},
-			{"id":"qwen-text-embedding-v4","name":"Qwen: Text Embedding V4","context_length":8000,"supported_protocols":["openai:embeddings"]}
+			{"id":"qwen-text-embedding-v4","name":"Qwen: Text Embedding V4","context_length":8000,"supported_protocols":["openai:embeddings"]},
+			{"id":"mimo-v2.5-tts","name":"Xiaomi: MiMo-V2.5-TTS","context_length":8000,"supported_protocols":["openai:chat-completions"]}
 		]}`))
 	}))
 	t.Cleanup(srv.Close)
@@ -77,11 +78,15 @@ func TestSyncChannelModels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(res.Created) != 4 || len(res.Skipped) != 1 {
-		t.Fatalf("应新建 4 个、跳过 1 个：%+v", res)
+	if len(res.Created) != 4 || len(res.Skipped) != 2 {
+		t.Fatalf("应新建 4 个、跳过 2 个：%+v", res)
 	}
 	if res.Skipped[0].Model != "qwen-text-embedding-v4" || !strings.Contains(res.Skipped[0].Reason, "openai:embeddings") {
 		t.Fatalf("跳过原因不对：%+v", res.Skipped[0])
+	}
+	// TTS 模型在目录里标的是 chat-completions，但不是对话模型：按名字跳过
+	if res.Skipped[1].Model != "mimo-v2.5-tts" || !strings.Contains(res.Skipped[1].Reason, "语音") {
+		t.Fatalf("TTS 模型应被跳过：%+v", res.Skipped[1])
 	}
 	byUpstream := map[string]SyncedModel{}
 	for _, c := range res.Created {
@@ -192,8 +197,8 @@ func TestSyncChannelModelsIdempotent(t *testing.T) {
 	if len(res.Created) != 0 {
 		t.Fatalf("重复同步不应新建：%+v", res.Created)
 	}
-	if len(res.Skipped) != 5 {
-		t.Fatalf("5 个上游模型都应跳过：%+v", res.Skipped)
+	if len(res.Skipped) != 6 {
+		t.Fatalf("6 个上游模型都应跳过：%+v", res.Skipped)
 	}
 }
 

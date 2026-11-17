@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -192,6 +193,10 @@ func (s *AIConfigService) SyncChannelModels(ctx context.Context, actorID uint64,
 		if entry.ID == "" {
 			continue
 		}
+		if syncSkipModelRe.MatchString(entry.ID) {
+			res.Skipped = append(res.Skipped, SkippedSyncModel{Model: entry.ID, Reason: "语音合成模型，本站暂不提供"})
+			continue
+		}
 		rule := pickSyncRule(entry.SupportedProtocols)
 		if rule == nil {
 			res.Skipped = append(res.Skipped, SkippedSyncModel{Model: entry.ID, Reason: "没有可承接的协议：" + strings.Join(entry.SupportedProtocols, "、")})
@@ -245,6 +250,11 @@ func (s *AIConfigService) SyncChannelModels(ctx context.Context, actorID uint64,
 		zap.Int("created", len(res.Created)), zap.Int("skipped", len(res.Skipped)))
 	return res, nil
 }
+
+// syncSkipModelRe 是目录里「协议标注与真实能力不符」的模型：TTS / 音色模型在目录里标的是
+// openai:chat-completions（OpenAI 兼容层），但它们不是对话模型，同步成文本模型后一调用就错，
+// 这里按模型名直接跳过并说明原因。
+var syncSkipModelRe = regexp.MustCompile(`-tts(-|$)|-voicedesign$|-voiceclone$`)
 
 // pickSyncRule 按模型声明的协议选第一条能承接的规则；都承接不了返回 nil。
 func pickSyncRule(protocols []string) *syncModelRule {
