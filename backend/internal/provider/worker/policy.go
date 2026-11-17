@@ -46,7 +46,9 @@ func failureForWallet(class provider.ErrorClass, platformCode, upstream string, 
 	switch {
 	case class == provider.ClassProviderBalance:
 		return codeProviderBalance, "你的 TokenDance 余额不足，请充值后重试（钱包任务不消耗平台积分）"
-	case platformCode == codeSecretMissing:
+	case class == provider.ClassKeyQuota:
+		return codeProviderError, "你的 TokenDance Key 本周期额度已用完，可等待额度刷新，或到个人中心重新连接新的 Key"
+	case class == provider.ClassSecretUnavailable, platformCode == codeSecretMissing:
 		return codeProviderError, "你的 TokenPay 钱包还没有连接或已失效，请到个人中心重新连接钱包"
 	}
 	return failureFor(class, platformCode, upstream)
@@ -71,6 +73,10 @@ func failureFor(class provider.ErrorClass, platformCode, upstream string) (code,
 		code, message = codeModeration, "内容未通过审核"
 	case class == provider.ClassProviderBalance:
 		code, message = codeProviderBalance, "服务繁忙，请稍后再试"
+	case class == provider.ClassKeyQuota:
+		code, message = codeProviderError, "上游 Key 本周期额度已用完，请稍后再试"
+	case class == provider.ClassSecretUnavailable, platformCode == codeSecretMissing:
+		code, message = codeProviderError, "上游 API Key 已失效，请检查渠道密钥"
 	case platformCode == codeInvalidParam:
 		code, message = codeInvalidParam, "参数不合法，请调整后重试"
 	}

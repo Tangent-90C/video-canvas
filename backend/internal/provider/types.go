@@ -30,6 +30,11 @@ const (
 	ClassModeration      ErrorClass = "moderation"       // 内容审核未通过：失败，文案“内容未通过审核”
 	ClassProviderBalance ErrorClass = "provider_balance" // 上游账户余额不足：失败，对用户显示“服务繁忙”，告警运维
 	ClassSubmitUnknown   ErrorClass = "submit_unknown"   // 提交读超时，结果未知：失败并退积分，记录告警供人工核对
+	// ClassSecretUnavailable 与 ClassKeyQuota 目前只由宿主按 TokenDance 的恢复动作响应头判定
+	// （https://tokendance.space/docs/api-key-oauth.md#recover-key）：Key 失效时重新授权，周期额度用尽时等待刷新或重新授权。
+	// 钱包任务对这两类有专属文案（worker 的 failureForWallet），普通渠道任务走 failureFor 的通用文案。
+	ClassSecretUnavailable ErrorClass = "secret_unavailable" // 上游 Key 缺失 / 失效 / 被禁用：失败，钱包任务提示重新连接钱包
+	ClassKeyQuota          ErrorClass = "key_quota"          // 上游 Key 达到日 / 周 / 月额度：失败，提示等待额度刷新或重新授权
 )
 
 // 宿主自己产生的错误码（Error.Code），worker 对其中几个有专门的处理。

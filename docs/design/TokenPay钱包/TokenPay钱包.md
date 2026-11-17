@@ -53,6 +53,7 @@
 - **结算**（`service/generation_task_store.go`）：`finish` 里 `t.IsTest || t.Wallet` 直接返回，不写 settle 流水。
 - **凭证**（`provider/plugin/operation.go`）：`loadSecret` 按 `TaskRef.Wallet` 分支——钱包任务取 `wallet:<UserID>`，普通任务取渠道密钥；只换名字，注入/同源/脱敏登记照旧。
 - **失败文案**（`worker/policy.go` `failureForWallet`）：钱包任务不提「积分已退回」；`provider_balance` →「你的 TokenDance 余额不足，请充值后重试（钱包任务不消耗平台积分）」；密钥缺失 →「请到个人中心重新连接」。渠道余额告警只对非钱包任务触发。
+- **恢复动作头**（官方 OAuth 文档的硬性要求）：上游失败响应带 `TokenDance-Recovery-Action` 时，宿主（`plugin/executor.go` `classifyHTTPError`，在插件分类之前）直接按它定分类，对钱包和普通渠道任务都生效：`top_up_balance` → `provider_balance`；`reauthorize_api_key` → `secret_unavailable`；`api_key_quota` → `key_quota`（新分类），文案见 `worker/policy.go`。
 
 ### 3.4 协议插件
 

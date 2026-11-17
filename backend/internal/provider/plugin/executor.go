@@ -635,6 +635,16 @@ func (o *operation) requestError(phase string, err error) error {
 	return retryableErr("", "上游请求失败", redactError(err, o.red.str))
 }
 
+// TokenDance 网关在失败响应里用 TokenDance-Recovery-Action 头声明确切的恢复路径
+// （https://tokendance.space/docs/api-key-oauth.md#recover-key），比文本分类和插件分类都准，
+// 出现时直接采用；responseHeaders 里的键已转小写。
+const (
+	recoveryActionHeader   = "tokendance-recovery-action"
+	recoveryTopUpBalance   = "top_up_balance"    // 账户余额不足：Key 仍有效，引导充值
+	recoveryReauthorizeKey = "reauthorize_api_key" // Key 缺失 / 失效 / 被禁用：重新授权
+	recoveryKeyQuota       = "api_key_quota"     // 达到日 / 周 / 月额度：等待刷新或重新授权
+)
+
 // classifyHTTPError 把上游的非 2xx 响应转成分类错误：插件写了 classifyError 用它的分类与原文，否则按默认规则分类。
 // 无论哪种，都把上游原文（遮掉渠道 Key）放进 Upstream，任务失败时给用户看。
 func (o *operation) classifyHTTPError(ctx context.Context, resp hookResponse) error {
@@ -643,6 +653,18 @@ func (o *operation) classifyHTTPError(ctx context.Context, resp hookResponse) er
 		return err
 	}
 	upstream := o.upstreamText(resp)
+	// TokenDance 明确判定的恢复路径优先于一切启发式：同类错误对钱包任务和普通渠道任务各有文案（worker/policy.go）
+	if action := resp.Headers[recoveryActionHeader]; action != "" {
+		code := fmt.Sprintf("%s%d", codeHTTPPrefix, resp.Status)
+		switch action {
+		case recoveryTopUpBalance:
+			return &provider.Error{Class: provider.ClassProviderBalance, Code: code, Message: "上游账户余额不足", Upstream: upstream}
+		case recoveryReauthorizeKey:
+			return &provider.Error{Class: provider.ClassSecretUnavailable, Code: code, Message: "上游 API Key 已失效或不存在", Upstream: upstream}
+		case recoveryKeyQuota:
+			return &provider.Error{Class: provider.ClassKeyQuota, Code: code, Message: "上游 API Key 本周期额度已用完", Upstream: upstream}
+		}
+	}
 	if o.e.loader.mayHave(o.rt.Plugin.SHA256, pluginproto.HookClassifyError) {
 		raw, callErr := o.call(ctx, pluginproto.HookClassifyError, hc, resp)
 		if callErr == nil && !isNull(raw) {
@@ -932,7 +954,7 @@ func stateOrNil(raw json.RawMessage) json.RawMessage {
 
 func validErrorClass(c provider.ErrorClass) bool {
 	switch c {
-	case provider.ClassRetryable, provider.ClassTerminal, provider.ClassModeration, provider.ClassProviderBalance:
+	case provider.ClassRetryable, provider.ClassTerminal, provider.ClassModeration, provider.ClassProviderBalance, provider.ClassSecretUnavailable, provider.ClassKeyQuota:
 		return true
 	default:
 		return false
