@@ -123,6 +123,9 @@ func (p fakeWalletPricing) Get(_ context.Context) (*model.PricingSettingsView, e
 }
 
 // newBalanceService 组装带余额上游的服务：balance 上游返回固定余额，pricing 可注入。
+// 生产的 balanceURL 是 https://tokendance.space/portal/api/v1/user/balance——
+// 必须带 /portal 前缀：一级域名下的 /api/v1/... 是官网前端路由，返回 HTML 而不是 JSON（线上实测踩过）。
+// 同时断言请求路径是 /portal/api/v1/user/balance（一级域名下的 /api/v1 是官网 HTML 页，不是 API）。
 func newBalanceService(t *testing.T, credits, used int64, creditsPerYuan *float64) (*UserWalletService, *fakeWalletRepo) {
 	t.Helper()
 	balance := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

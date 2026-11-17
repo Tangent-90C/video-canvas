@@ -12,6 +12,7 @@ import {
   Sparkle,
   Sparkles,
   Trash2,
+  Wallet,
   Workflow,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -195,16 +196,23 @@ export function RecordView({
           )}
           {summary && <span className={META_ITEM}>{summary}</span>}
           {refCount > 0 && <span className={META_ITEM}>参考 {refCount} 个</span>}
-          {tasks.length > 0 && (
-            <span
-              className={cn(META_ITEM, "inline-flex items-center gap-0.5")}
-              title={credits.frozen ? "已冻结，完成后按实际结算" : "实际扣费，失败已退回"}
-            >
-              <Sparkle className="size-3" />
-              {credits.credits}
-              {credits.frozen ? "（冻结）" : ""}
-            </span>
-          )}
+          {tasks.length > 0 &&
+            // 钱包记录扣的是用户自己的 TokenDance 额度，不显示平台积分
+            (model?.wallet ? (
+              <span className={cn(META_ITEM, "inline-flex items-center gap-0.5")} title="用你自己的 TokenDance 额度">
+                <Wallet className="size-3" />
+                钱包
+              </span>
+            ) : (
+              <span
+                className={cn(META_ITEM, "inline-flex items-center gap-0.5")}
+                title={credits.frozen ? "已冻结，完成后按实际结算" : "实际扣费，失败已退回"}
+              >
+                <Sparkle className="size-3" />
+                {credits.credits}
+                {credits.frozen ? "（冻结）" : ""}
+              </span>
+            ))}
         </div>
       </div>
 

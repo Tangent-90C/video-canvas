@@ -32,7 +32,8 @@ const (
 	// tokenPayExchangeTimeout 是授权码交换请求的超时：上游要求 code 在 10 分钟内使用，交换本身要快。
 	tokenPayExchangeTimeout = 15 * time.Second
 	// tokenPayBalanceURL 是官方开放平台的余额查询（见 https://tokendance.space/docs/open-api）：用用户自己的 Key 查余额与已消耗。
-	tokenPayBalanceURL = "https://tokendance.space/api/v1/user/balance"
+	// 注意是 /portal 前缀：一级域名下的 /api/v1/... 是官网前端路由，会返回 HTML（SPA fallback）而不是 JSON。
+	tokenPayBalanceURL = "https://tokendance.space/portal/api/v1/user/balance"
 	// tokenPayBalanceTimeout 是余额查询的超时：它挂在多个页面的加载路径上，不能拖慢首屏。
 	tokenPayBalanceTimeout = 8 * time.Second
 	// tokenPayBalanceTTL 是余额的进程内缓存时长：上游限流同一用户 1QPS，多个页面同时加载只会打一次。
