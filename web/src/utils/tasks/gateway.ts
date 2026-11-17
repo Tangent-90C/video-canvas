@@ -10,9 +10,35 @@ import { cancelGenerationTask, createGenerationTask } from "@/api/generation-tas
 import type { CreateTaskItem, CreateTaskRequest, TaskView } from "@/api/generation-task/type";
 import { useCreditsStore } from "@/store/credits";
 import { useTasksStore } from "@/store/tasks";
+import { useWalletStore } from "@/store/wallet";
 import { cancelableTaskIds } from "@/utils/tasks/status";
 import { submitWithRetry } from "@/utils/tasks/submit";
 import { handleTaskView } from "@/utils/ws/task-events";
+
+/**
+ * 钱包未连接（后端 40016）：弹全局连接弹窗，让用户就地授权，而不是提示他去个人中心自己找。
+ * 一次提交可能多个格子同时撞上，弹窗内部的节流会合并成一次。
+ */
+function promptConnectWallet() {
+  useWalletStore.getState().openPrompt();
+}
+
+/** 错误是不是「钱包未连接」；是的话调用方应该转去引导连接 */
+export function isWalletNotConnected(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { code?: unknown }).code === WALLET_NOT_CONNECTED_CODE
+  );
+}
+
+/** 后端错误码：钱包未连接（errcode.ErrWalletNotConnected） */
+export const WALLET_NOT_CONNECTED_CODE = 40016;
+
+/** 提交失败时统一过一遍：钱包未连接就地弹连接弹窗 */
+function handleSubmitError(error: unknown) {
+  if (isWalletNotConnected(error)) promptConnectWallet();
+}
 
 /**
  * 生成任务的统一入口：**所有入口（画布节点、首页对话、以后新增的任何地方）提交和取消任务都只经过这里**，
@@ -51,7 +77,10 @@ export async function submitCanvasTasks(data: CreateTaskRequest): Promise<Create
   const { items } = await submitWithRetry(
     (key) => createGenerationTask(data, key),
     crypto.randomUUID(),
-  );
+  ).catch((error) => {
+    handleSubmitError(error);
+    throw error;
+  });
   acceptTasks(items.map((item) => item.task));
   return items;
 }
@@ -67,7 +96,10 @@ export async function submitSegmentTask(sid: string, body: SegmentGenerateBody):
   const { task } = await submitWithRetry(
     (key) => generateSegment(sid, body, key),
     crypto.randomUUID(),
-  );
+  ).catch((error) => {
+    handleSubmitError(error);
+    throw error;
+  });
   acceptTasks([task]);
   return task;
 }
@@ -86,7 +118,10 @@ export async function submitRecordTasks(
   const result = await submitWithRetry(
     (key) => submitConversationRecord(target, data, key),
     crypto.randomUUID(),
-  );
+  ).catch((error) => {
+    handleSubmitError(error);
+    throw error;
+  });
   acceptTasks(result.record.tasks);
   return result;
 }

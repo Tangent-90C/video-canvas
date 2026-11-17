@@ -1,8 +1,9 @@
-import { Check } from "lucide-react";
+import { Check, Link2, Wallet } from "lucide-react";
 
 import type { ModelInfo } from "@/api/model/type";
 import { ModelLogo } from "@/components/model-logo";
 import { cn } from "@/lib/utils";
+import { useWalletStore } from "@/store/wallet";
 import { modelSummary, videoModelSupport } from "@/utils/drama/video-models";
 
 import { ChipPopover } from "./pickers";
@@ -49,6 +50,9 @@ export function ModelMenu({
   defaultLabel?: string;
   title?: string;
 }) {
+  // 钱包模型没连接时点它不选中，直接弹连接窗（和首页输入框的行为一致）
+  const walletConnected = useWalletStore((state) => !!state.view?.connected);
+  const openPrompt = useWalletStore((state) => state.openPrompt);
   const name =
     model?.label ??
     (defaultLabel && !loading ? defaultLabel : loading ? "加载模型…" : `没有可用的${kindName}模型`);
@@ -93,13 +97,19 @@ export function ModelMenu({
             const ability = support(info);
             const active = model?.key === info.key;
             const note = ability.ok ? summary?.(info) : ability.reason;
+            const walletLocked = info.wallet && !walletConnected;
             return (
               <button
                 key={info.key}
                 type="button"
                 disabled={!ability.ok}
-                title={ability.reason ?? undefined}
+                title={walletLocked ? "连接 TokenPay 钱包后可用" : (ability.reason ?? undefined)}
                 onClick={() => {
+                  if (walletLocked) {
+                    close();
+                    openPrompt();
+                    return;
+                  }
                   close();
                   onPick(info.key);
                 }}
@@ -111,12 +121,21 @@ export function ModelMenu({
               >
                 <ModelLogo vendor={info.vendor} name={info.label} className="size-5" />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate">{info.label}</span>
-                  {note && (
-                    <span className="text-muted-foreground block truncate text-[11px] font-normal">
-                      {note}
-                    </span>
-                  )}
+                  <span className="flex items-center gap-1">
+                    <span className="truncate">{info.label}</span>
+                    {info.wallet &&
+                      (walletConnected ? (
+                        <span className="text-muted-foreground inline-flex items-center gap-0.5 text-[10px]">
+                          <Wallet className="size-3" />
+                          钱包
+                        </span>
+                      ) : (
+                        <Link2 className="text-muted-foreground size-3 shrink-0" />
+                      ))}
+                  </span>
+                  <span className="text-muted-foreground block truncate text-[11px] font-normal">
+                    {walletLocked ? "连接 TokenPay 钱包后可用（用你自己的额度）" : note}
+                  </span>
                 </span>
                 {active && <Check className="size-4 shrink-0" />}
               </button>

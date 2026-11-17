@@ -4,19 +4,20 @@ import { readOutputs } from "@/utils/canvas/outputs";
 
 /** 提交失败后要在提交处就地告诉用户的话 */
 export type SubmitErrorInfo = {
-  kind: "credits" | "limit" | "unavailable" | "invalid" | "asset" | "network" | "unknown";
+  kind: "credits" | "limit" | "unavailable" | "invalid" | "asset" | "wallet" | "network" | "unknown";
   message: string;
 };
 
 type ErrorLike = { code?: unknown; status?: unknown; message?: unknown };
 
-/** 后端错误码：积分不足 / 排队任务已达上限（原“并发已满”，现在超出并发的任务会排队，只有排队也满了才拒绝）/ 模型不可用 / 参数不合法 / 素材不存在 */
+/** 后端错误码：积分不足 / 排队任务已达上限（原“并发已满”，现在超出并发的任务会排队，只有排队也满了才拒绝）/ 模型不可用 / 参数不合法 / 素材不存在 / 钱包未连接 */
 export const SUBMIT_ERROR_CODE = {
   insufficientCredits: 40001,
   tooManyTasks: 40002,
   modelUnavailable: 40003,
   invalidParam: 40006,
   assetNotFound: 40007,
+  walletNotConnected: 40016,
 } as const;
 
 /** 按后端业务错误码（其次 HTTP 状态）翻译成给用户看的话，不依赖 ApiError 类 */
@@ -36,6 +37,9 @@ export function describeSubmitError(error: unknown): SubmitErrorInfo {
       return { kind: "invalid", message: msg ? `参数不合法：${msg}` : "参数不合法，请检查后重试" };
     case SUBMIT_ERROR_CODE.assetNotFound:
       return { kind: "asset", message: "所选素材不存在或已失效，请重新选择" };
+    case SUBMIT_ERROR_CODE.walletNotConnected:
+      // 钱包渠道的模型要用户自己的 TokenDance Key：文案引导去连接（弹窗由 gateway 统一弹）
+      return { kind: "wallet", message: "需要连接 TokenPay 钱包" };
   }
   if (status === 402) return { kind: "credits", message: "积分不足，无法生成" };
   if (status === 429)
