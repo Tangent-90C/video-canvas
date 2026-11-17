@@ -86,8 +86,10 @@ ALTER TABLE generation_tasks ADD COLUMN wallet bool NOT NULL DEFAULT false;
 | GET | `/api/v1/wallet/tokenpay/start?next=` | 生成授权地址 |
 | POST | `/api/v1/wallet/tokenpay/connect` | `{flow, code}` 换 Key 入库 |
 | GET | `/api/v1/wallet/tokenpay/connection` | `{enabled, connected, app_url, key_masked, connected_at}` |
-| GET | `/api/v1/wallet/tokenpay/balance` | `{enabled, connected, balance_yuan, used_yuan, yuan_per_credit, stale}`（用户自己的 Key 查上游，60s 缓存，失败降级不报错） |
+| GET | `/api/v1/wallet/tokenpay/balance` | `{enabled, connected, balance_yuan, used_yuan, stale}`（用户自己的 Key 查上游，60s 缓存，失败降级不报错） |
 | GET | `/api/v1/wallet/tokenpay/usage?limit=` | 代理上游调用记录（真实花费），60s 缓存，见 §9 |
+| POST | `/api/v1/wallet/tokenpay/recharge/sessions` | `{amount}` 创建 TokenDance 充值会话，见 §10 |
+| GET | `/api/v1/wallet/tokenpay/recharge/sessions/:id` | 查询充值状态 |
 | DELETE | `/api/v1/wallet/tokenpay/connection` | 断开 |
 
 ### 4.3 错误码（`backend/internal/pkg/errcode/errcode.go`）
@@ -156,6 +158,16 @@ ALTER TABLE generation_tasks ADD COLUMN wallet bool NOT NULL DEFAULT false;
 - 上游若重构 worker/executor 或冻结/结算流程，只需要重接这些接缝点；`IsTest` 分支是天然参照。
 
 **上游地址的 `/portal` 前缀坑（v0.6.27 踩过）**：TokenDance 的开放平台接口（授权码交换、余额查询）都在 `https://tokendance.space/portal/api/v1/...` 下；一级域名下的 `/api/v1/...` 是官网前端路由，会返回 HTML（SPA fallback，HTTP 200、`Content-Type: text/html`），后端按 JSON 解析失败后表现为「余额显示 ¥0 + 可能不是最新」。验证方式：不带 Key 请求，`/portal/...` 返回 401 JSON，一级域名返回 200 HTML。
+
+## 7.1 画布 Agent 与钱包的关系（2026-11-18 澄清）
+
+`agent` 是和 text/image/video/audio 并列的第五种**模型种类**，与「渠道」是两个维度：TokenPay 是渠道，不是种类。agent 模型的特殊之处（`provider/modelcfg/types.go:45` 的注释）：
+
+- **不走插件**，由 Go 的 LLM 网关按接口格式（`openai` / `gemini`）直接请求渠道——插件钩子是同步的、不能联网，所以 Agent 要流式 + 工具调用就只能绕过插件；
+- **渠道同步不产 agent 模型**（`ai_config_channel_sync.go` 的规则表里没有 agent 分支），必须在后台手建；
+- **不认用户钱包**：`service/agent/bridge.go` 的 `resolveModel` 直接读 `channel:<key>`，不做 `wallet:<uid>` 替换。所以绑在 TokenPay 渠道上的 agent 模型花的是**渠道自己的 Key**（运营者持有的产品方 Key），不是终端用户的钱包。归因头 `X-App-URL` 照常带上。
+
+因此「用户用自己的 TokenDance 额度驱动画布 Agent」属于下表的二期项，当前部署的做法是：手建一个 agent 模型绑到 TokenPay 渠道（如 `agent-deepseek-v4.1-flash`，`api_format=openai`、`path_prefix=/v1`、`vision=true`），由运营者账号承担费用。
 
 ## 8. 明确不做（二期）
 
@@ -253,7 +265,8 @@ ALTER TABLE generation_tasks ADD COLUMN wallet bool NOT NULL DEFAULT false;
 - `GET /api/v1/wallet/tokenpay/recharge/sessions/:id`，返回会话状态。
 - 后端代理 `https://tokendance.space/portal/api/v1/payment/sessions`，Bearer 是当前用户自己的钱包 Key。
 - 上游 `status_url` 不返回浏览器；查单始终由后端用固定接口 + 校验后的会话 ID 发起，防止任意 URL 代理。
-- 用户 Key、`status_url` 和支付链接不写日志、不落库。支付完成为 `paid` 时清掉余额缓存，下一次余额查询直接打上游。
+- 充值请求走 `outbound.SensitiveClient`：仍记录 ext.call 的路径、状态和耗时，但 `payload.log` 不记录请求 / 响应体，避免支付链接落盘。
+- 用户 Key、`status_url` 和支付链接不落库。支付完成为 `paid` 时清掉余额缓存，下一次余额查询直接打上游。
 - 不新增充值订单表：同一 SPA 会话内关闭再打开保留进行中的会话，整页刷新不恢复；余额仍会在下一次查询时反映真实到账。
 
 ### 10.3 前端判定
