@@ -160,7 +160,7 @@ ALTER TABLE generation_tasks ADD COLUMN wallet bool NOT NULL DEFAULT false;
 ## 8. 明确不做（二期）
 
 - Agent 对话（llmgateway）走用户钱包：llmgateway 按 token 计费，与冻结/结算体系不同，需要单独改造。
-- 服务费比例收取、TokenDance 兑换码/支付会话充值引导。
+- 服务费比例收取、TokenDance 兑换码充值。
 - 语音复刻、联网搜索等非四类能力；kling/vidu 走 TokenDance 网关的插件。
 
 ## 9. 平台积分在钱包场景的残留（2026-11-17 全站扫描）
@@ -175,7 +175,8 @@ ALTER TABLE generation_tasks ADD COLUMN wallet bool NOT NULL DEFAULT false;
 | 字段 | 说明 |
 | --- | --- |
 | `items[].cost` | **真实花费，单位微元（1 元 = 1e6）** |
-| `items[].model_id` | TokenDance 内部模型 id，与本站模型的 `upstream_model` 一致（同步时就用它） |
+| `items[].model_slug` | **模型别名（如 `seedream-5.0-lite`），与本站模型的 `upstream_model` 一致——匹配认它** |
+| `items[].model_id` | TokenDance 内部不透明 id（如 `01KMM9QH8VZX83GM06Q4A6JEF4`），**不是模型名，别拿来匹配**（v0.6.30 踩过） |
 | `items[].created_at` | UTC ISO 8601 |
 | `items[].is_success` | 是否成功 |
 | `items[].input_tokens` / `output_tokens` | 图片模型也有（seedream 按输出 token 计费，16.4K → ¥0.22） |
@@ -219,7 +220,7 @@ ALTER TABLE generation_tasks ADD COLUMN wallet bool NOT NULL DEFAULT false;
 
 1. **后端**：`UserWalletService.Usage(ctx, userID)` 代理 `/portal/api/v1/usage`（`limit=500&window=30d`，新 outbound purpose `tokenpay.usage`），进程内缓存 60s（与 balance 同一策略，规避 1QPS），失败返回旧缓存。handler `GET /wallet/tokenpay/usage`。
 2. **前端 store**：`useWalletStore` 加 `usage` 状态与 `fetchUsage()`，刷新时机与 `fetchBalance` 一致（`useRemoteModels` 里一起拉、连上钱包后立刻拉、断开清空）。
-3. **匹配（纯函数，可测）**：`web/src/utils/wallet/cost.ts` `matchRecordCost(record, tasks, usage, upstreamModel)` —— 对每个有任务的格子，在 usage 里找 `model_id === upstream_model`、`created_at ∈ [submitted_at - 5 分钟容差, finished_at ?? deadline_at ?? submitted_at + 30 分钟]`、且未被其它格子占用的最小时间差项；`cost_yuan` 求和。一格格不上返回 null（界面显示「—」，不猜半个金额）。
+3. **匹配（纯函数，可测）**：`web/src/utils/wallet/cost.ts` `matchRecordCost(record, tasks, usage, upstreamModel)` —— 对每个有任务的格子，在 usage 里找 `(model_slug || model_id) === upstream_model`、`created_at ∈ [submitted_at - 5 分钟容差, finished_at ?? deadline_at ?? submitted_at + 30 分钟]`、且未被其它格子占用的最小时间差项；`cost_yuan` 求和。一格格不上返回 null（界面显示「—」，不猜半个金额）。
 4. **预估（下单前，usage 里还没有这条）**：`estimateCost(usage, upstreamModel, count)` = 同模型最近 10 次**成功**项的平均花费 × 数量。固定价模型（图片按张、音频按次）均值即真实单价。
 5. **上游模型名**：`provider.ModelInfo` 新增公开字段 `upstream_model`（`ListModels` 从 `cfg.Channels[0].UpstreamModel` 取），前端 `toModelOption` 透传；模型清单的「不泄露内部字段」测试已同步更新（该字段现在是有意公开的）。
 6. **限额**：`limit=500` 覆盖不到的历史记录显示「—」，不翻页（避免 1QPS 下把页面拖慢）。
@@ -231,4 +232,34 @@ ALTER TABLE generation_tasks ADD COLUMN wallet bool NOT NULL DEFAULT false;
 - 记录卡片显示 ¥0.22（与 TokenDance 门户「调用记录」逐条一致），不再是 ¥0.04。
 - 输入卡片 / 画布节点下单前显示同模型历史均价。
 - 全站再无「平台积分 × 汇率」得出的金额；钱包模型下拉、角色卡、短剧批量生成不出现积分。
+
+## 10. 余额不足直达充值（2026-11-17）
+
+钱包余额不足时不再只给一句「请充值后重试」，而是复用 TokenDance Agent 支付 API，在站内直接打开充值弹窗。
+
+### 10.1 用户流程
+
+1. 钱包任务失败且 `error_code=provider_balance` 时，画布节点、首页结果格显示「去充值」；桌宠失败气泡也带同名动作。
+2. 右上角钱包浮层和个人中心钱包页始终提供充值入口，并显示当前 TokenDance 余额。
+3. 弹窗默认 `¥30`，提供 `¥10 / ¥30 / ¥50 / ¥100` 档位和 `1–100000` 元自定义整数金额。
+4. 创建会话后，桌面端把 `payment_url` 画成二维码；移动端只显示 `alipay_url` 跳转，不直接打开二维码内容。
+5. 弹窗打开时每 3 秒查一次状态，页面重新可见时立即查；`paid / failed / closed / refunded / unknown` 或过期后停止。
+6. 到账后刷新钱包余额。从生成失败进入时显示「已充值，继续生成」，用户确认后才重新提交原任务。
+
+### 10.2 接口与安全
+
+- `POST /api/v1/wallet/tokenpay/recharge/sessions`，body `{"amount":30}`。
+  返回 `id / amount / status / payment_url / alipay_url / expires_at / paid_at`。
+- `GET /api/v1/wallet/tokenpay/recharge/sessions/:id`，返回会话状态。
+- 后端代理 `https://tokendance.space/portal/api/v1/payment/sessions`，Bearer 是当前用户自己的钱包 Key。
+- 上游 `status_url` 不返回浏览器；查单始终由后端用固定接口 + 校验后的会话 ID 发起，防止任意 URL 代理。
+- 用户 Key、`status_url` 和支付链接不写日志、不落库。支付完成为 `paid` 时清掉余额缓存，下一次余额查询直接打上游。
+- 不新增充值订单表：同一 SPA 会话内关闭再打开保留进行中的会话，整页刷新不恢复；余额仍会在下一次查询时反映真实到账。
+
+### 10.3 前端判定
+
+- 任务快照新增 `wallet` 字段，HTTP、WebSocket 与断线对账共用。
+- 只有 `wallet=true`、`status=failed`、`error_code=provider_balance` 同时成立才显示钱包充值；
+  普通渠道的上游余额不足仍按平台故障处理，不能误导用户去充 TokenDance。
+- 不做提交前按历史均价强制拦截：估算和 60 秒余额缓存都可能过期，以 TokenDance 实际返回的余额不足为准。
 - 普通（BYOK）渠道任务的积分显示与冻结/结算不受影响。

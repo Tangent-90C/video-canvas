@@ -70,6 +70,23 @@ describe("GenerationStatus：统一任务状态展示", () => {
     expect(html).toContain("重试");
     expect(html).toContain('role="alert"');
   });
+
+  test("钱包余额不足时在失败卡上直接给出「去充值」", () => {
+    const html = renderToStaticMarkup(
+      <GenerationStatus
+        view={{
+          phase: "failed",
+          message: "你的 TokenDance 余额不足，请充值后重试",
+          refunded: false,
+          taskRef: "abc",
+          walletRecharge: true,
+        }}
+        onRetry={() => {}}
+      />,
+    );
+    expect(html).toContain("去充值");
+    expect(html).toContain("重试");
+  });
 });
 
 describe("TaskGenerationStatus：按任务 ID 订阅最新快照", () => {

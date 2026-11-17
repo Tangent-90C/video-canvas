@@ -243,9 +243,9 @@ func TestUserWalletUsage(t *testing.T) {
 	ctx := context.Background()
 	var q url.Values
 	svc, _ := newUsageService(t, []map[string]any{
-		{"model_id": "seedream-5.0-lite", "created_at": "2026-11-17T12:15:40Z", "cost": 220_000, "is_success": true},
-		{"model_id": "seedream-5.0-lite", "created_at": "2026-11-17T10:08:10Z", "cost": 220_000, "is_success": true},
-		{"model_id": "seedream-5.0-lite", "created_at": "2026-11-17T09:21:17Z", "cost": 0, "error": "upstream says no"},
+		{"model_id": "01KMM9QH8VZX83GM06Q4A6JEF4", "model_slug": "seedream-5.0-lite", "created_at": "2026-11-17T12:15:40Z", "cost": 220_000, "is_success": true},
+		{"model_id": "01KMM9QH8VZX83GM06Q4A6JEF4", "model_slug": "seedream-5.0-lite", "created_at": "2026-11-17T10:08:10Z", "cost": 220_000, "is_success": true},
+		{"model_id": "01KMM9QH8VZX83GM06Q4A6JEF4", "model_slug": "seedream-5.0-lite", "created_at": "2026-11-17T09:21:17Z", "cost": 0, "error": "供应商返回 400"},
 	}, &q)
 
 	view, err := svc.Usage(ctx, 7)
@@ -259,7 +259,8 @@ func TestUserWalletUsage(t *testing.T) {
 		t.Fatalf("应带回 3 条：%+v", view.Items)
 	}
 	// 真实单价：seedream 每张 0.22 元（用户在自己 TokenDance 账号里付的钱）
-	if view.Items[0].ModelID != "seedream-5.0-lite" || view.Items[0].CostYuan != 0.22 {
+	// 模型名走 model_slug；model_id 是内部不透明 id，不能拿来匹配（线上实测踩过）
+	if view.Items[0].ModelSlug != "seedream-5.0-lite" || view.Items[0].CostYuan != 0.22 {
 		t.Fatalf("金额换算或顺序不对：%+v", view.Items[0])
 	}
 	if view.Items[2].Success || view.Items[2].CostYuan != 0 {
@@ -313,6 +314,161 @@ func TestUserWalletUsageFallbacks(t *testing.T) {
 	view, err = svc4.Usage(ctx, 7)
 	if err != nil || !view.Connected || !view.Stale {
 		t.Fatalf("Key 读不到应 stale 降级：%+v err=%v", view, err)
+	}
+}
+
+// newRechargeService 组装充值代理：上游按 HTTP 方法返回创建 / 查询结果，并校验 Bearer 是用户自己的 Key。
+func newRechargeService(t *testing.T, handler http.HandlerFunc) (*UserWalletService, *fakeWalletRepo) {
+	t.Helper()
+	up := httptest.NewServer(handler)
+	t.Cleanup(up.Close)
+	repo := &fakeWalletRepo{row: &model.UserWallet{UserID: 7, Provider: "tokendance"}}
+	secrets := &fakeWalletSecrets{saved: map[string]string{model.WalletSecretName(7): "tk-live"}}
+	svc := NewUserWalletService(UserWalletDeps{
+		Repo: repo, Secrets: secrets, Flows: &fakeFlows{}, AppURL: "https://app.example.com",
+		RechargeURL: up.URL,
+	})
+	return svc, repo
+}
+
+// Recharge / RechargeStatus：用用户自己的 Key 创建会话，不把上游 status_url 透给浏览器；
+// 状态查询从固定会话地址发 GET，金额、支付链接和时间都按前端需要的形状返回。
+func TestUserWalletRecharge(t *testing.T) {
+	created := false
+	svc, _ := newRechargeService(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer tk-live" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/":
+			created = true
+			var body struct {
+				Amount int `json:"amount"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Amount != 30 {
+				t.Fatalf("创建充值请求体不对：%+v err=%v", body, err)
+			}
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id":          "sess-1",
+				"amount":      30,
+				"status":      "pending",
+				"payment_url": "weixin://pay/sess-1",
+				"alipay_url":  "alipays://pay/sess-1",
+				"expired_at":  1_800_000_000,
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/sess-1":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id":         "sess-1",
+				"amount":     30,
+				"status":     "paid",
+				"expired_at": 1_800_000_000,
+				"paid_at":    1_799_999_100,
+			})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})
+
+	ctx := context.Background()
+	view, err := svc.Recharge(ctx, 7, 30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !created || view.ID != "sess-1" || view.Amount != 30 || view.Status != "pending" {
+		t.Fatalf("创建会话视图不对：%+v", view)
+	}
+	if view.PaymentURL != "weixin://pay/sess-1" || view.AlipayURL != "alipays://pay/sess-1" {
+		t.Fatalf("支付链接没带上：%+v", view)
+	}
+	if view.ExpiresAt != "2027-01-15T08:00:00Z" {
+		t.Fatalf("过期时间格式不对：%q", view.ExpiresAt)
+	}
+
+	status, err := svc.RechargeStatus(ctx, 7, "sess-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Status != "paid" || status.PaidAt != "2027-01-15T07:45:00Z" {
+		t.Fatalf("状态视图不对：%+v", status)
+	}
+}
+
+// 充值校验：未启用 / 未连接 / Key 丢失 / 金额越界 / 非法会话 ID 都不请求上游。
+func TestUserWalletRechargeValidation(t *testing.T) {
+	ctx := context.Background()
+	off := NewUserWalletService(UserWalletDeps{Repo: &fakeWalletRepo{}, Secrets: &fakeWalletSecrets{saved: map[string]string{}}, Flows: &fakeFlows{}})
+	if _, err := off.Recharge(ctx, 7, 30); !errors.Is(err, errcode.ErrWalletDisabled) {
+		t.Fatalf("未启用应返回 ErrWalletDisabled：%v", err)
+	}
+
+	svc, repo := newRechargeService(t, func(http.ResponseWriter, *http.Request) {
+		t.Fatal("校验失败时不应请求上游")
+	})
+	repo.row = nil
+	if _, err := svc.Recharge(ctx, 7, 30); !errors.Is(err, errcode.ErrWalletNotConnected) {
+		t.Fatalf("未连接应返回 ErrWalletNotConnected：%v", err)
+	}
+	repo.row = &model.UserWallet{UserID: 7, Provider: "tokendance"}
+	for name, call := range map[string]func() error{
+		"零金额": func() error { _, err := svc.Recharge(ctx, 7, 0); return err },
+		"超额":  func() error { _, err := svc.Recharge(ctx, 7, 100001); return err },
+		"非法会话 ID": func() error {
+			_, err := svc.RechargeStatus(ctx, 7, "../health")
+			return err
+		},
+	} {
+		var ec *errcode.Error
+		if err := call(); !errors.As(err, &ec) || ec.Code != errcode.ErrInvalidParams.Code {
+			t.Fatalf("%s 应返回 ErrInvalidParams：%v", name, err)
+		}
+	}
+
+	noKey := NewUserWalletService(UserWalletDeps{
+		Repo: repo, Secrets: &fakeWalletSecrets{saved: map[string]string{}}, Flows: &fakeFlows{}, AppURL: "https://app.example.com",
+		RechargeURL: "https://tokenpay.invalid",
+	})
+	if _, err := noKey.Recharge(ctx, 7, 30); !errors.Is(err, errcode.ErrWalletNotConnected) {
+		t.Fatalf("Key 丢失应返回 ErrWalletNotConnected：%v", err)
+	}
+}
+
+// 支付成功后清掉余额缓存：下一次 Balance 必须重新查上游，右上角能马上看到新余额。
+func TestUserWalletRechargePaidInvalidatesBalance(t *testing.T) {
+	balanceMicros := int64(1_000_000)
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/balance":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"balance": map[string]any{"credits": balanceMicros, "credits_used": 0, "balance": balanceMicros},
+			})
+		case r.URL.Path == "/recharge/sess-1":
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "sess-1", "amount": 30, "status": "paid", "expired_at": 1_800_000_000})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer up.Close()
+	repo := &fakeWalletRepo{row: &model.UserWallet{UserID: 7, Provider: "tokendance"}}
+	secrets := &fakeWalletSecrets{saved: map[string]string{model.WalletSecretName(7): "tk-live"}}
+	svc := NewUserWalletService(UserWalletDeps{
+		Repo: repo, Secrets: secrets, Flows: &fakeFlows{}, AppURL: "https://app.example.com",
+		BalanceURL: up.URL + "/balance", RechargeURL: up.URL + "/recharge",
+	})
+
+	ctx := context.Background()
+	first, err := svc.Balance(ctx, 7)
+	if err != nil || first.BalanceYuan != 1 {
+		t.Fatalf("首次余额不对：%+v err=%v", first, err)
+	}
+	if _, err := svc.RechargeStatus(ctx, 7, "sess-1"); err != nil {
+		t.Fatal(err)
+	}
+	balanceMicros = 31_000_000
+	next, err := svc.Balance(ctx, 7)
+	if err != nil || next.BalanceYuan != 31 {
+		t.Fatalf("支付后应刷新余额：%+v err=%v", next, err)
 	}
 }
 

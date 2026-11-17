@@ -130,6 +130,22 @@ describe("buildResultNotices", () => {
     expect(b!.text).toBe("生成失败，积分已退回：生成超时");
   });
 
+  test("钱包余额不足的失败提醒带充值动作标记", () => {
+    const failed = ev(
+      "n1",
+      view({
+        id: 8,
+        status: "failed",
+        wallet: true,
+        error_code: "provider_balance",
+        error_message: "你的 TokenDance 余额不足，请充值后重试",
+      }),
+      { status: "error" },
+    );
+    const [notice] = buildResultNotices([failed], "c1", fresh);
+    expect(notice).toMatchObject({ result: true, recharge: true });
+  });
+
   test("不新鲜的成功和整体失败都不冒", () => {
     const events = [
       ev("n1", view({ id: 1 })),

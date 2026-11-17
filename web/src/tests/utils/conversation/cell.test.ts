@@ -78,6 +78,23 @@ describe("deriveCell：任务状态 → 格子状态", () => {
     ).toMatchObject({ taskRef: "cd34" });
   });
 
+  test("钱包任务余额不足的格子带充值标记，普通渠道不误伤", () => {
+    const wallet = makeTask({
+      status: "failed",
+      wallet: true,
+      error_code: "provider_balance",
+      error_message: "你的 TokenDance 余额不足，请充值后重试",
+      credits: 0,
+    });
+    expect(deriveCell(record(), 0, wallet, NOW)).toMatchObject({
+      kind: "failed",
+      walletRecharge: true,
+    });
+
+    const ordinary = makeTask({ status: "failed", error_code: "provider_balance" });
+    expect(deriveCell(record(), 0, ordinary, NOW)).not.toHaveProperty("walletRecharge");
+  });
+
   test("失败、过期：带原因；取消：单独一种", () => {
     expect(
       deriveCell(record(), 0, makeTask({ status: "failed", error_message: "内容审核未通过" }), NOW),

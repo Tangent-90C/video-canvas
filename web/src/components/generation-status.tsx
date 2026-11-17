@@ -3,6 +3,7 @@ import { useEffect, type ComponentProps } from "react";
 import { FailedPlaceholder, PendingPlaceholder } from "@/components/generation-placeholder";
 import { useNow } from "@/hooks/use-now";
 import { useTask } from "@/store/tasks";
+import { openWalletRecharge } from "@/store/wallet-recharge";
 import {
   deriveTaskStatus,
   type GenerationStatusView,
@@ -42,6 +43,11 @@ export function GenerationStatus({
         message={view.message}
         refunded={view.refunded}
         taskRef={view.taskRef}
+        onRecharge={
+          view.walletRecharge
+            ? () => openWalletRecharge({ onPaid: onRetry === undefined ? undefined : onRetry })
+            : undefined
+        }
         onRetry={onRetry}
         retryDisabled={retryDisabled}
         retryHint={retryHint}

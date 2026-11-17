@@ -19,6 +19,7 @@ const view = (over: Partial<TaskView> = {}): TaskView => ({
   error_code: "plugin_error",
   error_message: "统一结果的 status 不合法",
   credits: 0,
+  wallet: false,
   charged_credits: null,
   version: 3,
   deadline_at: null,

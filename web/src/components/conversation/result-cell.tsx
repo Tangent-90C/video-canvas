@@ -131,7 +131,13 @@ export function ResultCell({
     case "failed":
       return (
         <GenerationStatus
-          view={{ phase: "failed", message: cell.message, refunded: true, taskRef: cell.taskRef }}
+          view={{
+            phase: "failed",
+            message: cell.message,
+            refunded: true,
+            taskRef: cell.taskRef,
+            ...(cell.walletRecharge ? { walletRecharge: true } : {}),
+          }}
           onRetry={() => onRetry(index)}
           className={cn("rounded-xl", size)}
           style={frame}

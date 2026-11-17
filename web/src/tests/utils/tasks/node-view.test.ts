@@ -137,6 +137,32 @@ describe("deriveVideoNodeView：节点状态 -> 展示状态（设计 6.3）", (
       taskRef: null,
     });
   });
+
+  test("钱包任务余额不足：失败态带上去充值的标记；普通渠道同错误码不带", () => {
+    const wallet = makeTask({
+      status: "failed",
+      wallet: true,
+      error_code: "provider_balance",
+      error_message: "你的 TokenDance 余额不足，请充值后重试",
+      credits: 0,
+    });
+    expect(
+      deriveVideoNodeView(
+        { status: "error", error: wallet.error_message!, taskId: String(wallet.id) },
+        wallet,
+        T0,
+      ),
+    ).toMatchObject({ phase: "failed", walletRecharge: true });
+
+    const ordinary = makeTask({ status: "failed", error_code: "provider_balance" });
+    expect(
+      deriveVideoNodeView(
+        { status: "error", error: "服务繁忙，请稍后再试", taskId: String(ordinary.id) },
+        ordinary,
+        T0,
+      ),
+    ).not.toHaveProperty("walletRecharge");
+  });
 });
 
 describe("normalizeProgress / formatElapsed", () => {

@@ -74,6 +74,30 @@ func (h *WalletHandler) Usage(c *gin.Context) {
 	response.OK(c, v)
 }
 
+// Recharge 创建 TokenDance 充值会话（POST /wallet/tokenpay/recharge/sessions）。
+func (h *WalletHandler) Recharge(c *gin.Context) {
+	var req rechargeWalletReq
+	if !BindJSON(c, &req) {
+		return
+	}
+	v, err := h.svc.Recharge(c.Request.Context(), currentUserID(c), req.Amount)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, v)
+}
+
+// RechargeStatus 查询充值会话（GET /wallet/tokenpay/recharge/sessions/:id）。
+func (h *WalletHandler) RechargeStatus(c *gin.Context) {
+	v, err := h.svc.RechargeStatus(c.Request.Context(), currentUserID(c), c.Param("id"))
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, v)
+}
+
 // Disconnect 断开钱包（DELETE /wallet/tokenpay/connection）：删除本地保存的 Key 与元数据。
 func (h *WalletHandler) Disconnect(c *gin.Context) {
 	if err := h.svc.Disconnect(c.Request.Context(), currentUserID(c)); err != nil {
@@ -87,4 +111,9 @@ func (h *WalletHandler) Disconnect(c *gin.Context) {
 type connectWalletReq struct {
 	Flow string `json:"flow" binding:"required,max=256"`
 	Code string `json:"code" binding:"required,max=256"`
+}
+
+// rechargeWalletReq 是充值会话请求体：金额单位元，只接受整数。
+type rechargeWalletReq struct {
+	Amount int `json:"amount" binding:"required,min=1,max=100000" label:"充值金额"`
 }

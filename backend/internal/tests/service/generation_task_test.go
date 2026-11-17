@@ -1240,6 +1240,20 @@ func TestGenerationTaskService_Get(t *testing.T) {
 	})
 }
 
+// 任务快照要带上钱包标记：前端据此区分「用户自己的 TokenDance 余额不足」和普通渠道的上游余额问题。
+func TestGenerationTaskService_Get_CarriesWalletFlag(t *testing.T) {
+	env := newTaskSvcEnv(defaultTaskLimits())
+	task := env.repo.addTask(model.GenerationTask{UserID: 1, Status: model.TaskFailed, Wallet: true})
+
+	view, err := env.svc.Get(context.Background(), 1, task.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !view.Wallet {
+		t.Fatalf("钱包任务快照丢了 wallet 标记：%+v", view)
+	}
+}
+
 func TestGenerationTaskService_List(t *testing.T) {
 	env := newTaskSvcEnv(defaultTaskLimits())
 	a := env.repo.addTask(model.GenerationTask{UserID: 1, Status: model.TaskRunning})

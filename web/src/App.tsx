@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { RouterProvider } from "react-router";
 
 import { ConnectWalletDialog } from "@/components/wallet/connect-wallet-dialog";
+import { WalletRechargeDialog } from "@/components/wallet/wallet-recharge-dialog";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
 import { router } from "@/router";
@@ -39,6 +40,7 @@ function App() {
       <RouterProvider router={router} />
       {/* 钱包连接弹窗挂在根上：任何页面撞见「需要连接钱包」都就地弹它，不用用户自己找入口 */}
       <ConnectWalletDialog />
+      <WalletRechargeDialog />
       <Toaster />
     </>
   );

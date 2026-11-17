@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { startTokenPayAuth } from "@/api/wallet";
 import { useWalletStore } from "@/store/wallet";
+import { openWalletRecharge } from "@/store/wallet-recharge";
 
 /** 掩码 / 时间都是服务端给的展示值，这里只负责排版 */
 
@@ -18,7 +19,9 @@ import { useWalletStore } from "@/store/wallet";
 export function WalletTab() {
   const view = useWalletStore((state) => state.view);
   const status = useWalletStore((state) => state.status);
+  const balance = useWalletStore((state) => state.balance);
   const fetch = useWalletStore((state) => state.fetch);
+  const fetchBalance = useWalletStore((state) => state.fetchBalance);
   const disconnect = useWalletStore((state) => state.disconnect);
   const [starting, setStarting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
@@ -26,6 +29,10 @@ export function WalletTab() {
   useEffect(() => {
     if (status === "idle") void fetch();
   }, [status, fetch]);
+
+  useEffect(() => {
+    if (view?.connected) void fetchBalance();
+  }, [view?.connected, fetchBalance]);
 
   const connect = async () => {
     setStarting(true);
@@ -50,7 +57,10 @@ export function WalletTab() {
 
   if (status === "loading" || (status === "idle" && !view)) {
     return (
-      <div className="bg-card ring-foreground/10 flex items-center gap-4 rounded-xl p-5 ring-1" aria-busy>
+      <div
+        className="bg-card ring-foreground/10 flex items-center gap-4 rounded-xl p-5 ring-1"
+        aria-busy
+      >
         <Skeleton className="size-10 rounded-full" />
         <div className="grid flex-1 gap-2">
           <Skeleton className="h-5 w-40" />
@@ -112,21 +122,30 @@ export function WalletTab() {
             {view.connected_at && <p>最近连接：{formatTime(view.connected_at)}</p>}
           </div>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={disconnecting}
-          onClick={() => void disconnectNow()}
-        >
-          {disconnecting ? <LoaderCircle className="animate-spin" /> : <LogOut />}
-          断开连接
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" onClick={() => openWalletRecharge()}>
+            <Wallet />
+            充值
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={disconnecting}
+            onClick={() => void disconnectNow()}
+          >
+            {disconnecting ? <LoaderCircle className="animate-spin" /> : <LogOut />}
+            断开连接
+          </Button>
+        </div>
       </div>
-      <p className="text-muted-foreground text-xs">
-        连接后即可使用钱包渠道上的模型，按你自己的 TokenDance 额度计费，不消耗平台积分。Key
-        的额度、有效期与消费记录可在 TokenDance 控制台管理；怀疑泄露时在 TokenDance
-        控制台禁用后，回到这里重新连接即可。
-      </p>
+      <div className="bg-card ring-foreground/10 rounded-xl px-4 py-3 ring-1">
+        <span className="text-muted-foreground text-xs">TokenDance 余额</span>
+        <div className="mt-1 font-mono text-2xl font-semibold tabular-nums">
+          {balance
+            ? `¥${balance.balance_yuan.toLocaleString("zh-CN", { maximumFractionDigits: 2 })}`
+            : "—"}
+        </div>
+      </div>
     </div>
   );
 }

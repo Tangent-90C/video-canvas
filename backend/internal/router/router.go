@@ -185,6 +185,8 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		wallet.GET("/connection", h.Wallet.Connection)
 		wallet.GET("/balance", h.Wallet.Balance)
 		wallet.GET("/usage", h.Wallet.Usage)
+		wallet.POST("/recharge/sessions", h.Wallet.Recharge)
+		wallet.GET("/recharge/sessions/:id", h.Wallet.RechargeStatus)
 		wallet.DELETE("/connection", h.Wallet.Disconnect)
 
 		auth.POST("/assets", h.Asset.Upload)

@@ -13,6 +13,7 @@ export const makeTask = (over: Partial<TaskView> = {}): TaskView => ({
   error_code: null,
   error_message: null,
   credits: 10,
+  wallet: false,
   version: 1,
   deadline_at: "2026-09-29T10:30:00Z",
   created_at: "2026-09-29T10:00:00Z",

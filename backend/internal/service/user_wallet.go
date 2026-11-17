@@ -91,6 +91,7 @@ type UserWalletService struct {
 	exchangeURL string // 授权码交换接口；默认 TokenDance 官方地址，测试可注入
 	balanceURL  string // 余额查询接口；默认 TokenDance 官方地址，测试可注入
 	usageURL    string // 调用记录接口；默认 TokenDance 官方地址，测试可注入
+	rechargeURL string // 充值会话接口；默认 TokenDance 官方地址，测试可注入
 	now         func() time.Time
 
 	balMu    sync.Mutex
@@ -101,17 +102,19 @@ type UserWalletService struct {
 
 // UserWalletDeps 是钱包服务的依赖。
 type UserWalletDeps struct {
-	Repo     UserWalletRepo
-	Secrets  WalletSecrets        // Key 的加密保存
-	Flows    cache.OAuthFlowStore // OAuth 授权流程（PKCE verifier + 发起用户），Redis / 内存实现
-	AppURL   string
-	KeyName  string
+	Repo    UserWalletRepo
+	Secrets WalletSecrets        // Key 的加密保存
+	Flows   cache.OAuthFlowStore // OAuth 授权流程（PKCE verifier + 发起用户），Redis / 内存实现
+	AppURL  string
+	KeyName string
 	// ExchangeURL 覆盖授权码交换接口；测试注入假上游用，生产留空
 	ExchangeURL string
 	// BalanceURL 覆盖余额查询接口；测试注入假上游用，生产留空
 	BalanceURL string
 	// UsageURL 覆盖调用记录接口；测试注入假上游用，生产留空
 	UsageURL string
+	// RechargeURL 覆盖充值会话接口；测试注入假上游用，生产留空
+	RechargeURL string
 }
 
 // walletBalanceEntry 是某个用户的余额缓存：值与存入时间。
@@ -134,6 +137,10 @@ func NewUserWalletService(deps UserWalletDeps) *UserWalletService {
 	if usageURL == "" {
 		usageURL = tokenPayUsageURL
 	}
+	rechargeURL := deps.RechargeURL
+	if rechargeURL == "" {
+		rechargeURL = tokenPayRechargeURL
+	}
 	return &UserWalletService{
 		repo:        deps.Repo,
 		secrets:     deps.Secrets,
@@ -143,6 +150,7 @@ func NewUserWalletService(deps UserWalletDeps) *UserWalletService {
 		exchangeURL: exchangeURL,
 		balanceURL:  balanceURL,
 		usageURL:    usageURL,
+		rechargeURL: strings.TrimRight(rechargeURL, "/"),
 		now:         time.Now,
 		balCache:    map[uint64]walletBalanceEntry{},
 		useCache:    map[uint64]walletUsageEntry{},
@@ -310,11 +318,13 @@ type WalletUsageView struct {
 
 // WalletUsage 是一条上游调用记录（金额单位：元）。
 type WalletUsage struct {
-	// ModelID 是 TokenDance 内部模型 id，与本站模型的 upstream_model 一致（同步时就用它）
-	ModelID   string    `json:"model_id"`
-	CreatedAt time.Time `json:"created_at"` // UTC，调用完成时间
-	Success   bool      `json:"success"`
-	CostYuan  float64   `json:"cost_yuan"`
+	// ModelID 是 TokenDance 内部模型 id（不透明，如 01KMM9…），**不是**模型名，不能拿来匹配
+	ModelID string `json:"model_id"`
+	// ModelSlug 是模型别名（如 seedream-5.0-lite），与本站模型的 upstream_model 一致；上游只对有别名的模型给
+	ModelSlug   string    `json:"model_slug"`
+	CreatedAt   time.Time `json:"created_at"` // UTC，调用完成时间
+	Success     bool      `json:"success"`
+	CostYuan    float64   `json:"cost_yuan"`
 }
 
 // Usage 拉用户的调用记录：未启用 / 未连接返回空视图（不报错，页面照常渲染）；
@@ -366,14 +376,18 @@ func (s *UserWalletService) Usage(ctx context.Context, userID uint64) (*WalletUs
 }
 
 // walletUsageUpstream 是上游调用记录响应（见 https://tokendance.space/docs/open-api）。
+// 注意：model_id 是内部不透明 id（如 01KMM9…），模型名在 model_slug 里（只对有别名的模型给）——
+// 线上实测踩过：按 model_id 匹配永远匹配不上，界面全显示「—」。
 type walletUsageUpstream struct {
 	Items []struct {
 		ModelID    string `json:"model_id"`
+		ModelSlug  string `json:"model_slug"` // 模型别名，如 seedream-5.0-lite；没有时为空
 		CreatedAt  string `json:"created_at"` // UTC ISO 8601
 		Cost       int64  `json:"cost"`       // 微元
 		Error      string `json:"error"`      // 仅失败请求有
 		Successful *bool  `json:"is_success"` // 缺省时按「有没有 error」判断
-	} `json:"items"`}
+	} `json:"items"`
+}
 
 // usageSucceeded 判断一条记录是否成功：上游给了 is_success 就认它，否则按有没有 error 字段。
 func usageSucceeded(flag *bool, errText string) bool {
@@ -418,6 +432,7 @@ func (s *UserWalletService) fetchUsage(ctx context.Context, key string) ([]Walle
 		}
 		out = append(out, WalletUsage{
 			ModelID:   item.ModelID,
+			ModelSlug: item.ModelSlug,
 			CreatedAt: at.UTC(),
 			Success:   usageSucceeded(item.Successful, item.Error),
 			CostYuan:  microsToYuan(item.Cost),

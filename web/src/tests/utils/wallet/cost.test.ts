@@ -6,13 +6,18 @@ import type { WalletUsageItem } from "@/api/wallet";
 import { estimateCost, formatYuan, matchRecordCost } from "@/utils/wallet/cost";
 
 /** 一条调用记录；时间用 UTC（上游 created_at 就是 UTC） */
+/**
+ * 一条调用记录。真实上游的 model_id 是不透明内部 id（如 01KMM9…），模型名在 model_slug 里——
+ * 线上实测踩过：按 model_id 匹配永远匹配不上，界面全显示「—」。
+ */
 const usage = (
   model: string,
   at: string,
   cost: number,
   success = true,
 ): WalletUsageItem => ({
-  model_id: model,
+  model_id: `internal-${model}`,
+  model_slug: model,
   created_at: at,
   success,
   cost_yuan: cost,
@@ -78,6 +83,34 @@ describe("matchRecordCost：把 TokenDance 调用记录对到本站记录上", (
       SEEDREAM,
     );
     expect(cost).toBeCloseTo(0.88, 10);
+  });
+
+  test("按 model_slug 匹配，不认不透明的 model_id（线上实测：内部 id 与站内模型名无关）", () => {
+    const items = [usage(SEEDREAM, "2026-11-17T12:00:04Z", 0.22)];
+    const cost = matchRecordCost(
+      record(1, ["2026-11-17T12:00:00Z"]),
+      [task(1, "2026-11-17T12:00:00Z", "2026-11-17T12:00:05Z")],
+      items,
+      SEEDREAM,
+    );
+    expect(cost).toBe(0.22);
+  });
+
+  test("上游没给 model_slug 时退回 model_id", () => {
+    const bare: WalletUsageItem = {
+      model_id: SEEDREAM,
+      model_slug: "",
+      created_at: "2026-11-17T12:00:04Z",
+      success: true,
+      cost_yuan: 0.22,
+    };
+    const cost = matchRecordCost(
+      record(1, ["2026-11-17T12:00:00Z"]),
+      [task(1, "2026-11-17T12:00:00Z", "2026-11-17T12:00:05Z")],
+      [bare],
+      SEEDREAM,
+    );
+    expect(cost).toBe(0.22);
   });
 
   test("别的模型的记录不掺和（同时间也不顶替）", () => {

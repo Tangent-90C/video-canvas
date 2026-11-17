@@ -2,6 +2,7 @@ import type { RecordDto } from "@/api/conversation/type";
 import type { TaskOutput, TaskView } from "@/api/generation-task/type";
 import { derivePendingPhase } from "@/utils/tasks/node-view";
 import { canceledRefunded, isActiveStatus } from "@/utils/tasks/status";
+import { needsWalletRecharge } from "@/utils/wallet/recharge";
 
 /** 结果格子的状态，由任务状态推出 */
 export type CellState =
@@ -18,7 +19,7 @@ export type CellState =
   /** 成功，带第一个产出 */
   | { kind: "done"; output: TaskOutput }
   /** 失败或超时，带给用户看的原因（积分已退回）和任务编号（到后端日志里定位用，后端没给为 null） */
-  | { kind: "failed"; message: string; taskRef: string | null }
+  | { kind: "failed"; message: string; taskRef: string | null; walletRecharge?: boolean }
   /** 已取消；refunded 表示积分有没有退回（排队中取消退，已进入生成取消不退） */
   | { kind: "canceled"; refunded: boolean };
 
@@ -82,6 +83,7 @@ export function deriveCell(
         kind: "failed",
         message: task.error_message || "生成失败",
         taskRef: task.task_ref ?? null,
+        ...(needsWalletRecharge(task) ? { walletRecharge: true } : {}),
       };
   }
 }

@@ -56,8 +56,10 @@ export const getWalletBalance = () => service.get<WalletBalance>("/wallet/tokenp
 
 /** 一条上游调用记录：金额单位元，created_at 是 UTC RFC3339 */
 export interface WalletUsageItem {
-  /** TokenDance 内部模型 id，与本站模型的 upstream_model 一致 */
+  /** TokenDance 内部模型 id（不透明，如 01KMM9…），**不是**模型名，别拿来匹配 */
   model_id: string;
+  /** 模型别名（如 seedream-5.0-lite），与本站模型的 upstream_model 一致；上游没给时为空 */
+  model_slug: string;
   created_at: string;
   /** 是否成功 */
   success: boolean;
@@ -83,6 +85,94 @@ export interface WalletUsage {
  * 未启用 / 未连接返回空列表，上游失败返回旧缓存并标 stale。
  */
 export const getWalletUsage = () => service.get<WalletUsage>("/wallet/tokenpay/usage");
+
+/** TokenDance 充值会话状态：unknown 表示上游新增了前端尚未识别的状态，继续轮询 */
+export type WalletRechargeStatus =
+  | "pending"
+  | "paid"
+  | "failed"
+  | "closed"
+  | "refunded"
+  | "unknown";
+
+/** 后端充值会话响应（snake_case） */
+export interface BackendWalletRecharge {
+  /** 会话 ID */
+  id: string;
+  /** 充值金额（元，整数） */
+  amount: number;
+  /** 上游会话状态 */
+  status: WalletRechargeStatus;
+  /** 二维码内容；只有创建响应有 */
+  payment_url?: string;
+  /** 支付宝深链；上游可能不返回 */
+  alipay_url?: string;
+  /** 过期时间（RFC3339） */
+  expires_at: string;
+  /** 支付时间（RFC3339）；未支付为空 */
+  paid_at?: string;
+}
+
+/** 前端使用的充值会话：时间转毫秒，缺失链接转 null */
+export interface WalletRechargeSession {
+  /** 会话 ID */
+  id: string;
+  /** 充值金额（元，整数） */
+  amount: number;
+  /** 会话状态 */
+  status: WalletRechargeStatus;
+  /** 二维码内容；查单响应沿用创建时的值 */
+  paymentUrl: string | null;
+  /** 支付宝深链；没有为 null */
+  alipayUrl: string | null;
+  /** 过期时间（毫秒时间戳） */
+  expiresAt: number;
+  /** 支付时间（毫秒时间戳）；未支付为 null */
+  paidAt: number | null;
+}
+
+/**
+ * 后端充值会话转前端结构。
+ * @param dto 后端充值会话
+ * @returns 前端充值会话
+ */
+export const mapWalletRecharge = (dto: BackendWalletRecharge): WalletRechargeSession => ({
+  id: dto.id,
+  amount: dto.amount,
+  status: dto.status,
+  paymentUrl: dto.payment_url || null,
+  alipayUrl: dto.alipay_url || null,
+  expiresAt: Date.parse(dto.expires_at),
+  paidAt: dto.paid_at ? Date.parse(dto.paid_at) : null,
+});
+
+/**
+ * 创建 TokenDance 充值会话；金额单位元，只接受整数。
+ * @param amount 充值金额（元）
+ * @returns 新建的充值会话
+ */
+export const createWalletRecharge = async (amount: number): Promise<WalletRechargeSession> =>
+  mapWalletRecharge(
+    await service.post<BackendWalletRecharge>("/wallet/tokenpay/recharge/sessions", { amount }),
+  );
+
+/**
+ * 查询充值会话状态；轮询使用 silent，避免网络波动反复弹全局错误。
+ * @param sessionId 充值会话 ID
+ * @param silent 失败时不弹全局提示
+ * @returns 最新充值会话
+ */
+export const getWalletRecharge = async (
+  sessionId: string,
+  silent = true,
+): Promise<WalletRechargeSession> =>
+  mapWalletRecharge(
+    await service.get<BackendWalletRecharge>(
+      `/wallet/tokenpay/recharge/sessions/${encodeURIComponent(sessionId)}`,
+      undefined,
+      { silent },
+    ),
+  );
 
 /** 断开钱包：删除本站保存的 Key 与授权信息 */
 export const disconnectTokenPay = () => service.delete<void>("/wallet/tokenpay/connection");

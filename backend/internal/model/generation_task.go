@@ -110,6 +110,7 @@ type GenerationTaskView struct {
 	ErrorCode       string       `json:"error_code"`            // 统一错误码
 	ErrorMessage    string       `json:"error_message"`         // 给用户看的文案
 	Credits         int          `json:"credits"`               // 冻结的积分
+	Wallet          bool         `json:"wallet"`                // 钱包任务：用用户自己的 TokenPay Key 支付，不扣平台积分
 	ChargedCredits  *int         `json:"charged_credits"`       // 实际扣的积分，未结算为 null
 	Version         int64        `json:"version"`               // 状态版本号，前端据此丢弃过期推送
 	DeadlineAt      time.Time    `json:"deadline_at"`           // 截止时间，超过则 expired

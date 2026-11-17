@@ -1,6 +1,7 @@
 import type { TaskView } from "@/api/generation-task/type";
 import { failedBatchMembers, type BackfillEvent } from "@/utils/tasks/backfill";
 import { canceledRefunded, taskKey } from "@/utils/tasks/status";
+import { needsWalletRecharge } from "@/utils/wallet/recharge";
 
 import { MERGE_WINDOW_MS } from "./bubble-queue";
 import type { NoticeKind } from "./notice";
@@ -69,6 +70,8 @@ export type ResultNotice = {
   petOnly: boolean;
   /** 是生成结果类（成功、失败）而不是系统类 */
   result: boolean;
+  /** 失败原因是钱包余额不足：提醒上附「去充值」 */
+  recharge?: boolean;
 };
 
 const failMessage = (view: TaskView) =>
@@ -125,12 +128,16 @@ export function buildResultNotices(
         nodeIds: [nodeId],
         petOnly: true,
         result: true,
+        ...(needsWalletRecharge(view) ? { recharge: true } : {}),
       });
     }
   }
 
   // 批次里有失败的、节点却已经有结果：用一条提示说清楚（沿用原 toast）
   for (const [nodeId, messages] of Object.entries(failedBatchMembers([...events]))) {
+    const recharge = events.some(
+      (event) => event.nodeId === nodeId && needsWalletRecharge(event.view),
+    );
     out.push({
       level: "warning",
       text: `有 ${messages.length} 张生成失败，积分已退回：${messages[0]}`,
@@ -138,6 +145,7 @@ export function buildResultNotices(
       nodeIds: [nodeId],
       petOnly: false,
       result: true,
+      ...(recharge ? { recharge: true } : {}),
     });
   }
   return out;

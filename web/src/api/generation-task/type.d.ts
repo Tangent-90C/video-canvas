@@ -66,6 +66,8 @@ export interface TaskView {
   task_ref?: string;
   /** 冻结的积分 */
   credits: number;
+  /** 钱包任务：用用户自己的 TokenPay Key 支付，不扣平台积分 */
+  wallet: boolean;
   /** 实际扣的积分（Token 计费按用量结算，可能小于冻结额），未结算为 null */
   charged_credits: number | null;
   /** 快照版本号，递增 */

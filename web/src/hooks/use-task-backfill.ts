@@ -3,6 +3,7 @@ import { useReactFlow } from "@xyflow/react";
 
 import { reconcileTaskIds } from "@/utils/ws/task-events";
 import { useTasksStore } from "@/store/tasks";
+import { openWalletRecharge } from "@/store/wallet-recharge";
 import type { CanvasNode } from "@/types";
 import { canvasNotice, petTakesNotices, type NoticeOptions } from "@/utils/pet/notice";
 import {
@@ -86,6 +87,9 @@ export function useTaskBackfill(
       canvasNotice(notice.level, notice.text, {
         id: notice.id,
         key: notice.key,
+        action: notice.recharge
+          ? { label: "去充值", onClick: () => openWalletRecharge() }
+          : undefined,
         ...bubbleStyle(notice),
         onClick:
           notice.level === "info"

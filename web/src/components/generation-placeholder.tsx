@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { Loader2, RotateCcw, TriangleAlert, X } from "lucide-react";
+import { Loader2, RotateCcw, TriangleAlert, Wallet, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -88,12 +88,14 @@ export function PendingPlaceholder({
  * @param onRetry 重新提交一个新任务；不传就不显示按钮
  * @param retryDisabled 重试按钮是否禁用
  * @param retryHint 重试按钮悬停时的说明，写清为什么点不了
+ * @param onRecharge 钱包余额不足时打开充值弹窗
  */
 export function FailedPlaceholder({
   message,
   refunded,
   taskRef,
   onRetry,
+  onRecharge,
   retryDisabled,
   retryHint,
   className,
@@ -103,6 +105,7 @@ export function FailedPlaceholder({
   refunded?: boolean;
   taskRef?: string | null;
   onRetry?: () => void;
+  onRecharge?: () => void;
   retryDisabled?: boolean;
   retryHint?: string;
 }) {
@@ -120,6 +123,12 @@ export function FailedPlaceholder({
       <p className="line-clamp-3 break-words">{message}</p>
       {refunded && <p className="text-muted-foreground">积分已退回</p>}
       <TaskIdTag id={taskRef} className="nodrag nowheel" />
+      {onRecharge && (
+        <Button variant="outline" size="xs" className="nodrag" onClick={onRecharge}>
+          <Wallet />
+          去充值
+        </Button>
+      )}
       {onRetry && (
         <span title={retryHint}>
           <Button

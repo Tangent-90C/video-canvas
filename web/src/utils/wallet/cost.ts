@@ -8,6 +8,9 @@ import type { WalletUsageItem } from "@/api/wallet";
  * 任何由两者相乘得出的金额都是编造的（曾按 4 积分 × 0.01 显示 ¥0.04，真实收费是 ¥0.22）。
  */
 
+/** 一条调用记录里的模型标识：优先用别名，上游没给别名才退回内部 id */
+const slugOf = (item: WalletUsageItem) => item.model_slug || item.model_id;
+
 /** 匹配的时间容差（毫秒）：上游记录时间可能略早于本站 submitted_at（时钟偏差 / 排队），放宽一点 */
 const MATCH_SLACK_MS = 5 * 60_000;
 
@@ -76,7 +79,7 @@ function pickUsage(
   let best: WalletUsageItem | undefined;
   let bestGap = Infinity;
   for (const item of usage) {
-    if (taken.has(item) || item.model_id !== upstreamModel) continue;
+    if (taken.has(item) || slugOf(item) !== upstreamModel) continue;
     const at = Date.parse(item.created_at);
     if (!Number.isFinite(at) || at < cell.from || at > cell.to) continue;
     const gap = Math.abs(at - cell.from);
@@ -100,7 +103,7 @@ export function estimateCost(
 ): number | null {
   if (!upstreamModel) return null;
   const costs = usage
-    .filter((item) => item.model_id === upstreamModel && item.success && item.cost_yuan > 0)
+    .filter((item) => slugOf(item) === upstreamModel && item.success && item.cost_yuan > 0)
     .slice(0, 10)
     .map((item) => item.cost_yuan);
   if (costs.length === 0) return null;

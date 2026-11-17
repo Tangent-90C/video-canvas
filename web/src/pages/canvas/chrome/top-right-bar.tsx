@@ -48,6 +48,7 @@ import { useCreditsStore } from "@/store/credits";
 import { useHasPendingOrder, usePaymentEnabled } from "@/store/payment";
 import { useMeStore } from "@/store/me";
 import { useWalletStore } from "@/store/wallet";
+import { openWalletRecharge } from "@/store/wallet-recharge";
 import { useWsStore, type ConnectionState } from "@/store/ws";
 import { canEnterAdmin } from "@/utils/admin/role";
 import { displayName } from "@/utils/profile/profile-rules";
@@ -140,8 +141,8 @@ function WalletFace({ showPendingDot }: { showPendingDot: boolean }) {
           down
             ? "bg-status-warning ring-status-warning/20 animate-pulse ring-3"
             : pending
-                ? "bg-muted-foreground/50"
-                : "bg-status-success ring-status-success/15 ring-3",
+              ? "bg-muted-foreground/50"
+              : "bg-status-success ring-status-success/15 ring-3",
         )}
       />
       <Wallet className="size-4.5!" strokeWidth={2} />
@@ -227,10 +228,11 @@ export function CreditsMenu() {
               {view.connected_at ? new Date(view.connected_at).toLocaleDateString() : "—"}
             </dd>
           </dl>
-          <div className="border-border flex items-center justify-between border-t px-4 py-2.5">
-            <span className="text-muted-foreground text-xs">
-              用你自己的 TokenDance 额度，不消耗平台积分
-            </span>
+          <div className="border-border flex items-center justify-end gap-2 border-t px-4 py-2.5">
+            <Button variant="outline" size="sm" onClick={() => openWalletRecharge()}>
+              <Wallet />
+              充值
+            </Button>
             <Button
               variant="ghost"
               size="sm"
