@@ -18,6 +18,7 @@ type Config struct {
 	JWT      JWT      `mapstructure:"jwt"`
 	AI       AI       `mapstructure:"ai"`
 	TokenPay TokenPay `mapstructure:"tokenpay"`
+	Watcha   Watcha   `mapstructure:"watcha"`
 	Storage  Storage  `mapstructure:"storage"`
 	Agent    Agent    `mapstructure:"agent"`
 	Update   Update   `mapstructure:"update"`
@@ -219,6 +220,46 @@ func (t TokenPay) Defaults() TokenPay {
 	return t
 }
 
+// Watcha 是观猹 OAuth2 登录配置。client_secret 只从环境变量或部署密钥管理注入，不能写进仓库。
+type Watcha struct {
+	ClientID     string `mapstructure:"client_id"`
+	ClientSecret string `mapstructure:"client_secret"`
+	RedirectURI  string `mapstructure:"redirect_uri"` // 必须与观猹后台登记的回调地址完全一致
+}
+
+// Configured 表示是否配置了任意一个观猹登录项；用于区分“整体未启用”和“只配了一半”。
+func (w Watcha) Configured() bool {
+	return w.ClientID != "" || w.ClientSecret != "" || w.RedirectURI != ""
+}
+
+// Enabled 表示观猹登录配置完整，可以对外展示并发起授权。
+func (w Watcha) Enabled() bool {
+	return w.ClientID != "" && w.ClientSecret != "" && w.RedirectURI != ""
+}
+
+// Defaults 在只配置 client_id / client_secret 时，用站点公开地址补齐回调地址。
+func (w Watcha) Defaults(appURL string) Watcha {
+	if w.ClientID != "" && w.ClientSecret != "" && w.RedirectURI == "" && appURL != "" {
+		w.RedirectURI = strings.TrimRight(appURL, "/") + "/auth/watcha/callback"
+	}
+	return w
+}
+
+// Validate 校验观猹登录配置；三项要么都不配，要么必须完整且回调地址合法。
+func (w Watcha) Validate() error {
+	if !w.Configured() {
+		return nil
+	}
+	if w.ClientID == "" || w.ClientSecret == "" || w.RedirectURI == "" {
+		return fmt.Errorf("watcha.client_id、watcha.client_secret、watcha.redirect_uri 必须同时配置")
+	}
+	u, err := url.Parse(w.RedirectURI)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.Fragment != "" || u.RawQuery != "" || u.Path != "/auth/watcha/callback" {
+		return fmt.Errorf("watcha.redirect_uri 必须是 http(s)://host/auth/watcha/callback，当前是 %q", w.RedirectURI)
+	}
+	return nil
+}
+
 // PluginRunner 是 plugin-runner 进程（协议插件的沙箱执行环境）的部署与预算配置。
 // 生产环境 runner 是独立容器（network_mode: none、mem_limit、restart: always），经共享卷里的 Unix socket 通信，mode 用 external；
 // 开发环境（含 Windows）mode 用 spawn：主服务把自己的二进制以 plugin-runner 子命令拉起来，设 GOMEMLIMIT 软限制，崩溃后自动重启。
@@ -303,6 +344,7 @@ func Load(path string) (*Config, error) {
 	for _, key := range []string{
 		"server.id_key", "log.instance", "database.allow_newer_schema", "update.updater_token", "ai.secret_key", "ai.allow_fake_ip", "storage.driver",
 		"tokenpay.app_url", "tokenpay.key_name",
+		"watcha.client_id", "watcha.client_secret", "watcha.redirect_uri",
 		"agent.enabled", "agent.url", "agent.bridge_url", "agent.bridge_addr", "agent.service_token", "agent.web_enabled", "agent.searxng_url", "agent.disabled_tools",
 		"storage.s3.endpoint", "storage.s3.region", "storage.s3.bucket", "storage.s3.access_key", "storage.s3.secret_key",
 		"storage.s3.use_ssl", "storage.s3.public_base_url", "storage.s3.path_prefix",
@@ -320,6 +362,10 @@ func Load(path string) (*Config, error) {
 	}
 	cfg.TokenPay = cfg.TokenPay.Defaults()
 	if err := cfg.TokenPay.Validate(); err != nil {
+		return nil, err
+	}
+	cfg.Watcha = cfg.Watcha.Defaults(cfg.TokenPay.AppURL)
+	if err := cfg.Watcha.Validate(); err != nil {
 		return nil, err
 	}
 	if cfg.Storage.Local.BaseURL == "" && cfg.TokenPay.Enabled() {

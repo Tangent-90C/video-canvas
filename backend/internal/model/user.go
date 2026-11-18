@@ -59,6 +59,7 @@ type AuthConfigView struct {
 	EmailVerifyRequired bool   `json:"email_verify_required"` // 注册是否需要邮箱验证码
 	TokenPayEnabled     bool   `json:"tokenpay_enabled"`      // 本站是否启用用户 TokenPay 钱包连接
 	TokenPayAppURL      string `json:"tokenpay_app_url"`      // 站点对外地址（钱包渠道的归因 App URL），展示用
+	WatchaEnabled       bool   `json:"watcha_enabled"`        // 本站是否启用观猹 OAuth2 登录
 }
 
 // LoginView 是登录 / 注册即登录的响应。

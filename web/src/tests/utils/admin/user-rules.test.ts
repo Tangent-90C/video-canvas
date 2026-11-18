@@ -230,6 +230,7 @@ describe("parseUserAgent", () => {
 describe("loginResultView", () => {
   test("注册、成功、密码错误、账号停用", () => {
     expect(loginResultView("register", "ok")).toEqual({ label: "注册", tone: "info" });
+    expect(loginResultView("oauth", "ok")).toEqual({ label: "观猹登录", tone: "success" });
     expect(loginResultView("login", "ok")).toEqual({ label: "成功", tone: "success" });
     expect(loginResultView("login", "badpw")).toEqual({ label: "密码错误", tone: "danger" });
     expect(loginResultView("login", "blocked")).toEqual({ label: "账号已停用", tone: "danger" });

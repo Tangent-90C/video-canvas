@@ -122,8 +122,8 @@ export type LoginFilter = "all" | "fail";
 export interface UserLoginItem {
   /** 记录 ID */
   id: number;
-  /** login 登录，register 注册 */
-  kind: "login" | "register";
+  /** login 密码登录，register 注册，oauth 观猹登录 */
+  kind: "login" | "register" | "oauth";
   /** ok 成功，badpw 密码错误，blocked 账号已停用 */
   result: "ok" | "badpw" | "blocked";
   /** 来源 IP */

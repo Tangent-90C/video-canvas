@@ -151,6 +151,9 @@ var (
 	ErrSMTPInvalid         = New(53006, "邮件服务配置不合法", http.StatusBadRequest) // 原因写进 Msg
 	ErrSMTPSendFailed      = New(53007, "邮件发送失败", http.StatusBadGateway)    // 原因写进 Msg（已脱敏）
 	ErrSMTPNotConfigured   = New(53008, "邮件服务未配置", http.StatusConflict)
+	ErrWatchaDisabled      = New(53009, "观猹登录未启用", http.StatusConflict)
+	ErrWatchaState         = New(53010, "登录授权已过期，请重新发起", http.StatusBadRequest)
+	ErrWatchaOAuthFailed   = New(53011, "观猹登录失败，请重试", http.StatusBadGateway)
 )
 
 // 登录页展示 54xxx

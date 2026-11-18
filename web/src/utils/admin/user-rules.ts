@@ -268,10 +268,11 @@ export function parseUserAgent(ua: string): string {
 
 /** 登录记录结果的展示：文案与 Tag 语气 */
 export function loginResultView(
-  kind: "login" | "register",
+  kind: "login" | "register" | "oauth",
   result: "ok" | "badpw" | "blocked",
 ): { label: string; tone: "success" | "danger" | "info" } {
   if (kind === "register") return { label: "注册", tone: "info" };
+  if (kind === "oauth") return { label: "观猹登录", tone: "success" };
   if (result === "badpw") return { label: "密码错误", tone: "danger" };
   if (result === "blocked") return { label: "账号已停用", tone: "danger" };
   return { label: "成功", tone: "success" };

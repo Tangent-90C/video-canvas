@@ -25,6 +25,42 @@ export const AUTH_ICON =
 /** 卡片里的主按钮：白色实心胶囊 */
 export const AUTH_SUBMIT = "mt-1 h-12 w-full justify-center rounded-full text-[15px]";
 
+/** 观猹账号登录按钮：和密码表单之间留一条轻分隔，保持深色舞台卡片的视觉语言。 */
+function WatchaLoginButton({
+  loading,
+  disabled,
+  onClick,
+}: {
+  loading: boolean;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <>
+      <div className="my-3 flex items-center gap-3 text-xs text-muted-foreground">
+        <span className="bg-chrome-border h-px flex-1" />
+        或
+        <span className="bg-chrome-border h-px flex-1" />
+      </div>
+      <Button
+        type="button"
+        variant="outline"
+        size="lg"
+        disabled={disabled || loading}
+        onClick={onClick}
+        className="bg-chrome-hover ring-chrome-border h-12 w-full justify-center rounded-full border-0 ring-1"
+      >
+        {loading ? (
+          <LoaderCircle className="size-4 animate-spin" />
+        ) : (
+          <img src="/watcha-logo.svg" alt="" className="size-5 rounded-full" />
+        )}
+        {loading ? "正在前往观猹..." : "使用观猹账号登录"}
+      </Button>
+    </>
+  );
+}
+
 /**
  * 登录 / 注册卡片的内容（放在 IdeaDock 里）：注册开着时顶部是「登录 / 注册」分段，下面是对应表单。
  * 输入框是胶囊（标签只给读屏），焦点由 IdeaDock 在卡片展开后交给第一个输入框，表单里不 autoFocus。
@@ -39,11 +75,14 @@ export function AuthPanel({
   password,
   loading,
   loginError,
+  watchaEnabled,
+  watchaLoading,
   onModeChange,
   onUsernameChange,
   onPasswordChange,
   onSubmit,
   onRegistered,
+  onWatcha,
 }: {
   mode: AuthMode;
   config: AuthConfig | null;
@@ -62,6 +101,11 @@ export function AuthPanel({
   onPasswordChange: (value: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onRegistered: (firstUser: boolean) => void;
+  /** 观猹 OAuth2 登录入口；部署配置完整才显示 */
+  watchaEnabled: boolean;
+  /** 正在获取观猹授权地址 */
+  watchaLoading: boolean;
+  onWatcha: () => void;
 }) {
   return (
     <>
@@ -144,10 +188,16 @@ export function AuthPanel({
               )}
             </Button>
           </form>
+          {watchaEnabled && (
+            <WatchaLoginButton loading={watchaLoading} disabled={loading} onClick={onWatcha} />
+          )}
         </>
       ) : (
         <div className="mt-4">
           <RegisterForm needCode={config?.email_verify_required ?? true} onSuccess={onRegistered} />
+          {watchaEnabled && (
+            <WatchaLoginButton loading={watchaLoading} disabled={loading} onClick={onWatcha} />
+          )}
         </div>
       )}
     </>

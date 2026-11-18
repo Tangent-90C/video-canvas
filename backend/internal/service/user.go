@@ -83,6 +83,8 @@ type UserDeps struct {
 	// TokenPayEnabled / TokenPayAppURL 是用户 TokenPay 钱包的站点级开关与归因地址，进 GET /auth/config 给前端展示。
 	TokenPayEnabled bool
 	TokenPayAppURL  string
+	// WatchaEnabled 是观猹 OAuth2 登录的站点级开关，进 GET /auth/config 给登录页展示入口。
+	WatchaEnabled bool
 }
 
 // UserService 负责登录、注册（含验证码）、鉴权状态查询。

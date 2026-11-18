@@ -28,6 +28,8 @@ export interface AuthConfig {
   tokenpay_enabled: boolean;
   /** 站点对外地址（钱包渠道的归因 App URL），钱包页展示用 */
   tokenpay_app_url: string;
+  /** 本站是否启用观猹 OAuth2 登录 */
+  watcha_enabled: boolean;
 }
 
 /** 注册请求参数 */
@@ -72,3 +74,31 @@ export const sendRegisterCode = (data: { email: string }) =>
  */
 export const register = (data: RegisterRequest) =>
   service.post<RegisterResponse>("/auth/register", data);
+
+/** 发起观猹登录的响应 */
+export interface WatchaAuthStart {
+  /** 观猹授权页地址，前端整页跳转 */
+  auth_url: string;
+}
+
+/** 观猹登录回调交换后的登录响应 */
+export interface WatchaLoginResponse extends LoginResponse {
+  /** 登录成功后回到的站内路径 */
+  next: string;
+}
+
+/**
+ * 发起观猹登录
+ * @param next 登录成功后要回去的站内路径
+ * @returns 观猹授权页地址
+ */
+export const startWatchaLogin = (next: string) =>
+  service.get<WatchaAuthStart>("/auth/watcha/start", { next });
+
+/**
+ * 用观猹回调带回的一次性 state 和 code 换本站 JWT
+ * @param flow 发起登录时生成的一次性 state
+ * @param code 观猹返回的一次性授权码
+ */
+export const completeWatchaLogin = (flow: string, code: string) =>
+  service.post<WatchaLoginResponse>("/auth/watcha/callback", { flow, code });

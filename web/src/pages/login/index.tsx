@@ -4,7 +4,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ChevronDown, Clapperboard } from "lucide-react";
 import { toast } from "sonner";
 
-import { getAuthConfig, login, type AuthConfig } from "@/api/auth";
+import { getAuthConfig, login, startWatchaLogin, type AuthConfig } from "@/api/auth";
 import { Logo } from "@/components/brand/logo";
 import { ShowcaseCaption } from "@/components/showcase/showcase-caption";
 import { ShowcaseLayers } from "@/components/showcase/showcase-layers";
@@ -48,6 +48,7 @@ function getDestination(search: string) {
  * 顶栏是连镜 Logo 和 Slogan，中间是「从一句话，到一部片。」（末尾的词轮换）和一颗写想法的胶囊；
  * 点「开始创作」胶囊原地展开成登录 / 注册卡片，写下的想法登录后带到创作页。成功后黑场里亮出 Logo 和欢迎语，再进首页。
  * 首屏下方始终保留整页宽的功能截图轮播；带着 ?next= 直接展开登录卡片时也不会隐藏。
+ * 登录卡片除用户名密码外，部署配置了观猹 OAuth2 时还显示「使用观猹账号登录」；授权回调由 /auth/watcha/callback 页面换 JWT。
  * 保留 ?next= 跳转和 ?tab=register；带着 next 或 tab 来的（被拦截到登录页、点了注册链接）直接展开卡片。
  * 进页面先取 /auth/config：注册关闭时不显示注册入口；无需验证码时（首个账号）隐藏验证码。
  */
@@ -64,6 +65,7 @@ export default function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [watchaLoading, setWatchaLoading] = useState(false);
   const [loginError, setLoginError] = useState("");
   /** 胶囊里写的想法（或「做同款」填进来的提示词）：登录或注册成功后记进 sessionStorage，创作页读走 */
   const [idea, setIdea] = useState("");
@@ -130,6 +132,22 @@ export default function Login() {
       if (hint?.field === "form") setLoginError(hint.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  /** 发起观猹 OAuth：当前页整页跳到授权页，回调页再用一次性 code 换本站 JWT */
+  const handleWatcha = async () => {
+    if (loading || watchaLoading) return;
+    setWatchaLoading(true);
+    setLoginError("");
+    // OAuth 会整页离开；把用户写下的想法先放进 sessionStorage，回来登录成功后再带入首页
+    saveCarry(idea.trim());
+    try {
+      const result = await startWatchaLogin(destination);
+      window.location.assign(result.auth_url);
+    } catch (error) {
+      setLoginError(error instanceof ApiError ? error.message : "观猹登录发起失败，请稍后重试");
+      setWatchaLoading(false);
     }
   };
 
@@ -229,11 +247,14 @@ export default function Login() {
                 password={password}
                 loading={loading}
                 loginError={loginError}
+                watchaEnabled={config?.watcha_enabled === true}
+                watchaLoading={watchaLoading}
                 onModeChange={setMode}
                 onUsernameChange={setUsername}
                 onPasswordChange={setPassword}
                 onSubmit={handleSubmit}
                 onRegistered={handleRegistered}
+                onWatcha={handleWatcha}
               />
             </IdeaDock>
             <a

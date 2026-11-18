@@ -85,6 +85,11 @@ func NewApp(cfg *config.Config) (*App, error) {
 		JWTSecret: cfg.JWT.Secret, JWTIssuer: cfg.JWT.Issuer, JWTExpireHours: cfg.JWT.ExpireHours,
 		Debug:           cfg.Server.Mode == "debug", // 仅 debug 模式把验证码打到日志
 		TokenPayEnabled: cfg.TokenPay.Enabled(), TokenPayAppURL: cfg.TokenPay.AppURL,
+		WatchaEnabled: cfg.Watcha.Enabled(),
+	})
+	watchaSvc := service.NewWatchaService(service.WatchaDeps{
+		Repo: userRepo, Users: userSvc, Flows: cache.NewWatchaFlowStore(rdb), Policy: settingsSvc,
+		ClientID: cfg.Watcha.ClientID, ClientSecret: cfg.Watcha.ClientSecret, RedirectURI: cfg.Watcha.RedirectURI,
 	})
 
 	// 对外 ID 编码：画布 ID 等以十六进制串暴露，库里主键不变
@@ -352,6 +357,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		AgentProxy:     agentProxy,
 		Health:         handler.NewHealthHandler(db, rdb),
 		User:           handler.NewUserHandler(userSvc),
+		Watcha:         handler.NewWatchaHandler(watchaSvc),
 		Me:             handler.NewMeHandler(meSvc),
 		Wallet:         handler.NewWalletHandler(walletSvc),
 		CanvasProject:  handler.NewCanvasProjectHandler(canvasProjectSvc),

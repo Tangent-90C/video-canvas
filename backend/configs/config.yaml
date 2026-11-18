@@ -74,6 +74,15 @@ tokenpay:
   app_url: ""
   key_name: "连镜"
 
+watcha:
+  # 观猹（Watcha）OAuth2 登录。client_id / client_secret / redirect_uri 三项要么都不配（关闭登录入口），
+  # 要么全部配置；client_secret 只通过环境变量 APP_WATCHA_CLIENT_SECRET 或部署密钥管理注入，不要写进仓库。
+  # redirect_uri 必须与观猹后台登记的回调地址完全一致，默认应为：
+  #   https://canvas.tan90.site/auth/watcha/callback
+  client_id: ""
+  client_secret: ""
+  redirect_uri: ""
+
 agent:
   # 画布 Agent：独立的常驻服务（仓库根目录 agent/，Pi Durable + SQLite，会话、运行、审批都在它里面）。Go 负责登录校验、反向代理前端的接口，
   # 并提供平台能力（画布读写、模型代理和计费、生成任务、素材）。docker compose 部署时由 APP_AGENT_ENABLED 开启（默认开）；

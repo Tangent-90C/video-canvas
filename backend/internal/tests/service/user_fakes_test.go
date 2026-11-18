@@ -19,6 +19,7 @@ import (
 type fakeUserRepo struct {
 	mu      sync.Mutex
 	users   []*model.User
+	oauth   map[string]*model.User
 	credits map[uint64]*model.UserCredit
 	ledger  []model.CreditLedger
 	logs    []model.UserLoginLog
@@ -42,7 +43,7 @@ type fakeUserRepo struct {
 }
 
 func newFakeUserRepo() *fakeUserRepo {
-	return &fakeUserRepo{credits: map[uint64]*model.UserCredit{}, errs: map[string]error{}}
+	return &fakeUserRepo{credits: map[uint64]*model.UserCredit{}, oauth: map[string]*model.User{}, errs: map[string]error{}}
 }
 
 func (r *fakeUserRepo) seed(u model.User) *model.User {
@@ -57,6 +58,41 @@ func (r *fakeUserRepo) seed(u model.User) *model.User {
 	}
 	r.users = append(r.users, &u)
 	return &u
+}
+
+// oauthKey 生成测试用的第三方身份键。
+func oauthKey(provider, subject string) string { return provider + "|" + subject }
+
+// GetByOAuth 模拟按第三方身份查用户。
+func (r *fakeUserRepo) GetByOAuth(_ context.Context, provider, subject string) (*model.User, error) {
+	if err := r.errs["GetByOAuth"]; err != nil {
+		return nil, err
+	}
+	u := r.oauth[oauthKey(provider, subject)]
+	if u == nil {
+		return nil, repository.ErrNotFound
+	}
+	cp := *u
+	return &cp, nil
+}
+
+// CreateWithOAuth 模拟同一事务里建用户和身份；身份重复返回 repository.ErrDuplicate。
+func (r *fakeUserRepo) CreateWithOAuth(_ context.Context, provider, subject string, u *model.User) error {
+	if err := r.errs["CreateWithOAuth"]; err != nil {
+		return err
+	}
+	if r.oauth[oauthKey(provider, subject)] != nil {
+		return repository.ErrDuplicate
+	}
+	for _, existing := range r.users {
+		if existing.Username == u.Username {
+			return repository.ErrDuplicate
+		}
+	}
+	u.ID = uint64(len(r.users) + 1)
+	r.users = append(r.users, u)
+	r.oauth[oauthKey(provider, subject)] = u
+	return nil
 }
 
 func (r *fakeUserRepo) GetByID(_ context.Context, id uint64) (*model.User, error) {

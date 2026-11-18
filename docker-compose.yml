@@ -62,6 +62,10 @@ services:
       # TokenPay 用户钱包：站点对外地址（授权归因 + 回调基址）。不配则钱包功能整体关闭；不配 KEY_NAME 时后端用默认「连镜」
       APP_TOKENPAY_APP_URL: ${APP_TOKENPAY_APP_URL:-}
       APP_TOKENPAY_KEY_NAME: ${APP_TOKENPAY_KEY_NAME:-}
+      # 观猹 OAuth2 登录；client_secret 只放部署机 .env，不写进仓库
+      APP_WATCHA_CLIENT_ID: ${APP_WATCHA_CLIENT_ID:-}
+      APP_WATCHA_CLIENT_SECRET: ${APP_WATCHA_CLIENT_SECRET:-}
+      APP_WATCHA_REDIRECT_URI: ${APP_WATCHA_REDIRECT_URI:-}
     volumes:
       - backend_assets:/app/data/assets
       # 日志：app.log（过程和结果，保留 30 天）、payload.log（每次上游调用的请求和响应全文，保留 7 天）

@@ -327,3 +327,29 @@ func writeTemp(t *testing.T, body string) string {
 	}
 	return path
 }
+
+// 观猹 OAuth 登录三项必须一起配置；回调地址只接受前后端约定的 callback 路径。
+func TestLoad_WatchaSettingsFromEnv(t *testing.T) {
+	t.Setenv("APP_WATCHA_CLIENT_ID", "client-id")
+	t.Setenv("APP_WATCHA_CLIENT_SECRET", "client-secret")
+	t.Setenv("APP_WATCHA_REDIRECT_URI", "https://canvas.example.com/auth/watcha/callback")
+	cfg, err := Load("../../../configs/config.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Watcha.Enabled() || cfg.Watcha.ClientID != "client-id" || cfg.Watcha.ClientSecret != "client-secret" || cfg.Watcha.RedirectURI != "https://canvas.example.com/auth/watcha/callback" {
+		t.Fatalf("观猹配置未从环境变量读取：%+v", cfg.Watcha)
+	}
+}
+
+func TestWatchaValidate(t *testing.T) {
+	if err := (Watcha{ClientID: "id"}).Validate(); err == nil || !strings.Contains(err.Error(), "必须同时配置") {
+		t.Fatalf("只配 client_id 应拒绝启动：%v", err)
+	}
+	if err := (Watcha{ClientID: "id", ClientSecret: "secret", RedirectURI: "https://canvas.example.com/oauth/callback"}).Validate(); err == nil || !strings.Contains(err.Error(), "redirect_uri") {
+		t.Fatalf("回调路径不对应拒绝：%v", err)
+	}
+	if err := (Watcha{ClientID: "id", ClientSecret: "secret", RedirectURI: "https://canvas.example.com/auth/watcha/callback"}).Validate(); err != nil {
+		t.Fatalf("合法配置不应报错：%v", err)
+	}
+}

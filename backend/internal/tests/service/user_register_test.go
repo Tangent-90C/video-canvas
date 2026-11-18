@@ -442,3 +442,13 @@ func (r *racingRepo) WithTx(ctx context.Context, fn func(tx repository.UserTx) e
 	r.seed(model.User{Username: "winner"})
 	return r.fakeUserRepo.WithTx(ctx, fn)
 }
+
+// 观猹登录开关随 /auth/config 下发；默认关闭，只有部署配置完整时登录页才显示入口。
+func TestUserService_AuthConfig_Watcha(t *testing.T) {
+	repo := newFakeUserRepo()
+	svc, _, _, _ := newUserSvc(repo, func(d *UserDeps) { d.WatchaEnabled = true })
+	got, err := svc.AuthConfig(context.Background())
+	if err != nil || !got.WatchaEnabled {
+		t.Fatalf("观猹开关应下发：%+v %v", got, err)
+	}
+}

@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [0.7.4] - 2026-11-18
+
+### 新增
+
+- 登录页新增观猹（Watcha）OAuth2 Authorization Code + PKCE 登录：后端持有 client secret，一次性 state 存 Redis，回调只返回本站 JWT；新增用户绑定表与 `watcha_enabled` 登录配置。
+
 ## [0.7.3] - 2026-11-18
 
 ### 修复

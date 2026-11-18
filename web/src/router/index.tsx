@@ -32,6 +32,7 @@ import DramaWorkspace from "@/pages/drama/workspace";
 import Home from "@/pages/home";
 import HomeLayout from "@/pages/home/layout";
 import Login from "@/pages/login";
+import WatchaCallback from "@/pages/login/watcha-callback";
 import MarketingDetail from "@/pages/marketing/detail";
 import MarketingList from "@/pages/marketing";
 import TokenPayCallback from "@/pages/wallet/tokenpay-callback";
@@ -88,6 +89,11 @@ export const router = createBrowserRouter([
       {
         path: "/login",
         element: <Login />,
+      },
+      /** 观猹 OAuth2 授权完成后的前端落地页：用 code + state 换 JWT，不把 token 放进 URL */
+      {
+        path: "/auth/watcha/callback",
+        element: <WatchaCallback />,
       },
       /** TokenDance 授权完成后回调落地：用 code 换 Key 后跳回发起页；未登录时引导先登录再回来 */
       {

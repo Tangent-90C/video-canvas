@@ -28,8 +28,13 @@ POSTGRES_PASSWORD=change-this
 APP_JWT_SECRET=change-this
 APP_AI_SECRET_KEY=change-this
 APP_SERVER_ALLOWED_ORIGINS=https://canvas.example.com
+APP_WATCHA_CLIENT_ID=your-watcha-client-id
+APP_WATCHA_CLIENT_SECRET=your-watcha-client-secret
+APP_WATCHA_REDIRECT_URI=https://canvas.example.com/auth/watcha/callback
 WEB_PORT=38080
 ```
+
+观猹 OAuth2 登录的三项配置必须同时存在，且 `APP_WATCHA_REDIRECT_URI` 要原样登记到观猹应用后台；未配置时登录页自动隐藏观猹入口。`APP_WATCHA_CLIENT_SECRET` 只放部署机 `.env`，不要提交到仓库。
 
 登录 GHCR 后启动：
 

@@ -190,6 +190,7 @@ curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/scripts
 | 后端结构、配置项、完整接口表 | [backend/README.md](backend/README.md)                                                                  |
 | AI 管理接口、插件契约        | [admin-ai-api.md](backend/docs/admin-ai-api.md) · [plugin-contract.md](backend/docs/plugin-contract.md) |
 | 产品与交互设计               | [docs/design/](docs/design/)                                                                            |
+| 用户与 OAuth 登录            | [用户管理与注册设计](docs/design/用户管理与注册设计.md) · [观猹 OAuth2 登录](docs/design/Watcha登录/Watcha登录.md) |
 | 版本变更                     | [CHANGELOG.md](CHANGELOG.md)                                                                            |
 
 ## 参与贡献

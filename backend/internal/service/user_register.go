@@ -66,6 +66,7 @@ func (s *UserService) AuthConfig(ctx context.Context) (*model.AuthConfigView, er
 		EmailVerifyRequired: st.verifyRequired,
 		TokenPayEnabled:     s.TokenPayEnabled,
 		TokenPayAppURL:      s.TokenPayAppURL,
+		WatchaEnabled:       s.WatchaEnabled,
 	}, nil
 }
 

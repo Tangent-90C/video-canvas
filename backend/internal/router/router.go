@@ -14,6 +14,7 @@ import (
 type Handlers struct {
 	Health         *handler.HealthHandler
 	User           *handler.UserHandler
+	Watcha         *handler.WatchaHandler // 观猹 OAuth2 登录：发起授权与回调换 JWT
 	Me             *handler.MeHandler     // 个人中心：资料、头像、改密码、统计、热力图
 	Wallet         *handler.WalletHandler // 用户 TokenPay 钱包：发起授权、授权码交换、连接状态、断开
 	CanvasProject  *handler.CanvasProjectHandler
@@ -82,6 +83,10 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		v1.POST("/auth/register/code", h.User.SendRegisterCode)
 		v1.POST("/auth/register", h.User.Register)
 		v1.POST("/auth/login", h.User.Login)
+		if h.Watcha != nil {
+			v1.GET("/auth/watcha/start", h.Watcha.Start)
+			v1.POST("/auth/watcha/callback", h.Watcha.Callback)
+		}
 		v1.GET("/showcase", h.Showcase.Public) // 登录页背景轮播：未登录即可读取，只暴露播放所需字段
 
 		// 支付渠道的异步通知：渠道服务器调用，不带 JWT，身份由渠道的签名保证；GET（易支付）和 POST（其余）都要接

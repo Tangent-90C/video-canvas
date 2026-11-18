@@ -6,6 +6,7 @@ import "time"
 const (
 	LoginKindLogin    = "login"    // 用户名密码登录
 	LoginKindRegister = "register" // 注册即登录
+	LoginKindOAuth    = "oauth"    // 第三方 OAuth 登录
 
 	LoginResultOK      = "ok"      // 成功
 	LoginResultBadPw   = "badpw"   // 密码错误（或用户不存在）
