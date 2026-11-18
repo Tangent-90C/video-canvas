@@ -77,7 +77,6 @@ func TestAdminCatalogHandler_ChannelList(t *testing.T) {
 	t.Run("model_count / online_model_count 按绑定到该渠道的模型统计", func(t *testing.T) {
 		env := aicNewEnv(t)
 		seedCatalog(t, env)
-		aicWant(t, env.super(http.MethodPut, aicBase+"/channels/a-main/secret", map[string]any{"value": "sk-a"}), http.StatusOK, 0)
 		aicWant(t, env.super(http.MethodPost, aicBase+"/models", map[string]any{"body": aicModelJSON("m1", "video", "a-main")}), http.StatusOK, 0)
 		aicWant(t, env.super(http.MethodPost, aicBase+"/models", map[string]any{"body": aicModelJSON("m2", "video", "a-main")}), http.StatusOK, 0)
 		aicWant(t, env.super(http.MethodPut, aicBase+"/models/m1/enabled", map[string]any{"enabled": true}), http.StatusOK, 0)

@@ -13,13 +13,13 @@
 - **问题**：旧实现同时存在平台积分和 TokenPay 用户钱包，容易把产品方渠道 Key、用户钱包 Key、平台积分价和上游真实账单混在一起，产生“用户白嫖产品方余额”或编造金额的风险。
 - **目标**：
   - 用户在个人中心一键连接 TokenPay 钱包；任何模型入口在未连接时直接打开连接引导，不回退积分或其他渠道 Key。
-  - 所有真实模型调用只用 `wallet:<uid>`；产品方渠道 Key 只允许用于拉取模型目录。
+  - 所有模型调用只用 `wallet:<uid>`；TokenPay 钱包渠道不保存任何产品方 Key，模型目录直接读取公开接口。
   - 调用量归因到本站（App URL），运营者从 TokenPay 后台按归因拿分润。
 - **推荐结论**：
   1. **一个钱包渠道**：管理员建渠道时勾选「钱包渠道」，`base_url=https://tokendance.space/gateway`。TokenDance 全部端点同源（`/v1/responses`、`/v1/images/generations`、`/ark/v3/generations/tasks`、`/minimax/v1/t2a_v2`），Bearer 同源注入天然满足，四类能力共用这一个渠道。
   2. **模型绑定复用现有插件体系**：文本→`openai.js`、图像→`openai-image.js` 现成；视频/音频新写两个内置插件 `tokendance-video.js`（豆包 ark 协议同构）、`tokendance-tts.js`（minimax T2A v2）。
-  3. **钱包 Key 复用 `ai_secrets`**：名字 `wallet:<user_id>`，AES-256-GCM 与渠道 Key 同一套主密钥；新表 `user_wallets` 只存展示元数据。
-  4. **任务侧统一计费**：可启用模型必须绑定钱包渠道，创建任务时要求用户已连接钱包并标 `wallet=true`；执行时只允许 `loadSecret` 读取 `wallet:<uid>`。历史非钱包任务失败关闭，不能回退产品方渠道 Key。
+  3. **钱包 Key 复用 `ai_secrets`**：名字 `wallet:<user_id>`，AES-256-GCM 与渠道 Key 同一套主密钥；TokenPay 钱包渠道本身不配置 Key，新表 `user_wallets` 只存展示元数据。
+  4. **任务侧统一计费**：可启用模型必须绑定钱包渠道，创建任务时要求用户已连接钱包并标 `wallet=true`；执行时只允许 `loadSecret` 读取 `wallet:<uid>`。历史非钱包任务失败关闭，不存在产品方 Key 回退路径。
 
 ## 2. 用户流程
 
@@ -35,7 +35,7 @@
 ### 3.1 钱包渠道（管理后台）
 
 - `ai_channels.wallet_enabled bool` 标记钱包渠道（`backend/migrations/0040_user_wallet.sql`）。
-- 勾选后：该渠道上的模型由发起用户自己的 Key 支付，渠道 Key 只用于 pull-models（拉模型目录）。
+- 勾选后：该渠道上的模型由发起用户自己的 Key 支付；渠道不保存产品方 Key。模型目录通过公开的 `GET /v1/models` 读取，不需要鉴权。
 - 归因：渠道 HeadersJSON 配 `{"X-App-URL":"<站点地址>"}`，随每个上游请求携带；授权 Key 本身也带 App URL 归因（OAuth 参数 `app_url`）。
 - `ChannelSnapshot.Wallet` 透传到快照（`backend/internal/provider/snapshot.go`），`ModelInfo.wallet` 透传到前端模型列表（`backend/internal/service/ai_config_registry.go`）。
 
@@ -52,7 +52,7 @@
 - `generation_tasks.wallet bool` 标记统一钱包任务（`backend/internal/model/generation_task.go`）。新任务固定 `Wallet=true, Credits=0`。
 - **创建**（`service/generation_task_create.go`）：模型必须绑定钱包渠道，并先查用户钱包连接；未连接返回 `ErrWalletNotConnected`。并发上限、幂等、营销风控等普通业务检查保留。
 - **状态收尾**（`service/generation_task_store.go`）：不写冻结、结算或退款流水；成功/失败/取消只记录任务状态与用量。
-- **凭证**（`provider/plugin/operation.go`）：真实任务只读 `wallet:<UserID>`。历史非钱包任务直接返回 `wallet_required`，不读 `channel:<key>`、不发上游请求；`channel:<key>` 仅用于目录同步。
+- **凭证**（`provider/plugin/operation.go`）：真实任务只读 `wallet:<UserID>`。历史非钱包任务直接返回 `wallet_required`、不发上游请求。TokenPay 钱包渠道不保存产品方 Key；普通非钱包渠道仍可使用自己的 `channel:<key>`。
 - **文本与 Agent**：Agent、短剧文本、营销环节分别通过 LLM 网关或 stepkit 读取用户钱包 Key；非钱包快照直接失败关闭。
 - **失败文案**（`worker/policy.go`）：余额不足给充值入口；授权失效给重新连接入口；历史非钱包任务提示重新用 TokenPay 钱包提交。
 - **恢复动作头**：上游响应带 `TokenDance-Recovery-Action` 时，宿主优先按它分类：`top_up_balance` → `provider_balance`；`reauthorize_api_key` → `secret_unavailable`；`api_key_quota` → `key_quota`。
@@ -107,8 +107,8 @@ ALTER TABLE generation_tasks ADD COLUMN wallet bool NOT NULL DEFAULT false;
 ## 5. 部署与运营者配置
 
 > TokenPay 是管理后台的**一等公民配置页**（`/admin/ai/tokenpay`，侧栏「TokenPay 钱包」）：
-> 网关地址、X-App-URL 归因、TokenDance Key、启用开关在一张卡里，点「保存并开通」即建渠道
-> （key 固定 `tokenpay`）+ 存 Key + 同步全部模型。通用渠道列表、渠道表单、模型弹窗都不出现钱包渠道。
+> 网关地址、X-App-URL 归因、启用开关在一张卡里，点「保存并开通」即建渠道（key 固定 `tokenpay`）
+> 并同步公开模型目录。页面没有产品方 Key 输入项；通用渠道列表、渠道表单、模型弹窗都不出现钱包渠道。
 
 ### 5.1 部署 env
 
@@ -127,7 +127,7 @@ ALTER TABLE generation_tasks ADD COLUMN wallet bool NOT NULL DEFAULT false;
    - `base_url` = `https://tokendance.space/gateway`
    - 勾选「钱包渠道」
    - HeadersJSON 填 `{"X-App-URL":"<你的站点地址>"}`（归因头）
-   - API Key 填一个任意有效的 TokenDance Key（仅用于拉模型目录，用户请求不走它）
+   - 不填写 API Key：模型目录是公开接口。
 3. **同步全部模型**：钱包渠道页点「同步全部模型」，按上游 `supported_protocols` 自动建模型并启用：
    - 文本 → `openai.js`（Chat Completions）
    - 图像 → `tokendance-image.js`（Seedream / Qwen Image；含 Seedream 5.5、5.0 Pro）
@@ -163,7 +163,7 @@ ALTER TABLE generation_tasks ADD COLUMN wallet bool NOT NULL DEFAULT false;
 
 - **主体在新文件**（零冲突）：插件 ×2、`cache/oauth_flow.go`、`service/user_wallet.go`、`repository/user_wallet.go`、`handler/wallet.go`、`model/user_wallet.go`、迁移、前端 wallet api/store/页面 ×2、测试 ×3。
 - **既有文件只有少量接缝**：任务/渠道快照的 Wallet 标记、所有真实执行入口的 wallet-only 校验、历史 `pricing` 宽容解析、钱包 API 路由。
-- 上游若重构 worker、插件宿主或模型注册表，只需保持这些约束：真实调用只读 `wallet:<uid>`，目录同步才读 `channel:<key>`，历史非钱包任务失败关闭。
+- 上游若重构 worker、插件宿主或模型注册表，只需保持这些约束：真实调用只读 `wallet:<uid>`，TokenPay 目录同步不读任何渠道凭证，历史非钱包任务失败关闭。
 
 **上游地址的 `/portal` 前缀坑（v0.6.27 踩过）**：TokenDance 的开放平台接口（授权码交换、余额查询）都在 `https://tokendance.space/portal/api/v1/...` 下；一级域名下的 `/api/v1/...` 是官网前端路由，会返回 HTML（SPA fallback，HTTP 200、`Content-Type: text/html`），后端按 JSON 解析失败后表现为「余额显示 ¥0 + 可能不是最新」。验证方式：不带 Key 请求，`/portal/...` 返回 401 JSON，一级域名返回 200 HTML。
 
@@ -173,13 +173,17 @@ ALTER TABLE generation_tasks ADD COLUMN wallet bool NOT NULL DEFAULT false;
 
 - Agent 不走插件，由 Go 的 LLM 网关按 `openai` / `gemini` 接口格式直接请求 TokenPay。
 - TokenPay 渠道一键同步覆盖 text/image/video/audio；agent 模型需要在后台手工创建并绑定 TokenPay 钱包渠道。
-- Agent 对话、短剧文本、营销文本与视频理解都读取发起用户的 `wallet:<uid>`，不读取产品方渠道 Key；用户未连接时直接引导连接。
-- 模型目录同步是唯一允许使用产品方渠道 Key 的路径；该 Key 不得进入生成、试跑、Agent 对话或任何用户请求。
+- Agent 对话、短剧文本、营销文本与视频理解都读取发起用户的 `wallet:<uid>`；用户未连接时直接引导连接。
+- TokenPay 模型目录是公开接口，钱包渠道不保存产品方 Key，后台也不提供设置入口。
+
+### 7.2 产品方 Key 残留事故复盘
+
+2026-11-18 发现 TokenPay 钱包设置页仍保留「TokenDance API Key」输入项，并继续用 `channel:tokenpay` 读取模型目录。该字段违反“钱包渠道只使用用户自己的 Key”的产品契约。复盘、根因和修复约束见 [产品方 Key 残留事故复盘](产品方Key残留事故复盘.md)。
 
 ## 8. 明确不做
 
 - 平台积分充值、积分商城、积分余额、冻结、结算、退款、后台调账和定价设置。
-- 产品方渠道 Key 代用户支付；它只用于同步模型目录。
+- TokenPay 钱包渠道保存产品方 Key，或任何代码在产品方 Key 与用户钱包 Key 之间回退。
 - 非 TokenPay 钱包渠道承接用户生成或 Agent 对话。
 - 服务费比例收取、TokenDance 兑换码充值；未落地的语音复刻等能力继续按当前插件目录判断。
 
@@ -226,14 +230,14 @@ ALTER TABLE generation_tasks ADD COLUMN wallet bool NOT NULL DEFAULT false;
 - 生产路由不再注册平台充值、商城、支付回调、积分流水、后台调账、定价设置等接口；旧 handler/service 若为编译兼容保留，也不可被路由访问。
 - 用户与后台接口不再返回积分余额、冻结额、积分消耗或调账结果；历史字段若仍有 JSON 兼容值，只允许为 0 或 `json:"-"`。
 - 管理后台用户页、模型页、AI 助手提示词和工具输出不再提供积分定价或调账能力。
-- `generation_tasks.wallet=false` 的历史任务失败关闭，不会回退到产品方渠道 Key。
+- `generation_tasks.wallet=false` 的历史任务失败关闭，不存在产品方 Key 回退路径。
 
 ### 10.2 兼容策略
 
 - 不删除 `users` 的历史积分列、`user_credits`、`credit_ledger`、`payment_*` 或任务里的 `credits` / `pricing` 字段；旧库升级后仍可启动、读取历史和回滚镜像。
 - `pricing` 是宽容的历史字段：旧结构、旧单价类型或未知嵌套字段不阻止模型读取、保存和启用；新代码不依赖它计价。
 - 任务视图、短剧估价和 Agent 观测中的积分字段只作为旧客户端兼容值返回 0。
-- 未新增破坏性迁移；`0040_user_wallet.sql` 是唯一的结构接缝：`user_wallets`、`ai_channels.wallet_enabled`、`generation_tasks.wallet`。
+- `0043_wallet_channels_drop_product_keys.sql` 清除所有钱包渠道历史上误存的产品方 Key；`0040_user_wallet.sql` 提供 `user_wallets`、`ai_channels.wallet_enabled`、`generation_tasks.wallet` 结构。
 
 ## 11. 余额不足直达充值
 
@@ -257,7 +261,7 @@ ALTER TABLE generation_tasks ADD COLUMN wallet bool NOT NULL DEFAULT false;
 
 - `GET /api/v1/models` 和 `GET /api/v1/agent/models` 只出现钱包模型；定价来自 TokenDance 公开实时价目，缺价时明确显示实际账单口径。
 - 未连接钱包时任何生成或 Agent 提交都返回 `40016`，前端就地打开连接弹窗。
-- 生成、短剧文本、营销环节、Agent 对话、管理员试跑都只读用户钱包 Key；历史非钱包任务不读取产品方 Key。
+- 生成、短剧文本、营销环节、Agent 对话、管理员试跑都只读用户钱包 Key；TokenPay 钱包渠道不保存、不读取产品方 Key。
 - `TokenDance-Recovery-Action` 的充值/重新授权/周期额度动作可落到正确前端动作。
 - 充值会话嵌套 `session` envelope 能正常解析，充值完成后余额刷新。
 - 历史积分表和字段仍存在，服务升级、回滚和读取旧记录不被破坏。

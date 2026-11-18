@@ -22,7 +22,8 @@ const pullModelsTimeout = 30 * time.Second
 // pullErrSnippetLen 是错误信息里引用的上游响应片段的最大字符数。
 const pullErrSnippetLen = 200
 
-// ListUpstreamModels 实现 provider.ModelLister：GET {base_url}/v1/models（base_url 末段已是版本号则只补 /models），渠道 API Key 作 Bearer，读 OpenAI 形状的 data[].id。
+// ListUpstreamModels 实现 provider.ModelLister：GET {base_url}/v1/models（base_url 末段已是版本号则只补 /models）。
+// 普通渠道带 API Key 作 Bearer；TokenPay 钱包渠道传空 Key，直接读取公开目录。读 OpenAI 形状的 data[].id。
 // 与其他出站请求一样走 SSRF 防护的客户端和渠道限流；渠道自定义请求头照常带上（目标就是 base_url 本身）。
 // 失败都返回 *provider.PullError，信息里不含 Key 明文。
 func (e *Executor) ListUpstreamModels(ctx context.Context, ch provider.ChannelSnapshot, apiKey string) ([]string, error) {
@@ -65,7 +66,12 @@ func (e *Executor) fetchModelDocs(ctx context.Context, ch provider.ChannelSnapsh
 	if err != nil {
 		return nil, &provider.PullError{Reason: provider.PullUnreachable, Message: "渠道的 Base URL 不合法"}
 	}
-	redact := func(s string) string { return strings.ReplaceAll(s, apiKey, "***") }
+	redact := func(s string) string {
+		if apiKey == "" {
+			return s
+		}
+		return strings.ReplaceAll(s, apiKey, "***")
+	}
 	// 2. 渠道限流（与插件请求共享同一份配额），再带超时发请求
 	release, err := e.limit(ctx, ch)
 	if err != nil {
@@ -84,7 +90,9 @@ func (e *Executor) fetchModelDocs(ctx context.Context, ch provider.ChannelSnapsh
 	for k, v := range ch.Headers {
 		req.Header.Set(k, v)
 	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
 	resp, err := e.client().Do(req)
 	if err != nil {
 		return nil, pullTransportError(err, target, redact)

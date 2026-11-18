@@ -88,7 +88,7 @@ func (s *AIConfigService) checkEnableable(ctx context.Context, key string, body 
 		return repository.ConfigPointer{}, err
 	}
 	// 3. 渠道 Key 已设置：否则启用后每个任务都会因缺凭证而失败
-	// 钱包渠道的运行时凭证是发起用户自己的 wallet:<uid>；产品方渠道 Key 只用于同步目录。
+	// 钱包渠道的运行时凭证是发起用户自己的 wallet:<uid>；渠道本身不持有产品方 Key。
 	if !rc.channel.WalletEnabled {
 		return repository.ConfigPointer{}, errcode.ErrConfigInvalid.WithMsg("平台积分渠道已停用，请将模型绑定到 TokenPay 钱包渠道")
 	}

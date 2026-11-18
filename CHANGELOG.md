@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+## [0.7.6] - 2026-11-18
+
+### 修复
+
+- TokenPay 钱包后台彻底移除产品方「TokenDance API Key」输入项和存储路径。TokenDance 模型目录改为无鉴权读取公开接口，不再使用 `channel:tokenpay`。
+- TokenPay 钱包渠道禁止设置产品方 API Key / Secret Key；历史误存凭证由 `0043_wallet_channels_drop_product_keys.sql` 清除，渠道切换为钱包渠道时也会立即删除。
+- 新增事故复盘，固定「钱包渠道不持有任何产品方凭证」的代码、接口和测试约束。
+
 ## [0.7.5] - 2026-11-18
 
 ### 修复

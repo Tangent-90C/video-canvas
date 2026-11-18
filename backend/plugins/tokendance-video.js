@@ -5,7 +5,7 @@
  * 直连 TokenDance 网关的 Seedance 接口（渠道 base_url 填 https://tokendance.space/gateway）：
  *   POST /ark/v3/generations/tasks 提交（返回 {id}），GET /ark/v3/generations/tasks/{id} 轮询，异步出片；
  *   状态 queued / running / succeeded / failed，成功后 content.video_url 是成片地址（有效期 24 小时，宿主会转存）。
- * 鉴权：Authorization: Bearer <TokenDance API Key>，由宿主按渠道 Key 注入；钱包渠道注入的是连接钱包的用户自己的 Key。
+ * 鉴权：Authorization: Bearer <TokenDance API Key>，由宿主注入；TokenPay 钱包渠道注入连接钱包的用户自己的 Key，普通渠道注入该渠道自己的 Key。
  * 上游模型（ctx.model.upstreamModel）即 TokenDance 模型目录里的 Seedance 模型 ID：seedance-2.0、seedance-2.5-flash、
  *   seedance-2.5 等（以 https://tokendance.space/gateway/v1/models 实时目录为准）。
  *

@@ -5,7 +5,6 @@ import { toast } from "sonner";
 import {
   createChannel,
   listChannelOptions,
-  setChannelSecret,
   syncChannelModels,
   updateChannel,
 } from "@/api/admin/ai";
@@ -33,7 +32,8 @@ export const TOKENPAY_BASE_URL = "https://tokendance.space/gateway";
 /**
  * TokenPay 钱包（/admin/ai/tokenpay）：钱包是一等公民的独立配置页，不和通用渠道混在一起。
  * 底层仍是一个自动管理的钱包渠道（wallet_enabled），这里负责它的全部配置：
- * 网关地址、X-App-URL 归因、TokenDance Key，以及「保存并同步全部模型」一键上架。
+ * 网关地址、X-App-URL 归因，以及「保存并同步全部模型」一键上架。
+ * TokenDance 模型目录是公开接口，钱包渠道不保存产品方 Key；用户调用使用自己的钱包 Key。
  * 页面读公开配置（tokenpay_enabled / tokenpay_app_url）与渠道清单；写操作只有 super_admin。
  */
 export default function TokenPayPage() {
@@ -122,8 +122,8 @@ export default function TokenPayPage() {
   );
 }
 
-/** 钱包渠道的配置卡：网关地址、归因地址、TokenDance Key、启用开关，保存时可顺带同步全部模型 */
-function WalletSettings({
+/** 钱包渠道的配置卡：网关地址、归因地址、启用开关，保存时可顺带同步全部模型 */
+export function WalletSettings({
   channel,
   appURL,
   canWrite,
@@ -136,7 +136,6 @@ function WalletSettings({
 }) {
   const [baseUrl, setBaseUrl] = useState(channel?.base_url ?? TOKENPAY_BASE_URL);
   const [appUrl, setAppUrl] = useState(channel?.headers?.["X-App-URL"] || appURL);
-  const [apiKey, setApiKey] = useState("");
   const [enabled, setEnabled] = useState(channel?.enabled ?? true);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -157,8 +156,7 @@ function WalletSettings({
     !channel ||
     baseUrl !== channel.base_url ||
     appUrl !== (channel.headers?.["X-App-URL"] ?? "") ||
-    enabled !== channel.enabled ||
-    apiKey.trim() !== "";
+    enabled !== channel.enabled;
 
   const save = async (withSync: boolean) => {
     if (!canWrite || saving) return;
@@ -181,7 +179,6 @@ function WalletSettings({
       } else {
         await updateChannel(channel.key, { base_url: baseUrl.trim(), headers, enabled });
       }
-      if (apiKey.trim()) await setChannelSecret(channel?.key ?? "tokenpay", apiKey.trim());
       if (withSync) {
         setSyncing(true);
         const id = toast.loading("已保存，正在同步全部模型…");
@@ -200,7 +197,6 @@ function WalletSettings({
       } else {
         toast.success("TokenPay 钱包配置已保存");
       }
-      setApiKey("");
       onSaved();
     } catch (cause) {
       toast.error(errorMessage(cause, "保存失败"));
@@ -218,11 +214,10 @@ function WalletSettings({
             状态：
             {channel ? (
               <span className="text-foreground">
-                已配置（{channel.enabled ? "启用中" : "已停用"}，Key{" "}
-                {channel.secret_set ? "已设置" : "未设置"}）
+                已配置（{channel.enabled ? "启用中" : "已停用"}）
               </span>
             ) : (
-              <span className="text-foreground">未配置——填好下面三项即可一次开通全部模型</span>
+              <span className="text-foreground">未配置——填写网关和归因地址后即可开通全部模型</span>
             )}
           </span>
         </div>
@@ -249,20 +244,6 @@ function WalletSettings({
               value={appUrl}
               disabled={!canWrite || saving}
               onChange={(event) => setAppUrl(event.target.value)}
-            />
-          </FormField>
-          <FormField
-            label="TokenDance API Key"
-            htmlFor="tokenpay-key"
-            hint="产品方的 Key，只用来同步模型目录；用户生成用的是用户自己授权的钱包 Key"
-          >
-            <Input
-              id="tokenpay-key"
-              type="password"
-              value={apiKey}
-              placeholder={channel?.secret_set ? "已设置（填入新值即覆盖）" : "tk-…"}
-              disabled={!canWrite || saving}
-              onChange={(event) => setApiKey(event.target.value)}
             />
           </FormField>
           <div className="flex items-center gap-2 sm:pt-6">

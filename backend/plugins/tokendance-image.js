@@ -2,7 +2,7 @@
  * TokenDance（词元跳动）· 图片插件（内置，契约 v1）。
  * 对接 TokenDance 网关的方舟图像接口（渠道 base_url 填 https://tokendance.space/gateway）：
  *   POST /ark/v3/images/generations（同步），成图 URL 有效期 24 小时，宿主会转存。
- * 鉴权：Authorization: Bearer <TokenDance API Key>，由宿主注入；钱包渠道注入的是连接钱包的用户自己的 Key。
+ * 鉴权：Authorization: Bearer <TokenDance API Key>，由宿主注入；TokenPay 钱包渠道注入连接钱包的用户自己的 Key，普通渠道注入该渠道自己的 Key。
  * 上游模型即 TokenDance 目录里 supported_protocols 含 ark:image-generations / openai:image-generations 的模型：
  *   seedream-5.0-lite、qwen-image-2.1-pro 等（以 https://tokendance.space/gateway/v1/models 实时目录为准）。
  *

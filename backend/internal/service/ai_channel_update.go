@@ -34,6 +34,14 @@ func (s *AIChannelService) Update(ctx context.Context, in ChannelUpdateInput) (*
 	} else if err != nil {
 		return nil, err
 	}
+	if next.WalletEnabled {
+		// 钱包渠道的模型目录是公开接口，用户调用使用 wallet:<uid>；历史上误存的产品方凭证在这里清除。
+		for _, name := range []string{model.ChannelSecretName(next.Key), model.ChannelSecretKeyName(next.Key)} {
+			if err := s.secrets.DeleteSecret(ctx, name); err != nil {
+				return nil, err
+			}
+		}
+	}
 	s.auditUpdate(ctx, in.ActorID, cur, &next)
 	s.notifyChanged(ctx, "channel update "+cur.Key)
 	return s.view(ctx, &next)

@@ -208,6 +208,7 @@ func (s *AIConfigService) SyncChannelModels(ctx context.Context, actorID uint64,
 }
 
 // syncChannelSource 读取并校验收目录所需的渠道和 Key。
+// TokenDance 的钱包渠道使用公开模型目录，不持有、也不读取产品方 Key；普通渠道仍按原规则要求渠道 Key。
 func (s *AIConfigService) syncChannelSource(ctx context.Context, channelKey string) (*model.AIChannel, string, error) {
 	ch, err := s.channels.GetChannel(ctx, channelKey)
 	if err != nil {
@@ -215,6 +216,9 @@ func (s *AIConfigService) syncChannelSource(ctx context.Context, channelKey stri
 	}
 	if !ch.Enabled {
 		return nil, "", errcode.ErrChannelDisabled
+	}
+	if ch.WalletEnabled {
+		return ch, "", nil
 	}
 	key, err := s.Get(ctx, model.ChannelSecretName(channelKey))
 	if err != nil {
@@ -374,13 +378,15 @@ func pickSyncRule(protocols []string) *syncModelRule {
 	return nil
 }
 
-// syncFetchCatalog 拉上游的 /v1/models 目录（渠道 Key 鉴权）。
+// syncFetchCatalog 拉上游的 /v1/models 目录。TokenDance 目录公开；普通渠道有 Key 时按 Bearer 鉴权。
 func syncFetchCatalog(ctx context.Context, baseURL, key string) ([]syncCatalogEntry, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(baseURL, "/")+"/v1/models", nil)
 	if err != nil {
 		return nil, errcode.ErrConfigInvalid.WithMsg("渠道地址不合法：" + err.Error())
 	}
-	req.Header.Set("Authorization", "Bearer "+key)
+	if key != "" {
+		req.Header.Set("Authorization", "Bearer "+key)
+	}
 	req.Header.Set("Accept", "application/json")
 	resp, err := syncCatalogHTTP.Do(req)
 	if err != nil {

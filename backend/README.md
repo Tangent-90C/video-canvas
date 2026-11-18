@@ -1,6 +1,6 @@
 # video-canvas backend
 
-> **当前计费契约（2026-11-18）**：平台积分体系已停用，生产路由不再暴露积分余额、商城、充值、冻结、结算、退款、后台调账或定价设置接口。所有模型生成与 Agent 模型调用都只使用发起用户 OAuth 授权的 TokenPay Key（`wallet:<uid>`）；产品方渠道 Key 仅用于同步模型目录（`channel:<key>`），不能替用户支付。未连接钱包返回 `40016` 并引导连接。数据库中的历史积分表、流水和 `credits` / `pricing` 字段仅为升级兼容保留，不做破坏性删除。下面的旧接口表若仍提到积分，以本段和 [TokenPay 设计](../docs/design/TokenPay钱包/TokenPay钱包.md) 为准。
+> **当前计费契约（2026-11-18）**：平台积分体系已停用，生产路由不再暴露积分余额、商城、充值、冻结、结算、退款、后台调账或定价设置接口。所有模型生成与 Agent 模型调用都只使用发起用户 OAuth 授权的 TokenPay Key（`wallet:<uid>`）；TokenPay 钱包渠道不保存产品方 Key，模型目录直接读取公开接口。未连接钱包返回 `40016` 并引导连接。数据库中的历史积分表、流水和 `credits` / `pricing` 字段仅为升级兼容保留，不做破坏性删除。下面的旧接口表若仍提到积分，以本段和 [TokenPay 设计](../docs/design/TokenPay钱包/TokenPay钱包.md) 为准。
 
 Gin + GORM + go-redis + Viper + Zap 的 Go 后端骨架。
 

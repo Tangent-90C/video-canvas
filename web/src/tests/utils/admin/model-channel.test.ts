@@ -111,7 +111,7 @@ describe("resolveModelChannel", () => {
     expect(info.authLabel).toContain("自行签名");
   });
 
-  test("钱包渠道的产品方 Key 只用于同步目录，模型运行不要求它", () => {
+  test("钱包渠道不保存产品方 Key，模型运行使用用户自己的 Key", () => {
     const info = resolveModelChannel(
       body("main", "video", kling),
       [channel({ secret_set: false })],

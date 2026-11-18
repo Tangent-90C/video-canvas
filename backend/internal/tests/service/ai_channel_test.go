@@ -272,6 +272,26 @@ func TestAIChannelService_Update(t *testing.T) {
 		}
 	})
 
+	t.Run("切换为钱包渠道时清除历史产品方 Key", func(t *testing.T) {
+		e := seed(t)
+		if err := e.svc.SetSecret(ctx, 1, "main", "sk-product"); err != nil {
+			t.Fatal(err)
+		}
+		if err := e.svc.SetSecretKey(ctx, 1, "main", "sk-product-secret"); err != nil {
+			t.Fatal(err)
+		}
+		view, err := e.svc.Update(ctx, ChannelUpdateInput{Key: "main", WalletEnabled: flag(true)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if view.SecretSet || view.SecretKeySet || e.repo.Secrets["channel:main"] != nil || e.repo.Secrets["channel:main:secret"] != nil {
+			t.Fatalf("切换为钱包渠道后不应保留产品方凭证：%+v", view)
+		}
+		if _, err := e.cfg.Get(ctx, "channel:main"); err == nil {
+			t.Fatal("删除后凭证缓存也必须失效")
+		}
+	})
+
 	t.Run("没有变化不写审计", func(t *testing.T) {
 		e := seed(t)
 		if _, err := e.svc.Update(ctx, ChannelUpdateInput{Key: "main", Name: str("主渠道")}); err != nil {
@@ -394,6 +414,30 @@ func TestAIChannelService_SetSecret(t *testing.T) {
 		}
 		if view, _ := e.svc.Get(ctx, "main"); !view.SecretSet {
 			t.Fatal("secret_set 应为 true")
+		}
+	})
+
+	t.Run("钱包渠道禁止设置产品方 Key", func(t *testing.T) {
+		e := newAchEnv(t)
+		in := createInput()
+		in.WalletEnabled = true
+		_, _ = e.svc.Create(ctx, in)
+		e.repo.Audits = nil
+		adminWantCode(t, e.svc.SetSecret(ctx, 1, "main", "sk-product"), errcode.ErrInvalidParams.Code)
+		if len(e.repo.Secrets) != 0 || len(e.repo.Audits) != 0 {
+			t.Fatalf("钱包渠道不应保存产品方 Key 或写设置凭证审计：secrets=%v audits=%v", e.repo.Secrets, e.repo.AuditActions())
+		}
+	})
+
+	t.Run("钱包渠道禁止设置产品方 Secret Key", func(t *testing.T) {
+		e := newAchEnv(t)
+		in := createInput()
+		in.WalletEnabled = true
+		_, _ = e.svc.Create(ctx, in)
+		e.repo.Audits = nil
+		adminWantCode(t, e.svc.SetSecretKey(ctx, 1, "main", "sk-product"), errcode.ErrInvalidParams.Code)
+		if len(e.repo.Secrets) != 0 || len(e.repo.Audits) != 0 {
+			t.Fatalf("钱包渠道不应保存产品方 Secret Key 或写设置凭证审计：secrets=%v audits=%v", e.repo.Secrets, e.repo.AuditActions())
 		}
 	})
 

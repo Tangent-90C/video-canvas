@@ -255,13 +255,21 @@ func (s *AIChannelService) load(ctx context.Context, key string) (*model.AIChann
 
 // view 由渠道行组装视图。headers / rate_limit 正文损坏时按空值输出，不让一行坏数据拖垮列表。
 func (s *AIChannelService) view(ctx context.Context, ch *model.AIChannel) (*ChannelView, error) {
-	set, err := s.secrets.SecretIsSet(ctx, model.ChannelSecretName(ch.Key))
-	if err != nil {
-		return nil, err
+	set := false
+	if !ch.WalletEnabled {
+		var err error
+		set, err = s.secrets.SecretIsSet(ctx, model.ChannelSecretName(ch.Key))
+		if err != nil {
+			return nil, err
+		}
 	}
-	keySet, err := s.secrets.SecretIsSet(ctx, model.ChannelSecretKeyName(ch.Key))
-	if err != nil {
-		return nil, err
+	keySet := false
+	if !ch.WalletEnabled {
+		var err error
+		keySet, err = s.secrets.SecretIsSet(ctx, model.ChannelSecretKeyName(ch.Key))
+		if err != nil {
+			return nil, err
+		}
 	}
 	v := &ChannelView{
 		Key: ch.Key, Name: ch.Name, BaseURL: ch.BaseURL, Headers: decodeStringMap(ch.HeadersJSON), Sort: ch.Sort,

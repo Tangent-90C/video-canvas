@@ -133,15 +133,13 @@ func TestAdminLayer_BuiltinPluginEndToEnd(t *testing.T) {
 	// 内置插件不能删
 	adminWantCode(t, e.plugins.DeleteVersion(ctx, 1, "openai", openai.Versions[0].Version), errcode.ErrPluginBuiltin.Code)
 
-	// 2. 建渠道（只有连接信息，没有协议；上游是本机 httptest，回环地址由宿主选项 IPAllowed 放行），设 Key
+	// 2. 建钱包渠道（只有连接信息，没有协议；上游是本机 httptest，回环地址由宿主选项 IPAllowed 放行）。
+	// TokenPay 公开目录不设置、不发送产品方 Key。
 	view, err := e.channels.Create(ctx, ChannelCreateInput{
 		Key: "openai-main", Name: "OpenAI 渠道", BaseURL: e.upstream.URL, Enabled: true, WalletEnabled: true, ActorID: 1,
 	})
 	if err != nil || view.SecretSet {
 		t.Fatalf("建渠道失败：%+v %v", view, err)
-	}
-	if err := e.channels.SetSecret(ctx, 1, "openai-main", secret); err != nil {
-		t.Fatal(err)
 	}
 
 	// 3. 拉取上游模型：宿主内置的通用请求（GET /v1/models + Bearer），不经过插件；列出全部，不做类型过滤
@@ -150,9 +148,9 @@ func TestAdminLayer_BuiltinPluginEndToEnd(t *testing.T) {
 		t.Fatalf("拉取应成功并列出 3 个模型：%+v %v", pulled, err)
 	}
 	e.mu.Lock()
-	if len(e.gotAuths) == 0 || e.gotAuths[len(e.gotAuths)-1] != "Bearer "+secret {
+	if len(e.gotAuths) == 0 || e.gotAuths[len(e.gotAuths)-1] != "" {
 		e.mu.Unlock()
-		t.Fatalf("上游应收到渠道 Key 作 Bearer：%v", e.gotAuths)
+		t.Fatalf("钱包渠道读取公开目录不应带 Authorization：%v", e.gotAuths)
 	}
 	e.mu.Unlock()
 
@@ -204,8 +202,8 @@ func TestAdminLayer_BuiltinPluginEndToEnd(t *testing.T) {
 	if v, _ := e.channels.Get(ctx, "openai-main"); v != nil {
 		b, _ := json.Marshal(v)
 		all = append(all, b...)
-		if !v.SecretSet {
-			t.Fatal("secret_set 应为 true")
+		if v.SecretSet {
+			t.Fatal("钱包渠道不应有产品方 Key")
 		}
 	}
 	if strings.Contains(string(all), secret) {

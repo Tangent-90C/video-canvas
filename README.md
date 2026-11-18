@@ -169,7 +169,7 @@ curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/scripts
 ### 首次使用
 
 1. 打开页面注册账号。首个注册账号会成为超级管理员。
-2. 进入 **管理后台 → TokenPay 钱包**，填写网关地址和产品方渠道 Key，一键同步模型目录；该 Key 只用于同步，不替用户支付。同步会按上游协议接入文本、Seedream 图像，以及 Seedance、Kling、Wan3.0、HappyHorse、MiniMax 等视频模型。
+2. 进入 **管理后台 → TokenPay 钱包**，填写网关地址，一键同步公开模型目录；钱包渠道不需要产品方 Key。同步会按上游协议接入文本、Seedream 图像，以及 Seedance、Kling、Wan3.0、HappyHorse、MiniMax 等视频模型。
 3. 在个人中心连接自己的 TokenPay 钱包，完成后即可在首页或画布生成。
 4. 返回首页生成素材，或者新建画布，通过节点组织生成流程。未连接钱包时，模型入口会直接打开连接引导。
 

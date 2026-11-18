@@ -5,7 +5,7 @@
  * 接口（渠道 base_url 填 https://tokendance.space/gateway）：
  *   POST /minimax/v1/t2a_v2，同步返回；固定 output_format:"url"（上游返回 24 小时有效的音频下载地址，宿主会转存，
  *   本契约不支持内联 base64 产物，所以不用默认的 hex）。
- * 鉴权：Authorization: Bearer <TokenDance API Key>，由宿主按渠道 Key 注入；钱包渠道注入的是连接钱包的用户自己的 Key。
+ * 鉴权：Authorization: Bearer <TokenDance API Key>，由宿主注入；TokenPay 钱包渠道注入连接钱包的用户自己的 Key，普通渠道注入该渠道自己的 Key。
  * 上游模型（ctx.model.upstreamModel）即 TokenDance 模型目录里的 TTS 模型 ID：minimax-speech-2.8-hd、
  *   minimax-speech-2.8-turbo 等（以 https://tokendance.space/gateway/v1/models 实时目录为准）。
  *

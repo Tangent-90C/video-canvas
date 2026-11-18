@@ -81,7 +81,8 @@ func (s syncInvalidator) Invalidate(_ context.Context, reason string) {
 	s.n.NotifyChanged(context.Background(), reason)
 }
 
-// newSyncEnv 组装同步测试环境：四个插件版本 + 指向假上游的渠道 + 渠道 Key。
+// newSyncEnv 组装同步测试环境：插件版本 + 指向公开模型目录的钱包渠道。
+// 钱包渠道不持有产品方 Key，模型目录按 TokenDance 公开接口直接读取。
 func newSyncEnv(t *testing.T, catalogURL string) (*AIConfigService, *aiconfigfake.MemRepo, *aiconfigfake.Notifier) {
 	t.Helper()
 	repo := aiconfigfake.NewMemRepo()
@@ -92,9 +93,6 @@ func newSyncEnv(t *testing.T, catalogURL string) (*AIConfigService, *aiconfigfak
 	cfg := NewAIConfigService(repo, repo, repo, "test-master-key")
 	cfg.SetInvalidator(syncInvalidator{notifier})
 	if err := repo.CreateChannel(context.Background(), &model.AIChannel{Key: "main", Name: "主渠道", BaseURL: catalogURL, Enabled: true, WalletEnabled: true}); err != nil {
-		t.Fatal(err)
-	}
-	if err := cfg.SetSecret(context.Background(), model.ChannelSecretName("main"), "sk-live-123", 1); err != nil {
 		t.Fatal(err)
 	}
 	return cfg, repo, notifier
@@ -400,6 +398,27 @@ func TestSyncChannelModelsPreconditions(t *testing.T) {
 	}
 	if _, err := cfg.SyncChannelModels(ctx, 5, "nokey"); err == nil {
 		t.Fatal("渠道 Key 未设置应报错")
+	}
+}
+
+// TokenPay 钱包渠道读取公开模型目录时不得携带任何产品方 Key，即使数据库里残留旧凭证也不能使用。
+func TestSyncWalletChannelCatalogDoesNotSendProductKey(t *testing.T) {
+	var authorization string
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authorization = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	}))
+	defer up.Close()
+	cfg, _, _ := newSyncEnv(t, up.URL)
+	if err := cfg.SetSecret(context.Background(), model.ChannelSecretName("main"), "legacy-product-key", 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cfg.SyncChannelModels(context.Background(), 5, "main"); err != nil {
+		t.Fatal(err)
+	}
+	if authorization != "" {
+		t.Fatalf("钱包渠道的公开目录请求不应带 Authorization，实际为 %q", authorization)
 	}
 }
 

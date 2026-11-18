@@ -32,7 +32,7 @@ export type ModelChannelInfo = {
   authType: string | null;
   /** 渠道 API Key 是否已设置；没选渠道为 false */
   secretSet: boolean;
-  /** 产品方渠道 Key 缺失；钱包渠道运行时使用用户 Key，所以恒为 false（该 Key 只用于目录同步） */
+  /** 产品方渠道 Key 缺失；钱包渠道不保存产品方 Key，运行时使用用户自己的 Key，所以恒为 false */
   keyMissing: boolean;
   /** 协议版本的 endpoints 里是否有该模型的 kind；Agent、没选协议或协议信息未知为 null */
   supportsKind: boolean | null;
@@ -68,7 +68,7 @@ export function resolveModelChannel(
     supportsKind: null,
     protocolProblem: null,
   };
-  // Agent 不看协议，带了协议是正文校验问题；钱包渠道运行时不要求产品方 Key。
+  // Agent 不看协议，带了协议是正文校验问题；钱包渠道不保存、不要求产品方 Key。
   if (kind === "agent")
     return {
       ...base,

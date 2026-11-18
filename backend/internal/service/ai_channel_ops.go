@@ -18,8 +18,12 @@ const maxImportModels = 500 // 单次导入的模型数上限；一般用不到�
 // SetSecret 设置渠道 API Key（存 ai_secrets，名字固定为 channel:<key>），只写。审计只记“谁在什么时候改了哪个渠道的 Key”，不含值。
 func (s *AIChannelService) SetSecret(ctx context.Context, actorID uint64, key, value string) error {
 	// 1. 渠道必须存在：否则会往 ai_secrets 里写出没有主人的凭证
-	if _, err := s.load(ctx, key); err != nil {
+	ch, err := s.load(ctx, key)
+	if err != nil {
 		return err
+	}
+	if ch.WalletEnabled {
+		return errcode.ErrInvalidParams.WithMsg("TokenPay 钱包渠道不使用产品方 API Key；模型目录是公开接口，用户调用使用自己的钱包 Key")
 	}
 	// 2. 加密入库（空值、超长、没有主密钥等错误由凭证服务给出）
 	if err := s.secrets.SetSecret(ctx, model.ChannelSecretName(key), value, actorID); err != nil {
@@ -34,8 +38,12 @@ func (s *AIChannelService) SetSecret(ctx context.Context, actorID uint64, key, v
 // value 为空串表示清除。审计不含值。
 func (s *AIChannelService) SetSecretKey(ctx context.Context, actorID uint64, key, value string) error {
 	// 1. 渠道必须存在
-	if _, err := s.load(ctx, key); err != nil {
+	ch, err := s.load(ctx, key)
+	if err != nil {
 		return err
+	}
+	if ch.WalletEnabled {
+		return errcode.ErrInvalidParams.WithMsg("TokenPay 钱包渠道不使用产品方凭证；用户调用使用自己的钱包 Key")
 	}
 	// 2. 空串清除，否则加密入库
 	name := model.ChannelSecretKeyName(key)
@@ -115,16 +123,19 @@ func (s *AIChannelService) upstreamAccess(ctx context.Context, key string) (prov
 	if s.lister == nil {
 		return provider.ChannelSnapshot{}, "", errcode.ErrInternal.WithMsg("拉取模型功能未启用")
 	}
-	set, err := s.secrets.SecretIsSet(ctx, model.ChannelSecretName(key))
-	if err != nil {
-		return provider.ChannelSnapshot{}, "", err
-	}
-	if !set {
-		return provider.ChannelSnapshot{}, "", errcode.ErrChannelSecretUnset.WithMsg(fmt.Sprintf("渠道 %q 的 API Key 尚未设置，请先设置 Key", key))
-	}
-	apiKey, err := s.secrets.Get(ctx, model.ChannelSecretName(key))
-	if err != nil {
-		return provider.ChannelSnapshot{}, "", err
+	apiKey := ""
+	if !ch.WalletEnabled {
+		set, err := s.secrets.SecretIsSet(ctx, model.ChannelSecretName(key))
+		if err != nil {
+			return provider.ChannelSnapshot{}, "", err
+		}
+		if !set {
+			return provider.ChannelSnapshot{}, "", errcode.ErrChannelSecretUnset.WithMsg(fmt.Sprintf("渠道 %q 的 API Key 尚未设置，请先设置 Key", key))
+		}
+		apiKey, err = s.secrets.Get(ctx, model.ChannelSecretName(key))
+		if err != nil {
+			return provider.ChannelSnapshot{}, "", err
+		}
 	}
 	rt, err := provider.AgentRuntimeOf(ch) // 只要渠道部分：地址、请求头、限流
 	if err != nil {
@@ -135,11 +146,15 @@ func (s *AIChannelService) upstreamAccess(ctx context.Context, key string) (prov
 
 // pullFailure 把请求上游的失败翻译成业务错误，消息里不含 Key 明文（宿主已脱敏，这里再兜一次）。
 func pullFailure(err error, apiKey string) error {
+	redact := []string{}
+	if apiKey != "" {
+		redact = append(redact, apiKey)
+	}
 	var pe *provider.PullError
 	if errors.As(err, &pe) {
-		return errcode.ErrChannelPullFailed.WithMsg(aiRedactString(pe.Message, []string{apiKey}))
+		return errcode.ErrChannelPullFailed.WithMsg(aiRedactString(pe.Message, redact))
 	}
-	return errcode.ErrChannelPullFailed.WithMsg(aiRedactString(err.Error(), []string{apiKey}))
+	return errcode.ErrChannelPullFailed.WithMsg(aiRedactString(err.Error(), redact))
 }
 
 // UpstreamLimits 向渠道上游问某个模型的上下文规格：上游 /v1/models 随模型给了就返回，没给 ok 为 false。

@@ -268,7 +268,6 @@ func (e *aicEnv) enableAll(t *testing.T) {
 		body         any
 	}{
 		{http.MethodPost, aicBase + "/channels", aicChannelJSON("kling-main")},
-		{http.MethodPut, aicBase + "/channels/kling-main/secret", map[string]any{"value": "sk-super-secret"}},
 		{http.MethodPost, aicBase + "/models", map[string]any{"body": aicModelJSON("m1", "video", "kling-main")}},
 		{http.MethodPut, aicBase + "/models/m1/enabled", map[string]any{"enabled": true}},
 	}
@@ -636,7 +635,6 @@ func TestAdminPluginHandler_UpgradeModels(t *testing.T) {
 		}
 		env.seedPluginMeta(t, "kling", "1.1.0", model.PluginSourceUploaded, meta11)
 		aicWant(t, env.super(http.MethodPost, aicBase+"/channels", aicChannelJSON("kling-main")), http.StatusOK, 0)
-		aicWant(t, env.super(http.MethodPut, aicBase+"/channels/kling-main/secret", map[string]any{"value": "sk-1"}), http.StatusOK, 0)
 		return env
 	}
 	protocolVersion := func(t *testing.T, env *aicEnv, key string) string {
@@ -916,7 +914,9 @@ func TestAdminChannelHandler_RateLimit(t *testing.T) {
 
 func TestAdminChannelHandler_Secret(t *testing.T) {
 	env := aicNewEnv(t)
-	aicWant(t, env.super(http.MethodPost, aicBase+"/channels", aicChannelJSON("kling-main")), http.StatusOK, 0)
+	body := aicChannelJSON("kling-main")
+	body["wallet_enabled"] = false
+	aicWant(t, env.super(http.MethodPost, aicBase+"/channels", body), http.StatusOK, 0)
 	path := aicBase + "/channels/kling-main/secret"
 
 	t.Run("只写：成功不回显，详情里 secret_set=true，Key 出现在任何响应里都不行", func(t *testing.T) {
@@ -948,7 +948,9 @@ func TestAdminChannelHandler_Secret(t *testing.T) {
 	})
 	t.Run("没有主密钥时返回明确的 500 提示", func(t *testing.T) {
 		env2 := aicNewEnv(t)
-		aicWant(t, env2.super(http.MethodPost, aicBase+"/channels", aicChannelJSON("c")), http.StatusOK, 0)
+		body := aicChannelJSON("c")
+		body["wallet_enabled"] = false
+		aicWant(t, env2.super(http.MethodPost, aicBase+"/channels", body), http.StatusOK, 0)
 		noKey := service.NewAIConfigService(env2.repo, env2.repo, env2.repo, "")
 		eng := router.New(gin.TestMode, aicJWTSecret, router.Handlers{
 			AdminChannel: NewAdminChannelHandler(service.NewAIChannelService(env2.repo, noKey, noKey, env2.lister, env2.repo, noKey), noKey),
@@ -966,7 +968,9 @@ func TestAdminChannelHandler_Secret(t *testing.T) {
 
 func TestAdminChannelHandler_SecretKey(t *testing.T) {
 	env := aicNewEnv(t)
-	aicWant(t, env.super(http.MethodPost, aicBase+"/channels", aicChannelJSON("kling-main")), http.StatusOK, 0)
+	body := aicChannelJSON("kling-main")
+	body["wallet_enabled"] = false
+	aicWant(t, env.super(http.MethodPost, aicBase+"/channels", body), http.StatusOK, 0)
 	aicWant(t, env.super(http.MethodPut, aicBase+"/channels/kling-main/secret", map[string]any{"value": "sk-api-key"}), http.StatusOK, 0)
 	path := aicBase + "/channels/kling-main/secret-key"
 
@@ -1064,6 +1068,7 @@ func aicPullEnv(t *testing.T, withKey bool) *aicEnv {
 	t.Helper()
 	env := aicNewEnv(t)
 	body := aicChannelJSON("pull-ch")
+	body["wallet_enabled"] = false // 普通渠道拉取目录仍使用自己的渠道 Key
 	body["headers"] = map[string]any{"X-Biz": "canvas"}
 	aicWant(t, env.super(http.MethodPost, aicBase+"/channels", body), http.StatusOK, 0)
 	if withKey {
@@ -1379,8 +1384,7 @@ func TestAdminAIHandler_ConfigLifecycle(t *testing.T) {
 		aicWant(t, env.admin(http.MethodPut, aicBase+"/models/m1/enabled", map[string]any{"enabled": true}), http.StatusConflict, errcode.ErrChannelDisabled.Code)
 		aicWant(t, env.super(http.MethodPut, aicBase+"/channels/kling-main", map[string]any{"enabled": true}), http.StatusOK, 0)
 	})
-	t.Run("super_admin 设置 Key 后，admin 可以启用，用户随即可见", func(t *testing.T) {
-		aicWant(t, env.super(http.MethodPut, aicBase+"/channels/kling-main/secret", map[string]any{"value": "sk-1"}), http.StatusOK, 0)
+	t.Run("钱包渠道不设置产品方 Key，admin 也可以启用，用户随即可见", func(t *testing.T) {
 		aicWant(t, env.admin(http.MethodPut, aicBase+"/models/m1/enabled", map[string]any{"enabled": true}), http.StatusOK, 0)
 		r := env.do(http.MethodGet, "/api/v1/models", nil, aicNormalUser)
 		if !strings.Contains(r.Raw, `"m1"`) {
