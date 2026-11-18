@@ -75,7 +75,7 @@ func (s *AICatalogService) load(ctx context.Context) (*catalog, error) {
 		c.cPlugins = append(c.cPlugins, cp)
 	}
 	for _, ch := range channels {
-		c.cChannels = append(c.cChannels, CatalogChannel{Key: ch.Key, Name: ch.Name, Enabled: ch.Enabled, SecretSet: ch.SecretSet})
+		c.cChannels = append(c.cChannels, CatalogChannel{Key: ch.Key, Name: ch.Name, Enabled: ch.Enabled, Wallet: ch.WalletEnabled, SecretSet: ch.SecretSet})
 	}
 	for _, m := range models {
 		c.cModels = append(c.cModels, CatalogModel{Key: m.Key, Kind: m.Kind, Channel: m.Channel, Enabled: m.Enabled,

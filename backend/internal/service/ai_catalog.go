@@ -31,7 +31,8 @@ type CatalogChannel struct {
 	Key       string
 	Name      string
 	Enabled   bool
-	SecretSet bool // API Key 已设置
+	Wallet    bool // TokenPay 钱包渠道：运行时使用用户自己的 Key，不要求产品方 Key
+	SecretSet bool // 普通渠道的 API Key 已设置
 }
 
 // CatalogModel 是状态判定用的模型。
@@ -96,13 +97,14 @@ func versionByNumber(p *CatalogPlugin, version string) *CatalogVersion {
 	return nil
 }
 
-// ChannelHealthOf 判定渠道的健康状态，顺序：已停用 → 缺 Key → 可用。
-// 有的协议不需要 Key（auth: none），但渠道不认识协议，统一按“要有 Key”提示；真正的检查在模型启用时按协议做。
+// ChannelHealthOf 判定渠道的健康状态，顺序：已停用 → 普通渠道缺 Key → 可用。
+// 钱包渠道的模型目录是公开接口，运行时使用用户自己的 wallet:<uid>，渠道本身不要求产品方 Key。
+// 普通渠道仍按“要有 Key”提示；协议不需要鉴权的情况在模型启用检查时按协议处理。
 func ChannelHealthOf(c CatalogChannel) ChannelHealth {
 	if !c.Enabled {
 		return ChannelHealth{Tone: HealthOff, Label: "已停用", Reason: "渠道已停用"}
 	}
-	if !c.SecretSet {
+	if !c.Wallet && !c.SecretSet {
 		return ChannelHealth{Tone: HealthWarn, Label: "未设 Key", Reason: "还没有设置 Key"}
 	}
 	return ChannelHealth{Tone: HealthOK, Label: "可用"}
@@ -116,7 +118,7 @@ func isPending(m CatalogModel) bool {
 // ModelHealthOf 判定模型状态：
 //   - 待配置：没启用，且还没选能力或协议；
 //   - 未上线：没启用，用户看不到；
-//   - 不可用：已启用，但渠道不存在 / 停用 / 缺 Key，或协议插件停用 / 版本缺失 / 不支持该能力，用户实际用不了；
+//   - 不可用：已启用，但渠道不存在 / 停用 / 普通渠道缺 Key，或协议插件停用 / 版本缺失 / 不支持该能力，用户实际用不了；
 //   - 在线：其余。
 //
 // 渠道与协议层面的问题（Reason）在任何状态下都会带上。
@@ -149,8 +151,8 @@ func modelProblem(m CatalogModel, channels []CatalogChannel, plugins []CatalogPl
 		return "还没有选择能力"
 	}
 	if m.Kind == "agent" {
-		// Agent 不走插件：网关直接用渠道 Key 请求
-		if !ch.SecretSet {
+		// Agent 不走插件：普通渠道用渠道 Key，钱包渠道用发起用户自己的 wallet:<uid>。
+		if !ch.Wallet && !ch.SecretSet {
 			return fmt.Sprintf("渠道「%s」还没有设置 Key", ch.Name)
 		}
 		return ""
@@ -172,7 +174,7 @@ func modelProblem(m CatalogModel, channels []CatalogChannel, plugins []CatalogPl
 	if !MetaSupportsKind(*v, m.Kind) {
 		return fmt.Sprintf("协议「%s」不支持%s类型的模型", p.Name, m.Kind)
 	}
-	if v.AuthType != "" && v.AuthType != "none" && !ch.SecretSet {
+	if v.AuthType != "" && v.AuthType != "none" && !ch.Wallet && !ch.SecretSet {
 		return fmt.Sprintf("渠道「%s」还没有设置 Key", ch.Name)
 	}
 	return ""

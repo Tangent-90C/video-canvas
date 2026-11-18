@@ -125,6 +125,27 @@ func TestCatalog_ListChannels(t *testing.T) {
 	})
 }
 
+// 钱包渠道没有产品方 Key 时仍应显示可用，钱包模型也应在线；用户调用时读取自己的 wallet:<uid>。
+func TestCatalog_WalletChannelWithoutProductKey(t *testing.T) {
+	ctx := context.Background()
+	e := newCatEnv(t)
+	in := createInput()
+	in.Key, in.Name, in.WalletEnabled = "tokenpay", "TokenPay 钱包", true
+	if _, err := e.svc.Create(ctx, in); err != nil {
+		t.Fatal(err)
+	}
+	e.model(t, "m-wallet", "tokenpay", true)
+
+	channels, err := e.cat.ListChannels(ctx, chanReq("", "", 0, 0))
+	if err != nil || channels.Total != 1 || channels.List[0].Health.Tone != "ok" || channels.List[0].SecretSet {
+		t.Fatalf("钱包渠道应可用且不需要产品方 Key：%+v err=%v", channels, err)
+	}
+	models, err := e.cat.ListModels(ctx, &model.ListModelReq{AdminListReq: model.AdminListReq{Page: 1, PageSize: 20}})
+	if err != nil || models.Total != 1 || models.List[0].Health.Status != "online" || models.List[0].Health.Reason != "" {
+		t.Fatalf("钱包模型应在线：%+v err=%v", models, err)
+	}
+}
+
 func TestCatalog_ChannelOptions(t *testing.T) {
 	ctx := context.Background()
 	e := newCatEnv(t)

@@ -61,6 +61,12 @@ func TestChannelHealthRules(t *testing.T) {
 			t.Fatalf("实际 %+v", h)
 		}
 	})
+	t.Run("TokenPay 钱包渠道不需要产品方 Key", func(t *testing.T) {
+		h := ChannelHealthOf(catChannel(func(c *CatalogChannel) { c.Wallet, c.SecretSet = true, false }))
+		if h.Tone != "ok" || h.Label != "可用" || h.Reason != "" {
+			t.Fatalf("实际 %+v", h)
+		}
+	})
 }
 
 func TestModelHealthRules(t *testing.T) {
@@ -110,8 +116,12 @@ func TestModelHealthRules(t *testing.T) {
 			t.Fatalf("没选渠道：%+v", h)
 		}
 	})
-	t.Run("缺 Key：协议要鉴权时才算问题，协议不需要鉴权时不算", func(t *testing.T) {
+	t.Run("缺 Key：钱包渠道不检查，普通渠道协议要鉴权时才算问题", func(t *testing.T) {
 		noKey := []CatalogChannel{catChannel(func(c *CatalogChannel) { c.SecretSet = false })}
+		wallet := []CatalogChannel{catChannel(func(c *CatalogChannel) { c.Wallet, c.SecretSet = true, false })}
+		if h := ModelHealthOf(catModel(nil), wallet, pl); h.Status != "online" || h.Reason != "" {
+			t.Fatalf("钱包渠道不要求产品方 Key：%+v", h)
+		}
 		if h := ModelHealthOf(catModel(nil), noKey, pl); h.Status != "broken" || h.Reason != "渠道「主线」还没有设置 Key" {
 			t.Fatalf("要鉴权：%+v", h)
 		}
