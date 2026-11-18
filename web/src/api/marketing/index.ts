@@ -556,9 +556,11 @@ export const adaptMarketingScript = async (
   videoModel?: string,
 ): Promise<ScriptPrompt> =>
   mapPrompt(
-    await service.post<BackendScriptPrompt>(`/marketing-scripts/${scriptId}/adapt`, {
-      video_model: videoModel,
-    }),
+    await service.post<BackendScriptPrompt>(
+      `/marketing-scripts/${scriptId}/adapt`,
+      { video_model: videoModel },
+      { timeout: 8 * 60 * 1000 },
+    ),
   );
 
 /**
@@ -624,9 +626,11 @@ export const renderMarketingScript = async (
   idempotencyKey: string,
 ): Promise<Script> =>
   mapScript(
-    await service.post<BackendScript>(`/marketing-scripts/${scriptId}/render`, {
-      idempotency_key: idempotencyKey,
-    }),
+    await service.post<BackendScript>(
+      `/marketing-scripts/${scriptId}/render`,
+      { idempotency_key: idempotencyKey },
+      { timeout: 8 * 60 * 1000 },
+    ),
   );
 
 /**
@@ -642,7 +646,11 @@ export const renderMarketingRound = async (
   const raw = await service.post<{
     round: BackendRound;
     skipped: Array<{ script_id: string; reason: string }> | null;
-  }>(`/marketing-rounds/${roundId}/render`, { idempotency_key: idempotencyKey });
+  }>(
+    `/marketing-rounds/${roundId}/render`,
+    { idempotency_key: idempotencyKey },
+    { timeout: 8 * 60 * 1000 },
+  );
   return {
     round: mapRound(raw.round),
     skipped: (raw.skipped ?? []).map((item) => ({ scriptId: item.script_id, reason: item.reason })),

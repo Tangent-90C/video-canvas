@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"video-canvas/internal/llmgateway"
 	"video-canvas/internal/model"
@@ -204,6 +205,22 @@ func TestMarketing_H3Adaptation_FailureChargesNothing(t *testing.T) {
 	}
 	if len(env.adaptLedger(sc.ID)) != 0 || len(env.scriptTasks(sc.ID)) != 0 {
 		t.Fatal("转写失败不扣费、不出片")
+	}
+}
+
+func TestMarketing_H3Adaptation_TimeoutIsClear(t *testing.T) {
+	env := newMktEnv(t, 300)
+	env.useH3()
+	env.caller.byText[mktAdaptStep] = func(string) (string, error) { return "", context.DeadlineExceeded }
+	_, scripts := env.h3Scripts()
+	_, err := env.render(scripts[0].ID, "k1")
+	var biz *errcode.Error
+	if !errors.As(err, &biz) || biz.Code != errcode.ErrMarketingAdaptFailed.Code || !strings.Contains(biz.Msg, "响应超时") {
+		t.Fatalf("超时应给明确原因：%v", err)
+	}
+	windows := env.caller.deadlineWindow(mktAdaptStep)
+	if len(windows) != 1 || windows[0] < 3*time.Minute-5*time.Second {
+		t.Fatalf("H3 转写不能被短剧的 50 秒上限误杀，实际等待窗口：%v", windows)
 	}
 }
 

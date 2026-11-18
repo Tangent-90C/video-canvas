@@ -15,9 +15,9 @@ import (
 	"video-canvas/internal/provider"
 )
 
-// adaptTimeout 转写一个片段（含重写一次）的最长等待；须小于服务端 write_timeout（默认 60s），否则响应会被连接超时截断。
+// dramaAdaptTimeout 转写一个片段（含重写一次）的最长等待；须小于服务端 write_timeout，否则响应会被连接超时截断。
 // 超时按失败处理，用户可以重试。
-const adaptTimeout = 50 * time.Second
+const dramaAdaptTimeout = 50 * time.Second
 
 // AdaptSegment 用项目文本模型把片段原稿转写成 format 写法，输出不合格时带校验反馈重写一次。
 // 费用由用户 TokenPay 钱包在上游直接结算，平台返回的积分兼容字段恒为 0。
@@ -31,7 +31,7 @@ func (s *DramaService) AdaptSegment(ctx context.Context, p *model.DramaProject, 
 		return "", 0, err
 	}
 	in.Style = s.dramaVariables(p)["style"].(string)
-	callCtx, cancel := context.WithTimeout(ctx, adaptTimeout)
+	callCtx, cancel := context.WithTimeout(ctx, dramaAdaptTimeout)
 	defer cancel()
 	// 3. 最多两次：第一次不合格时把校验原因交给模型修正，仍不合格才报错；不合格的那次不收费
 	for try := 1; try <= 2; try++ {

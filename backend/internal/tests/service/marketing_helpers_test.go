@@ -149,12 +149,13 @@ func (c *mktCanvases) Create(_ context.Context, _ uint64, req *model.CreateCanva
 
 // mktCaller 按提示词里的环节职责区分环节，给每个环节脚本化的回复；可让某个环节阻塞直到放行或被取消。
 type mktCaller struct {
-	mu      sync.Mutex
-	replies map[string]func(call int) (string, error)      // 环节 key → 回复
-	byText  map[string]func(prompt string) (string, error) // 环节 key → 按提示词现拼的回复（并发调用时用，优先于 replies）
-	calls   map[string]int
-	block   map[string]chan struct{}
-	started map[string]chan struct{}
+	mu        sync.Mutex
+	replies   map[string]func(call int) (string, error)      // 环节 key → 回复
+	byText    map[string]func(prompt string) (string, error) // 环节 key → 按提示词现拼的回复（并发调用时用，优先于 replies）
+	calls     map[string]int
+	deadlines map[string][]time.Duration
+	block     map[string]chan struct{}
+	started   map[string]chan struct{}
 }
 
 // 提示词里能认出环节的职责片段。
@@ -169,7 +170,7 @@ var mktDuty = map[string]string{
 const mktAdaptStep = "adapt"
 
 func newMktCaller() *mktCaller {
-	return &mktCaller{replies: map[string]func(int) (string, error){}, byText: map[string]func(string) (string, error){}, calls: map[string]int{}, block: map[string]chan struct{}{}, started: map[string]chan struct{}{}}
+	return &mktCaller{replies: map[string]func(int) (string, error){}, byText: map[string]func(string) (string, error){}, calls: map[string]int{}, deadlines: map[string][]time.Duration{}, block: map[string]chan struct{}{}, started: map[string]chan struct{}{}}
 }
 
 func (c *mktCaller) on(step string, fn func(call int) (string, error)) { c.replies[step] = fn }
@@ -178,6 +179,12 @@ func (c *mktCaller) count(step string) int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.calls[step]
+}
+
+func (c *mktCaller) deadlineWindow(step string) []time.Duration {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]time.Duration(nil), c.deadlines[step]...)
 }
 
 func (c *mktCaller) Complete(ctx context.Context, _ *provider.Snapshot, msgs []llmgateway.Message) (*llmgateway.Result, error) {
@@ -197,6 +204,9 @@ func (c *mktCaller) Complete(ctx context.Context, _ *provider.Snapshot, msgs []l
 	c.mu.Lock()
 	c.calls[step]++
 	n := c.calls[step]
+	if deadline, ok := ctx.Deadline(); ok {
+		c.deadlines[step] = append(c.deadlines[step], time.Until(deadline))
+	}
 	fn := c.replies[step]
 	if byText := c.byText[step]; byText != nil {
 		fn = func(int) (string, error) { return byText(prompt) }

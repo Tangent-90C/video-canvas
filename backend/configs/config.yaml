@@ -3,7 +3,7 @@ server:
   mode: debug # debug | release | test
   port: 8080
   read_timeout: 10s
-  write_timeout: 60s
+  write_timeout: 7m
   shutdown_timeout: 10s
   # 对外 ID（画布 ID 等）十六进制编码的密钥。同一环境的所有实例必须一致，改了以后旧 ID（如书签里的画布地址）全部失效，所以定下来就不要再改。
   id_key: "id_key"

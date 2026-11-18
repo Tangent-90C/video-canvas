@@ -383,6 +383,7 @@ describe("api/marketing：请求", () => {
     const script = await renderMarketingScript("x1", "key-1");
     expect(post.mock.calls[0][0]).toBe("/marketing-scripts/x1/render");
     expect(post.mock.calls[0][1]).toEqual({ idempotency_key: "key-1" });
+    expect(post.mock.calls[0][2]).toEqual({ timeout: 8 * 60 * 1000 });
     expect(script.status).toBe("rendering");
 
     post.mockResolvedValueOnce({
@@ -391,6 +392,7 @@ describe("api/marketing：请求", () => {
     });
     const result = await renderMarketingRound("r1", "key-2");
     expect(post.mock.calls[1][0]).toBe("/marketing-rounds/r1/render");
+    expect(post.mock.calls[1][2]).toEqual({ timeout: 8 * 60 * 1000 });
     expect(result.skipped).toEqual([{ scriptId: "x2", reason: "旁白有问题" }]);
     expect(result.round.no).toBe(2);
   });
@@ -438,6 +440,7 @@ describe("api/marketing：请求", () => {
     expect(post.mock.calls[0]).toEqual([
       "/marketing-scripts/x1/adapt",
       { video_model: "h3-model" },
+      { timeout: 8 * 60 * 1000 },
     ]);
     put.mockResolvedValue({ format: "h3", prompt: "p", adaptation: null });
     await editMarketingAdaptation("x1", "手改");

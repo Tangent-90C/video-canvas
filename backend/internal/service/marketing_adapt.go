@@ -7,6 +7,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strconv"
 	"strings"
 	"time"
@@ -22,6 +23,10 @@ import (
 	"video-canvas/internal/provider/modelcfg"
 	"video-canvas/internal/repository"
 )
+
+// marketingAdaptAttemptTimeout 是每次 H3 转写尝试的最长等待。推理模型可能先流式输出数分钟思考内容，
+// 由服务端 write_timeout 和前端请求超时共同兜底；两次尝试各自计时，第一次校验失败后仍有一次完整机会。
+const marketingAdaptAttemptTimeout = 3 * time.Minute
 
 // adaptSource 返回脚本的转写输入和原稿：原稿是不删减的 Seedance 写法（手改稿优先），上限取目标视频模型的提示词上限。
 // 原稿手改过时镜头表以原稿为准，不再给脚本的镜头表。
@@ -109,19 +114,21 @@ func (s *MarketingService) callAdapt(ctx context.Context, userID uint64, textMod
 	if err != nil {
 		return "", err
 	}
-	callCtx, cancel := context.WithTimeout(ctx, adaptTimeout)
-	defer cancel()
-	for range 2 {
+	for attempt := 1; attempt <= 2; attempt++ {
 		prompt, err := marketing.AdaptPrompt(in)
 		if err != nil {
 			return "", err
 		}
+		callCtx, cancel := context.WithTimeout(ctx, marketingAdaptAttemptTimeout)
 		res, err := s.caller.Complete(callCtx, snap, []llmgateway.Message{{Role: "user", Text: prompt}})
+		cancel()
 		if err != nil {
-			// 上游返回了错误就带出原文；没有原文（网络断开、超时）用统一文案
-			logger.Warn("营销出片转写调用失败", zap.String("model", snap.Model.Key), zap.Error(err))
+			// 上游返回了错误就带出原文；超时和网络断开给出可行动的说明。
+			logger.Warn("营销出片转写调用失败", zap.String("model", snap.Model.Key), zap.Int("attempt", attempt), zap.Error(err))
 			msg := "文本模型没有返回结果，请稍后重试"
-			if up := upstreamText(err); up != "" {
+			if errors.Is(err, context.DeadlineExceeded) {
+				msg = "文本模型响应超时，请稍后重试"
+			} else if up := upstreamText(err); up != "" {
 				msg = up
 			}
 			return "", errcode.ErrMarketingAdaptFailed.WithMsg("转写提示词失败：" + msg)

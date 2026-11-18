@@ -487,8 +487,8 @@ func TestStoryboardSplit_NoFixedCeiling(t *testing.T) {
 	}
 }
 
-// TestStoryboardSplit_SlowStreamOver60sSucceeds 3000 多字的剧本、模型慢慢吐字超过 60 秒（比同步接口的 60 秒写超时还久）：
-// 异步任务照样成功。用模拟时间：调用方"耗时"90 秒，截止时间配 5 分钟。
+// TestStoryboardSplit_SlowStreamOver60sSucceeds 3000 多字的剧本、模型慢慢吐字超过 60 秒：
+// 异步任务不依赖同步 HTTP 请求的写超时，照样成功。用模拟时间：调用方"耗时"90 秒，截止时间配 5 分钟。
 func TestStoryboardSplit_SlowStreamOver60sSucceeds(t *testing.T) {
 	long := strings.Repeat("闰土在月光下的瓜田里守着瓜，手里捏着一柄钢叉。", 160) // 约 3500 字
 	if n := len([]rune(long)); n < 3000 {

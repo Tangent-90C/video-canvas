@@ -235,11 +235,11 @@ func TestNewOriginChecker(t *testing.T) {
 	}
 }
 
-// 验收条件 7：WebSocket 连接可以保持 > 10 分钟不断（已绕开 60s WriteTimeout）。
+// 验收条件 7：WebSocket 连接可以长期保持，不被 http.Server 的读写超时切断。
 //
-// 生产环境 http.Server 配了 ReadTimeout=10s / WriteTimeout=60s，普通 HTTP 响应超过这个时间就会被切断。
+// 生产环境 http.Server 配置了 ReadTimeout / WriteTimeout，普通 HTTP 响应超过对应时限会被切断。
 // gorilla/websocket 的 Upgrade 会劫持底层 TCP 连接并清掉 http.Server 设置的读写 deadline，
-// 所以 WebSocket 不受这两个超时影响。真等 60 秒太慢，这里把两个超时缩到 1 秒，
+// 所以 WebSocket 不受这两个超时影响。真等生产配置的时限太慢，这里把两个超时缩到 1 秒，
 // 然后让连接保持 3.5 秒（超过超时值的 3 倍），期间持续双向收发：
 // 如果 deadline 没被清掉，连接会在 1 秒左右被切断，收发就会失败，测试随之失败。
 // 这个测试锁定的是“Upgrade 之后不受 http.Server 超时影响”这个行为，
