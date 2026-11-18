@@ -207,6 +207,16 @@ export function videoModelSupport(
   info: ModelInfo,
   needImages: number,
 ): { ok: boolean; reason: string | null } {
+  const tags = info.tags ?? [];
+  if (tags.includes("avatar")) {
+    return { ok: false, reason: "数字人模型需要人物图片和音频，不能用于营销脚本出片" };
+  }
+  if (tags.includes("effect")) {
+    return { ok: false, reason: "视频特效模型需要先选择特效模板，不能直接用于营销脚本出片" };
+  }
+  if (tags.includes("edit")) {
+    return { ok: false, reason: "视频编辑模型需要待编辑视频，不能直接用于营销脚本出片" };
+  }
   const caps = info.capabilities;
   if (!(caps.ops ?? []).includes("omni")) {
     return { ok: false, reason: "不支持全能参考，不能同时用商品图和模特图" };

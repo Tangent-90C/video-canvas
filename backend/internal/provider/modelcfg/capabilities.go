@@ -43,6 +43,7 @@ const (
 	ParamEnum    = "enum"
 	ParamNumber  = "number"
 	ParamBoolean = "boolean"
+	ParamString  = "string" // 短文本，例如上游要求的模板 ID
 )
 
 // reservedInputKeys 是任务输入里宿主占用的键，生成参数不能重名。

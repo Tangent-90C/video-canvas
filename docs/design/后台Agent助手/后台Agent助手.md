@@ -38,7 +38,7 @@
 
 - 渠道 `ai_channels` 只管 `base_url`、请求头、限流；API Key 和 Secret Key 用 AES-256-GCM 加密存在 `ai_secrets`，写入接口是 `PUT /admin/ai/channels/:key/secret`（仅 `super_admin`）。
 - 模型配置 `ModelConfig` 存在 `ai_config_revisions.body_json`，每个模型一行，**没有版本号或乐观锁**（`backend/internal/provider/modelcfg/types.go:88`）。字段包括 `channels[0].{channel, upstream_model, protocol{plugin,version,settings}}`、`capabilities{ops, refs, prompt, params, context, vision, video}`、`pricing`。
-- 生成参数 `ParamField`：`type` 取 enum/number/boolean，另有 `options`、`default`、`min/max/step`、`open`、`spec`（可作规格价条件）、`fanout`（`backend/internal/provider/modelcfg/capabilities.go`）。
+- 生成参数 `ParamField`：`type` 取 enum/number/boolean/string，另有 `options`、`default`、`min/max/step`、`open`、`spec`（可作规格价条件）、`fanout`（`backend/internal/provider/modelcfg/capabilities.go`）。
 - `SaveModel`：未启用的模型有校验问题也能保存；**已启用的模型保存即生效，必须通过启用检查**，否则拒绝保存（`backend/internal/service/ai_config_save.go:32`）。启用检查涵盖：正文校验、渠道存在且启用、插件存在且启用、版本支持该 kind、settings 合法、需要鉴权时渠道已配 Key（`backend/internal/service/ai_config.go` `CheckEnable`）。
 - 拉取模型：`POST /admin/ai/channels/:key/pull-models`，由 Go 直接请求 `{base_url}/v1/models`，不落库。
 

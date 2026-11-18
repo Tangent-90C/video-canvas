@@ -207,8 +207,22 @@ func normalizeParam(f ParamField, raw any) (any, string) {
 		return normalizeNumberParam(f, raw)
 	case ParamBoolean:
 		return normalizeBoolParam(raw)
+	case ParamString:
+		return normalizeStringParam(raw)
 	}
 	return nil, "的类型不受支持"
+}
+
+func normalizeStringParam(raw any) (any, string) {
+	s, ok := raw.(string)
+	if !ok {
+		return nil, "必须是字符串"
+	}
+	s = strings.TrimSpace(s)
+	if utf8.RuneCountInString(s) > 512 {
+		return nil, "不能超过 512 个字符"
+	}
+	return s, ""
 }
 
 func normalizeEnumParam(f ParamField, raw any) (any, string) {

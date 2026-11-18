@@ -1047,23 +1047,54 @@ func (o *operation) resolveRef(ctx context.Context, ref fileRef) (any, error) {
 	defer f.Body.Close()
 	switch ref.as {
 	case "url":
-		return f.URL, nil
+		if absoluteAssetURL(f.URL) {
+			return f.URL, nil
+		}
+		if f.Asset.Kind != "image" && f.Asset.Kind != "audio" {
+			return nil, terminalErr(codeAssetUnavailable, "任务输入素材没有可公开访问的地址，请配置素材站点地址或使用对象存储", nil)
+		}
+		return o.readInlineDataURL(f)
 	case "base64", "dataUrl":
-		data, err := io.ReadAll(io.LimitReader(f.Body, o.e.opts.MaxInlineBytes+1))
+		data, err := o.readInlineBytes(f)
 		if err != nil {
-			return nil, retryableErr(codeAssetUnavailable, "读取任务输入素材失败", redactError(err, o.red.str))
+			return nil, err
 		}
-		if int64(len(data)) > o.e.opts.MaxInlineBytes {
-			return nil, terminalErr(codeMediaTooLarge, "内联素材超过大小上限", nil)
-		}
-		encoded := base64.StdEncoding.EncodeToString(data)
+		var out string
 		if ref.as == "dataUrl" {
-			return "data:" + f.Asset.MimeType + ";base64," + encoded, nil
+			out = "data:" + f.Asset.MimeType + ";base64," + data
+		} else {
+			out = data
 		}
-		return encoded, nil
+		return out, nil
 	default:
 		return nil, pluginFault("文件引用 as 不合法")
 	}
+}
+
+// absoluteAssetURL 只接受 http(s) 绝对地址。相对地址（如本地存储未配置站点前缀时的 /files/...）
+// 上游无法访问，必须内联或明确失败，不能原样发出去。
+func absoluteAssetURL(raw string) bool {
+	u, err := url.Parse(raw)
+	return err == nil && u.IsAbs() && (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
+}
+
+func (o *operation) readInlineDataURL(f *provider.AssetFile) (string, error) {
+	data, err := o.readInlineBytes(f)
+	if err != nil {
+		return "", err
+	}
+	return "data:" + f.Asset.MimeType + ";base64," + data, nil
+}
+
+func (o *operation) readInlineBytes(f *provider.AssetFile) (string, error) {
+	data, err := io.ReadAll(io.LimitReader(f.Body, o.e.opts.MaxInlineBytes+1))
+	if err != nil {
+		return "", retryableErr(codeAssetUnavailable, "读取任务输入素材失败", redactError(err, o.red.str))
+	}
+	if int64(len(data)) > o.e.opts.MaxInlineBytes {
+		return "", terminalErr(codeMediaTooLarge, "内联素材超过大小上限", nil)
+	}
+	return base64.StdEncoding.EncodeToString(data), nil
 }
 
 func (o *operation) httpRequest(ctx context.Context, b *builtRequest) (*http.Request, func(), error) {

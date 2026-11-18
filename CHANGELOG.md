@@ -4,6 +4,19 @@
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-11-18
+
+### 修复
+
+- TokenPay 一键同步补齐 Seedream 5.5、Seedream 5.0 Pro，并按上游协议接入全部 23 个视频模型：Seedance、Kling、Wan3.0、HappyHorse、MiniMax H3。营销工作室不再只剩 ByteDance，所有支持全能参考的同类模型都会进入可选清单；数字人、视频特效和纯编辑模型会明确置灰。
+- 新增 TokenDance Kling、Wan/HappyHorse、MiniMax V2 三个内置视频插件；同步规则按模型细分分辨率、时长、参考素材和 `prompt_format`，不再用一套 ByteDance 能力冒充所有视频模型。
+- 本地素材转发给上游前必须是绝对 URL：未配置 `APP_STORAGE_LOCAL_BASE_URL` 时自动沿用 `APP_TOKENPAY_APP_URL`；图片/音频兜底内联为 data URL，视频无法内联时明确报错，杜绝把 `/files/...` 发给上游。
+- 登录页功能轮播改为整页宽，并在 `?next=` 自动展开登录卡片时仍然显示；桌面截图区和文字区同步放大，移动端文字移到截图下方。
+
+### 调整
+
+- 模型生成参数新增 `string` 类型，用于可灵视频特效模板 ID 等短文本参数；后台编辑、画布参数面板、前后端校验和任务输入保持一致。
+
 ## [0.7.0] - 2026-11-18
 
 ### 破坏性变更

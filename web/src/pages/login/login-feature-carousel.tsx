@@ -65,9 +65,9 @@ export const LOGIN_FEATURE_SLIDES: readonly LoginFeatureSlide[] = [
 ];
 
 /**
- * 登录页的功能截图轮播：桌面端是截图加文字说明，移动端收成一张紧凑的图片卡片。
+ * 登录页的功能截图轮播：始终占满页面宽度，桌面端截图与说明并排，移动端说明放在截图下方。
  * 自动轮播会在悬停、键盘聚焦、页面隐藏或用户主动暂停时停下；减少动态效果时默认不自动切换。
- * @param active 登录卡片是否收起；展开登录表单时暂停轮播，避免和表单抢注意力
+ * @param active 是否自动轮播；展开登录表单时暂停自动切换，但轮播和手动翻页仍然可用
  */
 export function LoginFeatureCarousel({ active = true }: { active?: boolean }) {
   const reducedMotion = useReducedMotion() ?? false;
@@ -122,6 +122,7 @@ export function LoginFeatureCarousel({ active = true }: { active?: boolean }) {
     <section
       ref={frameRef}
       data-slot="login-feature-carousel"
+      data-layout="full-bleed"
       role="region"
       aria-roledescription="carousel"
       aria-label="连镜功能预览"
@@ -135,10 +136,10 @@ export function LoginFeatureCarousel({ active = true }: { active?: boolean }) {
           setInteractionPaused(false);
         }
       }}
-      className="bg-stage-glass border-stage-glass-border relative w-full overflow-hidden rounded-[24px] border text-left shadow-[0_18px_45px_-24px_oklch(0_0_0/0.8)] backdrop-blur-xl outline-none focus-visible:ring-2 focus-visible:ring-white/45"
+      className="bg-stage-glass border-stage-glass-border relative w-full overflow-hidden border-y text-left shadow-[0_24px_70px_-38px_oklch(0_0_0/0.9)] backdrop-blur-xl outline-none focus-visible:ring-2 focus-visible:ring-white/45 focus-visible:ring-inset"
     >
-      <div className="grid sm:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
-        <div className="bg-stage relative aspect-[2.25/1] overflow-hidden sm:aspect-[1.78/1]">
+      <div className="grid w-full lg:grid-cols-[minmax(0,1fr)_clamp(320px,26vw,460px)]">
+        <div className="bg-stage relative aspect-[4/3] overflow-hidden sm:aspect-[16/9] lg:aspect-[1.846/1]">
           <AnimatePresence initial={false} mode="wait">
             <motion.img
               key={slide.id}
@@ -153,38 +154,39 @@ export function LoginFeatureCarousel({ active = true }: { active?: boolean }) {
               className="absolute inset-0 size-full object-cover object-top"
             />
           </AnimatePresence>
-          <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_top,oklch(0.1_0_0/0.9),transparent_58%)] sm:bg-[linear-gradient(to_right,transparent_68%,oklch(0.12_0_0/0.28))]" />
-          <div className="absolute right-3 bottom-3 left-3 sm:hidden">
-            <span className="text-on-stage-muted text-[10px] tracking-[0.14em] uppercase">
+          <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_top,oklch(0.09_0_0/0.58),transparent_32%)]" />
+          <div className="absolute top-4 left-4 rounded-full border border-white/14 bg-black/38 px-3 py-1.5 backdrop-blur-md md:top-6 md:left-6">
+            <span className="text-on-stage-muted text-[11px] tracking-[0.16em] uppercase">
               功能 {String(index + 1).padStart(2, "0")} / {String(count).padStart(2, "0")}
             </span>
-            <p className="text-on-stage mt-0.5 text-base font-semibold tracking-tight">
-              {slide.title}
-            </p>
           </div>
         </div>
 
-        <div className="hidden flex-col justify-between p-4 sm:flex">
+        <div className="border-stage-glass-border/70 flex flex-col justify-between gap-10 border-t bg-black/12 p-6 sm:p-8 lg:border-t-0 lg:border-l lg:p-10 xl:p-12">
           <div>
-            <span className="text-on-stage-muted text-[10px] tracking-[0.14em] uppercase">
+            <span className="text-on-stage-muted text-[11px] tracking-[0.16em] uppercase">
               功能 {String(index + 1).padStart(2, "0")} / {String(count).padStart(2, "0")}
             </span>
-            <h2 className="text-on-stage mt-2 text-lg font-semibold tracking-tight">
+            <h2 className="text-on-stage mt-3 text-2xl font-semibold tracking-tight sm:text-3xl xl:text-4xl">
               {slide.title}
             </h2>
-            <p className="text-on-stage-muted mt-2 text-[13px] leading-relaxed">
+            <p className="text-on-stage-muted mt-4 max-w-[38ch] text-sm leading-7 sm:text-base">
               {slide.description}
             </p>
           </div>
-          <div className="text-on-stage-muted flex items-center gap-1 text-[10px]">
+          <div className="text-on-stage-muted flex items-center gap-2 text-xs">
             <span className="size-1.5 rounded-full bg-current" />
             {autoAdvance ? "自动轮播" : "已暂停"}
           </div>
         </div>
       </div>
 
-      <div className="border-stage-glass-border/70 flex h-10 items-center justify-between border-t bg-black/10 px-2.5">
-        <div className="flex items-center gap-0.5" role="group" aria-label="选择功能">
+      <div className="border-stage-glass-border/70 flex min-h-14 items-center justify-between gap-3 border-t bg-black/16 px-3 py-2 md:px-6">
+        <div
+          className="flex min-w-0 items-center gap-1 overflow-x-auto"
+          role="group"
+          aria-label="选择功能"
+        >
           {LOGIN_FEATURE_SLIDES.map((item, dotIndex) => (
             <button
               key={item.id}
@@ -193,38 +195,36 @@ export function LoginFeatureCarousel({ active = true }: { active?: boolean }) {
               aria-controls={slideId}
               aria-current={dotIndex === index}
               onClick={() => goTo(dotIndex)}
-              className="group/dot grid size-7 place-items-center rounded-full outline-none focus-visible:bg-white/10"
+              className={cn(
+                "focus-visible:ring-on-stage/60 shrink-0 rounded-full px-3 py-2 text-xs font-medium whitespace-nowrap transition-colors outline-none focus-visible:ring-2 md:text-sm",
+                dotIndex === index
+                  ? "bg-stage-glass text-on-stage"
+                  : "text-on-stage-muted hover:text-on-stage hover:bg-white/6",
+              )}
             >
-              <span
-                className={cn(
-                  "block h-1 rounded-full transition-[width,background-color] duration-180",
-                  dotIndex === index
-                    ? "bg-on-stage w-4"
-                    : "bg-on-stage-muted/55 w-1 group-hover/dot:bg-on-stage-muted",
-                )}
-              />
+              {item.title}
             </button>
           ))}
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1">
           <motion.button
             type="button"
             whileTap={TAP}
             onClick={() => goTo(index - 1)}
             aria-label="上一个功能"
-            className="text-on-stage-muted hover:text-on-stage hover:bg-stage-glass focus-visible:ring-on-stage/60 grid size-7 place-items-center rounded-full outline-none focus-visible:ring-2"
+            className="text-on-stage-muted hover:text-on-stage hover:bg-stage-glass focus-visible:ring-on-stage/60 grid size-10 place-items-center rounded-full outline-none focus-visible:ring-2"
           >
-            <ChevronLeft className="size-3.5" />
+            <ChevronLeft className="size-4.5" />
           </motion.button>
           <motion.button
             type="button"
             whileTap={TAP}
             onClick={() => goTo(index + 1)}
             aria-label="下一个功能"
-            className="text-on-stage-muted hover:text-on-stage hover:bg-stage-glass focus-visible:ring-on-stage/60 grid size-7 place-items-center rounded-full outline-none focus-visible:ring-2"
+            className="text-on-stage-muted hover:text-on-stage hover:bg-stage-glass focus-visible:ring-on-stage/60 grid size-10 place-items-center rounded-full outline-none focus-visible:ring-2"
           >
-            <ChevronRight className="size-3.5" />
+            <ChevronRight className="size-4.5" />
           </motion.button>
           {!reducedMotion && (
             <motion.button
@@ -233,9 +233,9 @@ export function LoginFeatureCarousel({ active = true }: { active?: boolean }) {
               onClick={() => setPaused((value) => !value)}
               aria-label={paused ? "播放功能预览轮播" : "暂停功能预览轮播"}
               title={paused ? "播放功能预览轮播" : "暂停功能预览轮播"}
-              className="text-on-stage-muted hover:text-on-stage hover:bg-stage-glass focus-visible:ring-on-stage/60 ml-0.5 grid size-7 place-items-center rounded-full outline-none focus-visible:ring-2"
+              className="text-on-stage-muted hover:text-on-stage hover:bg-stage-glass focus-visible:ring-on-stage/60 ml-1 grid size-10 place-items-center rounded-full outline-none focus-visible:ring-2"
             >
-              {paused ? <Play className="size-3 fill-current" /> : <Pause className="size-3" />}
+              {paused ? <Play className="size-4 fill-current" /> : <Pause className="size-4" />}
             </motion.button>
           )}
         </div>

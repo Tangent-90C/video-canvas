@@ -97,7 +97,7 @@ storage:
   signed_ttl: 1h # 存储自己没配签名有效期时的兜底
   local:
     dir: ./data/assets
-    base_url: "" # 素材稳定地址 /files/<key> 的站点前缀，为空时使用相对路径；所有存储共用
+    base_url: "" # 素材稳定地址 /files/<key> 的站点前缀；为空时若 tokenpay.app_url 已配置则自动取它，否则使用相对路径
   # 升级提示：旧版用 APP_STORAGE_DRIVER=s3 + APP_STORAGE_S3_* 配置的对象存储，升级后首次启动会自动导入为后台存储，
   # 导入后可以删掉这些环境变量。导入需要配置 APP_AI_SECRET_KEY（用来加密保存密钥）。
 

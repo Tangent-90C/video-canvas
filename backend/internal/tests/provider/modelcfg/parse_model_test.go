@@ -129,6 +129,22 @@ func TestParseModel_补默认值(t *testing.T) {
 	}
 }
 
+// 字符串参数用于只能由用户填写短文本的上游字段（如可灵特效模板 ID），不能复用枚举。
+func TestParseModel_字符串生成参数(t *testing.T) {
+	m := mcLoadFixture(t, "model_video.json")
+	mcParams(m)["effect_scene"] = map[string]any{
+		"type": "string", "label": "特效模板", "open": true, "default": "color_mixing",
+	}
+	got, issues := modelcfg.ParseModel(mcMarshal(t, m))
+	if len(issues) > 0 {
+		t.Fatalf("字符串参数应通过校验：%v", mcIssueList(issues))
+	}
+	field, ok := got.Capabilities.Params.Get("effect_scene")
+	if !ok || field.Type != modelcfg.ParamString || field.Default != "color_mixing" {
+		t.Fatalf("字符串参数解析不符：%+v", field)
+	}
+}
+
 func TestParseModel_deadline边界(t *testing.T) {
 	tests := []struct {
 		deadline any
@@ -292,6 +308,9 @@ func TestParseModel_能力规则(t *testing.T) {
 			mcParams(m)["prompt"] = map[string]any{"type": "boolean", "label": "x", "open": true}
 		}, "capabilities.params.prompt", "保留"},
 		{"参数类型非法", func(m map[string]any) { mcParam(m, "duration")["type"] = "text" }, "capabilities.params.duration.type", "enum"},
+		{"字符串参数默认值类型错误", func(m map[string]any) {
+			mcParams(m)["effect_scene"] = map[string]any{"type": "string", "label": "模板", "open": true, "default": 1}
+		}, "capabilities.params.effect_scene.default", "字符串"},
 		{"参数缺 label", func(m map[string]any) { mcParam(m, "duration")["label"] = "" }, "capabilities.params.duration.label", ""},
 		{"enum 没有可选值", func(m map[string]any) { mcParam(m, "resolution")["options"] = []any{} }, "capabilities.params.resolution.options", "1 –"},
 		{"enum 可选值重复", func(m map[string]any) { mcParam(m, "resolution")["options"] = []any{"720P", "720P"} }, "capabilities.params.resolution.options[1]", "重复"},

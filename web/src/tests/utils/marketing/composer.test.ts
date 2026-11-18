@@ -164,6 +164,18 @@ describe("视频模型与参数", () => {
     expect(few.reason).toContain("2");
   });
 
+  test("数字人、视频特效和纯编辑模型不能被营销脚本误选", () => {
+    for (const [tag, reason] of [
+      ["avatar", "音频"],
+      ["effect", "特效模板"],
+      ["edit", "待编辑视频"],
+    ] as const) {
+      const result = videoModelSupport({ ...model(tag), tags: [tag] }, 1);
+      expect(result.ok).toBe(false);
+      expect(result.reason).toContain(reason);
+    }
+  });
+
   test("参考视频：模型不收、超大、超时长都给原因", () => {
     const label = "模型 a";
     expect(refVideoProblem(caps(), { durationSec: 10, sizeBytes: 1024 }, label)).toBeNull();

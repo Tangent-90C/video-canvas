@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { Clapperboard } from "lucide-react";
+import { ChevronDown, Clapperboard } from "lucide-react";
 import { toast } from "sonner";
 
 import { getAuthConfig, login, type AuthConfig } from "@/api/auth";
@@ -47,6 +47,7 @@ function getDestination(search: string) {
  * 登录页（设计稿 docs/品牌包装/登录与首页改版原型）：整屏是一块深色舞台，
  * 顶栏是连镜 Logo 和 Slogan，中间是「从一句话，到一部片。」（末尾的词轮换）和一颗写想法的胶囊；
  * 点「开始创作」胶囊原地展开成登录 / 注册卡片，写下的想法登录后带到创作页。成功后黑场里亮出 Logo 和欢迎语，再进首页。
+ * 首屏下方始终保留整页宽的功能截图轮播；带着 ?next= 直接展开登录卡片时也不会隐藏。
  * 保留 ?next= 跳转和 ?tab=register；带着 next 或 tab 来的（被拦截到登录页、点了注册链接）直接展开卡片。
  * 进页面先取 /auth/config：注册关闭时不显示注册入口；无需验证码时（首个账号）隐藏验证码。
  */
@@ -144,115 +145,143 @@ export default function Login() {
   };
 
   return (
-    <main className="bg-stage text-on-stage relative h-svh min-h-[620px] overflow-hidden">
-      <LoginStage>{player.count > 0 && <ShowcaseLayers player={player} />}</LoginStage>
+    <main className="bg-stage text-on-stage relative min-h-svh overflow-x-hidden">
+      <section className="relative flex min-h-svh flex-col overflow-hidden">
+        <LoginStage>{player.count > 0 && <ShowcaseLayers player={player} />}</LoginStage>
 
-      <header className="absolute inset-x-0 top-0 z-10 flex h-16 items-center justify-between px-4 md:h-18 md:px-8">
-        <div className="flex items-center gap-2.5 text-lg font-semibold tracking-wide">
-          <Logo size={32} bright />
-          连镜
-          <span className="border-stage-glass-border text-on-stage-muted ml-1 border-l pl-3 text-[13px] font-normal tracking-normal max-md:hidden">
-            {BRAND_SLOGAN}
-          </span>
-        </div>
-        <div className="flex gap-2">
-          <motion.button
-            type="button"
-            whileTap={TAP}
-            onClick={() => openCard("login")}
-            className="hover:bg-stage-glass focus-visible:ring-on-stage/60 h-9 rounded-full px-3.5 outline-none focus-visible:ring-2"
-          >
-            登录
-          </motion.button>
-          {registerOpen && (
+        <header className="absolute inset-x-0 top-0 z-10 flex h-16 items-center justify-between px-4 md:h-18 md:px-8">
+          <div className="flex items-center gap-2.5 text-lg font-semibold tracking-wide">
+            <Logo size={32} bright />
+            连镜
+            <span className="border-stage-glass-border text-on-stage-muted ml-1 border-l pl-3 text-[13px] font-normal tracking-normal max-md:hidden">
+              {BRAND_SLOGAN}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <a
+              href="#features"
+              className="text-on-stage-muted hover:text-on-stage hover:bg-stage-glass focus-visible:ring-on-stage/60 inline-flex h-9 items-center rounded-full px-3 text-sm transition-colors outline-none focus-visible:ring-2"
+            >
+              功能预览
+            </a>
             <motion.button
               type="button"
               whileTap={TAP}
-              onClick={() => openCard("register")}
-              className="bg-stage-glass border-stage-glass-border hover:bg-stage-glass/80 focus-visible:ring-on-stage/60 h-9 rounded-full border px-4 font-medium backdrop-blur-xl outline-none focus-visible:ring-2 max-md:hidden"
+              onClick={() => openCard("login")}
+              className="hover:bg-stage-glass focus-visible:ring-on-stage/60 h-9 rounded-full px-3.5 outline-none focus-visible:ring-2"
             >
-              免费注册
+              登录
             </motion.button>
-          )}
-        </div>
-      </header>
+            {registerOpen && (
+              <motion.button
+                type="button"
+                whileTap={TAP}
+                onClick={() => openCard("register")}
+                className="bg-stage-glass border-stage-glass-border hover:bg-stage-glass/80 focus-visible:ring-on-stage/60 h-9 rounded-full border px-4 font-medium backdrop-blur-xl outline-none focus-visible:ring-2 max-md:hidden"
+              >
+                免费注册
+              </motion.button>
+            )}
+          </div>
+        </header>
 
-      {/* 卡片展开时标题上移、缩小，副标题和角标淡出，把位置让给卡片 */}
-      <div className="absolute inset-0 z-[5] flex flex-col items-center justify-center px-4 pb-[10svh]">
-        <span
-          className={cn(
-            "bg-stage-glass border-stage-glass-border text-on-stage-muted inline-flex h-7 items-center gap-1.5 rounded-full border px-3 text-xs tracking-[0.12em] backdrop-blur-md transition-opacity duration-200",
-            cardOpen && "pointer-events-none opacity-0",
-          )}
-        >
-          <Clapperboard className="size-3.5" />
-          AI 视频创作画布
-        </span>
-        <WordSwapTitle
-          className={cn(
-            "mt-5 text-center text-[clamp(40px,5.8vw,78px)] leading-[1.06] font-semibold tracking-[-0.035em] [text-shadow:0_2px_30px_oklch(0_0_0/0.35)]",
-            "transition-transform duration-[440ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none",
-            cardOpen && "-translate-y-3 scale-[0.86]",
-          )}
-        />
-        <p
-          className={cn(
-            "text-on-stage-muted mx-auto mt-4 max-w-[560px] text-center text-[15px] leading-relaxed transition-opacity duration-200 md:text-[16.5px]",
-            cardOpen && "pointer-events-none opacity-0",
-          )}
-        >
-          写下脑海里的画面，AI 帮你拆分镜、生成镜头，在一张画布上连成故事。
-        </p>
-        <div className="mt-9 flex flex-col items-center">
-          <IdeaDock
-            open={cardOpen}
-            idea={idea}
-            title={activeMode === "login" ? "登录" : "加入连镜"}
-            onIdeaChange={setIdea}
-            onStart={() => openCard(registerOpen ? "register" : "login")}
-            onClose={closeCard}
-          >
-            <AuthPanel
-              mode={activeMode}
-              config={config}
-              registerOpen={registerOpen}
-              registerClosedHint={registerClosedHint}
-              username={username}
-              password={password}
-              loading={loading}
-              loginError={loginError}
-              onModeChange={setMode}
-              onUsernameChange={setUsername}
-              onPasswordChange={setPassword}
-              onSubmit={handleSubmit}
-              onRegistered={handleRegistered}
-            />
-          </IdeaDock>
-          {!cardOpen && (
-            <div className="mt-6 w-[min(600px,calc(100vw-32px))]">
-              <LoginFeatureCarousel active={!cardOpen} />
-            </div>
-          )}
-        </div>
-      </div>
-
-      {player.current && (
-        <footer className="absolute inset-x-4 bottom-5 z-[5] flex flex-col items-stretch gap-3.5 md:inset-x-8 md:bottom-7 md:flex-row md:items-end md:justify-between md:gap-6">
-          <ShowcaseCaption
-            item={player.current}
-            instant={player.reducedMotion}
-            onSame={handleSame}
-          />
-          <ShowcaseProgress
-            player={player}
-            showPause={false}
+        {/* 卡片展开时标题上移、缩小，副标题和角标淡出，把位置让给卡片 */}
+        <div className="relative z-[5] flex flex-1 flex-col items-center justify-center px-4 pt-24 pb-32">
+          <span
             className={cn(
-              "transition-opacity duration-180",
+              "bg-stage-glass border-stage-glass-border text-on-stage-muted inline-flex h-7 items-center gap-1.5 rounded-full border px-3 text-xs tracking-[0.12em] backdrop-blur-md transition-opacity duration-200",
               cardOpen && "pointer-events-none opacity-0",
             )}
+          >
+            <Clapperboard className="size-3.5" />
+            AI 视频创作画布
+          </span>
+          <WordSwapTitle
+            className={cn(
+              "mt-5 text-center text-[clamp(40px,5.8vw,78px)] leading-[1.06] font-semibold tracking-[-0.035em] [text-shadow:0_2px_30px_oklch(0_0_0/0.35)]",
+              "transition-transform duration-[440ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none",
+              cardOpen && "-translate-y-3 scale-[0.86]",
+            )}
           />
-        </footer>
-      )}
+          <p
+            className={cn(
+              "text-on-stage-muted mx-auto mt-4 max-w-[560px] text-center text-[15px] leading-relaxed transition-opacity duration-200 md:text-[16.5px]",
+              cardOpen && "pointer-events-none opacity-0",
+            )}
+          >
+            写下脑海里的画面，AI 帮你拆分镜、生成镜头，在一张画布上连成故事。
+          </p>
+          <div className="mt-9 flex w-full flex-col items-center">
+            <IdeaDock
+              open={cardOpen}
+              idea={idea}
+              title={activeMode === "login" ? "登录" : "加入连镜"}
+              onIdeaChange={setIdea}
+              onStart={() => openCard(registerOpen ? "register" : "login")}
+              onClose={closeCard}
+            >
+              <AuthPanel
+                mode={activeMode}
+                config={config}
+                registerOpen={registerOpen}
+                registerClosedHint={registerClosedHint}
+                username={username}
+                password={password}
+                loading={loading}
+                loginError={loginError}
+                onModeChange={setMode}
+                onUsernameChange={setUsername}
+                onPasswordChange={setPassword}
+                onSubmit={handleSubmit}
+                onRegistered={handleRegistered}
+              />
+            </IdeaDock>
+            <a
+              href="#features"
+              className="text-on-stage-muted hover:text-on-stage focus-visible:ring-on-stage/60 mt-7 inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-sm transition-colors outline-none focus-visible:ring-2"
+            >
+              看看产品功能
+              <ChevronDown className="size-4" />
+            </a>
+          </div>
+        </div>
+
+        {player.current && (
+          <footer className="absolute inset-x-4 bottom-5 z-[5] flex flex-col items-stretch gap-3.5 md:inset-x-8 md:bottom-7 md:flex-row md:items-end md:justify-between md:gap-6">
+            <ShowcaseCaption
+              item={player.current}
+              instant={player.reducedMotion}
+              onSame={handleSame}
+            />
+            <ShowcaseProgress
+              player={player}
+              showPause={false}
+              className={cn(
+                "transition-opacity duration-180",
+                cardOpen && "pointer-events-none opacity-0",
+              )}
+            />
+          </footer>
+        )}
+      </section>
+
+      <section
+        id="features"
+        className="bg-stage relative z-[5] scroll-mt-16 border-t border-white/10"
+      >
+        <div className="flex w-full items-end justify-between gap-6 px-4 pt-10 pb-6 md:px-8 md:pt-14 md:pb-8">
+          <div>
+            <p className="text-on-stage-muted text-[11px] tracking-[0.18em] uppercase">产品功能</p>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl md:text-4xl">
+              从一句想法，到一部片。
+            </h2>
+          </div>
+          <p className="text-on-stage-muted hidden max-w-[480px] text-right text-sm leading-6 lg:block">
+            首页、无限画布、短剧工作室、3D 导演台和营销工作室，都在同一套创作流程里。
+          </p>
+        </div>
+        <LoginFeatureCarousel active={!cardOpen} />
+      </section>
 
       {/* 进入过渡：黑场里亮出 Logo 两笔和欢迎语，随后跳到首页 */}
       <AnimatePresence>

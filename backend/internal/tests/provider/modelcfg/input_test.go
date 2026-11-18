@@ -209,6 +209,20 @@ func TestValidateInput_枚举数字与字符串互认(t *testing.T) {
 	}
 }
 
+func TestValidateInput_字符串参数(t *testing.T) {
+	caps := modelcfg.Capabilities{Prompt: modelcfg.PromptSpec{MaxLength: 100}, Params: modelcfg.ParamSet{
+		{Name: "effect_scene", ParamField: modelcfg.ParamField{Type: modelcfg.ParamString, Label: "特效模板", Open: true, Default: "color_mixing"}},
+	}}
+	got, errs := modelcfg.ValidateInput(modelcfg.KindAudio, caps, map[string]any{"prompt": "x", "effect_scene": "  hug_pro  "})
+	if len(errs) > 0 || got["effect_scene"] != "hug_pro" {
+		t.Fatalf("字符串参数应去掉首尾空白：%v %v", got, errs)
+	}
+	got, errs = modelcfg.ValidateInput(modelcfg.KindAudio, caps, map[string]any{"prompt": "x", "effect_scene": ""})
+	if len(errs) > 0 || got["effect_scene"] != "color_mixing" {
+		t.Fatalf("空字符串应取默认值：%v %v", got, errs)
+	}
+}
+
 func TestMediaRefs_兼容落库后的形态(t *testing.T) {
 	in := map[string]any{
 		"images": []any{"2041791506008539138", 7.0, "bad"},

@@ -28,14 +28,17 @@ import (
 
 // syncModelRule 是一种上游协议 → 本站模型的映射规则。
 type syncModelRule struct {
-	protocol    string         // 上游 supported_protocols 里的取值
-	plugin      string         // 承接的协议插件 key
-	version     string         // 承接插件的固定版本（同步时解析成该插件的最新版本）
-	kind        string         // 模型种类
-	settings    map[string]any // 协议设置（跟随模型，钩子经 ctx.channel.settings 读取）
-	deadline    string         // 任务时限（Go duration 写法）
-	caps        string         // 能力默认值 JSON（与前端 defaultCapabilities 同源）
-	contextCaps bool           // 是否把目录里的 context_length 填进能力的上下文窗口（仅文本）
+	protocol    string                        // 上游 supported_protocols 里的取值
+	plugin      string                        // 承接的协议插件 key
+	version     string                        // 承接插件的固定版本（同步时解析成该插件的最新版本）
+	kind        string                        // 模型种类
+	settings    map[string]any                // 协议设置（跟随模型，钩子经 ctx.channel.settings 读取）
+	deadline    string                        // 任务时限（Go duration 写法）
+	caps        string                        // 能力默认值 JSON（与前端 defaultCapabilities 同源）
+	capsFor     func(syncCatalogEntry) string // 同一协议族里按模型细分能力；优先于 caps
+	contextCaps bool                          // 是否把目录里的 context_length 填进能力的上下文窗口（仅文本）
+	tags        []string                      // 展示标签；特殊工作流（数字人、视频特效）用它避免被通用入口误选
+	tagsFor     func(syncCatalogEntry) []string
 }
 
 // syncContextWindowMax 是同步时上下文窗口的上限：目录里个别模型标到百万级，超过一律截到 1M。
@@ -71,12 +74,58 @@ var syncModelRules = []syncModelRule{
 	{
 		protocol: "seedance:generations", plugin: "tokendance-video", kind: "video",
 		deadline: "30m",
-		caps: `{"ops":["t2v","i2v","omni"],"refs":{"image":{"on":true,"max":9,"max_mb":30},"audio":{"on":true,"max":3,"max_mb":15},"video":{"on":true,"max":3,"max_mb":200}},` +
-			`"prompt":{"max_length":20000},"params":{"aspect_ratio":{"type":"enum","label":"比例","open":true,"options":["Auto","16:9","4:3","1:1","3:4","9:16","21:9"],"default":"Auto"},` +
-			`"resolution":{"type":"enum","label":"清晰度","open":true,"options":["720P","1080P"],"default":"720P","spec":true},` +
-			`"duration":{"type":"number","label":"视频时长","open":true,"min":4,"max":15,"step":1,"default":5,"unit":"秒"},` +
-			`"generate_audio":{"type":"boolean","label":"生成音频","open":true,"default":true,"spec":true},` +
-			`"count":{"type":"enum","label":"生成数量","open":true,"options":[1,2,4],"default":1,"fanout":true,"unit":"个"}}}`,
+		capsFor:  seedanceVideoCaps,
+	},
+	{
+		protocol: "kling:text2video-v2", plugin: "tokendance-kling-video", kind: "video",
+		settings: map[string]any{"api": "v2"}, deadline: "30m", capsFor: klingVideoCaps,
+	},
+	{
+		protocol: "kling:image2video-v2", plugin: "tokendance-kling-video", kind: "video",
+		settings: map[string]any{"api": "v2"}, deadline: "30m", capsFor: klingVideoCaps,
+	},
+	{
+		protocol: "kling:omni-video-v2", plugin: "tokendance-kling-video", kind: "video",
+		settings: map[string]any{"api": "v2"}, deadline: "30m", capsFor: klingVideoCaps,
+	},
+	{
+		protocol: "kling:text2video", plugin: "tokendance-kling-video", kind: "video",
+		settings: map[string]any{"api": "v1"}, deadline: "30m", capsFor: klingVideoCaps,
+	},
+	{
+		protocol: "kling:image2video", plugin: "tokendance-kling-video", kind: "video",
+		settings: map[string]any{"api": "v1"}, deadline: "30m", capsFor: klingVideoCaps,
+	},
+	{
+		protocol: "kling:motion-control", plugin: "tokendance-kling-video", kind: "video",
+		settings: map[string]any{"api": "v1"}, deadline: "30m", capsFor: klingVideoCaps,
+	},
+	{
+		protocol: "kling:omni-video", plugin: "tokendance-kling-video", kind: "video",
+		settings: map[string]any{"api": "v1-omni"}, deadline: "30m", capsFor: klingVideoCaps,
+	},
+	{
+		protocol: "kling:avatar", plugin: "tokendance-kling-video", kind: "video",
+		settings: map[string]any{"api": "avatar"}, deadline: "30m", capsFor: klingVideoCaps,
+		tags: []string{"avatar"},
+	},
+	{
+		protocol: "kling:video-effects", plugin: "tokendance-kling-video", kind: "video",
+		settings: map[string]any{"api": "effects"}, deadline: "30m", capsFor: klingVideoCaps,
+		tags: []string{"effect"},
+	},
+	{
+		protocol: "wan3:video-synthesis", plugin: "tokendance-alibaba-video", kind: "video",
+		settings: map[string]any{"family": "wan3"}, deadline: "30m", capsFor: alibabaVideoCaps,
+	},
+	{
+		protocol: "happyhorse:video-synthesis", plugin: "tokendance-alibaba-video", kind: "video",
+		settings: map[string]any{"family": "happyhorse"}, deadline: "30m", capsFor: alibabaVideoCaps,
+		tagsFor: happyHorseTags,
+	},
+	{
+		protocol: "minimax:video_generation_v2", plugin: "tokendance-minimax-video", kind: "video",
+		deadline: "30m", capsFor: minimaxVideoCaps,
 	},
 	{
 		protocol: "minimax:t2a_v2", plugin: "tokendance-tts", kind: "audio",
@@ -358,6 +407,9 @@ func syncFetchCatalog(ctx context.Context, baseURL, key string) ([]syncCatalogEn
 // 平台积分定价已停用，新同步正文不再写入 pricing；计费由用户 TokenPay 钱包按上游账单完成。
 func syncModelBody(key, channelKey string, entry syncCatalogEntry, rule syncModelRule, sort int) ([]byte, error) {
 	caps := rule.caps
+	if rule.capsFor != nil {
+		caps = rule.capsFor(entry)
+	}
 	if rule.contextCaps {
 		window := entry.ContextLength
 		if window <= 0 {
@@ -383,6 +435,13 @@ func syncModelBody(key, channelKey string, entry syncCatalogEntry, rule syncMode
 			"protocol": map[string]any{"plugin": rule.plugin, "version": rule.version, "settings": rule.settings},
 		}},
 		"capabilities": json.RawMessage(caps),
+	}
+	if len(rule.tags) > 0 {
+		body["tags"] = rule.tags
+	} else if rule.tagsFor != nil {
+		if tags := rule.tagsFor(entry); len(tags) > 0 {
+			body["tags"] = tags
+		}
 	}
 	return json.Marshal(body)
 }

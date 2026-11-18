@@ -408,6 +408,27 @@ function NumberEditor({
   );
 }
 
+/** string 参数：上游要求的短文本，给出默认值即可 */
+function StringEditor({
+  field,
+  onChange,
+}: {
+  field: ParamField;
+  onChange: (next: ParamField) => void;
+}) {
+  return (
+    <label className="flex items-center gap-2 text-xs">
+      默认值
+      <Input
+        aria-label={`${field.label}默认值`}
+        className="h-8 w-64 text-xs"
+        value={typeof field.default === "string" ? field.default : ""}
+        onChange={(event) => onChange({ ...field, default: event.target.value })}
+      />
+    </label>
+  );
+}
+
 /** 一个生成参数：名称、类型、开放开关、取值设置、排序与删除 */
 export function ParamRowEditor({
   name,
@@ -439,7 +460,7 @@ export function ParamRowEditor({
           onChange={(event) => onChange({ ...field, label: event.target.value })}
         />
         <code className="text-muted-foreground bg-muted rounded px-1.5 py-0.5 text-xs">{name}</code>
-        <Tag>{{ enum: "枚举", number: "数字", boolean: "开关" }[field.type]}</Tag>
+        <Tag>{{ enum: "枚举", number: "数字", boolean: "开关", string: "文本" }[field.type]}</Tag>
         {field.fanout && <Tag tone="violet">拆成 N 个任务</Tag>}
         {field.spec && <Tag tone="info">规格价格维度</Tag>}
         <label className="ml-auto flex items-center gap-1.5 text-xs">
@@ -476,6 +497,7 @@ export function ParamRowEditor({
       <div className="mt-3">
         {field.type === "enum" && <OptionsEditor name={name} field={field} onChange={onChange} />}
         {field.type === "number" && <NumberEditor field={field} onChange={onChange} />}
+        {field.type === "string" && <StringEditor field={field} onChange={onChange} />}
         {field.type === "boolean" && (
           <label className="flex items-center gap-2 text-xs">
             默认开启

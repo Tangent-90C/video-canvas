@@ -322,5 +322,8 @@ func Load(path string) (*Config, error) {
 	if err := cfg.TokenPay.Validate(); err != nil {
 		return nil, err
 	}
+	if cfg.Storage.Local.BaseURL == "" && cfg.TokenPay.Enabled() {
+		cfg.Storage.Local.BaseURL = strings.TrimRight(cfg.TokenPay.AppURL, "/")
+	}
 	return &cfg, nil
 }

@@ -273,13 +273,24 @@ type fakeAssets struct {
 	userID uint64
 	files  map[uint64][]byte
 	opened atomic.Int32
+	url    string
+	kind   string
+	mime   string
 }
 
 func (f *fakeAssets) Get(_ context.Context, userID, id uint64) (*model.Asset, error) {
 	if _, ok := f.files[id]; !ok || userID != f.userID {
 		return nil, provider.ErrAssetNotFound
 	}
-	return &model.Asset{ID: id, UserID: userID, Kind: "image", MimeType: "image/png", FileName: "a.png"}, nil
+	kind := f.kind
+	if kind == "" {
+		kind = "image"
+	}
+	mimeType := f.mime
+	if mimeType == "" {
+		mimeType = "image/png"
+	}
+	return &model.Asset{ID: id, UserID: userID, Kind: kind, MimeType: mimeType, FileName: "a.png"}, nil
 }
 
 func (f *fakeAssets) Open(ctx context.Context, userID, id uint64) (*provider.AssetFile, error) {
@@ -288,7 +299,11 @@ func (f *fakeAssets) Open(ctx context.Context, userID, id uint64) (*provider.Ass
 		return nil, err
 	}
 	f.opened.Add(1)
-	return &provider.AssetFile{Asset: a, Body: io.NopCloser(bytes.NewReader(f.files[id])), URL: "https://cdn.example.com/a.png"}, nil
+	url := f.url
+	if url == "" {
+		url = "https://cdn.example.com/a.png"
+	}
+	return &provider.AssetFile{Asset: a, Body: io.NopCloser(bytes.NewReader(f.files[id])), URL: url}, nil
 }
 
 func imageSnap(baseURL, code string) *provider.Snapshot {
@@ -344,6 +359,47 @@ module.exports = {
 	}
 	if list, _ := got["list"].([]any); len(list) != 1 || list[0] != "https://cdn.example.com/a.png" {
 		t.Fatalf("数组里的文件引用注入不符：%v", got["list"])
+	}
+}
+
+// 本地存储没有配置公开地址时，图片仍要用 data URL 交给上游；视频无法可靠内联，必须报清楚的错误，绝不能把 /files/... 发出去。
+func TestExecutorFileRefs_RelativeLocalURLIsNeverSentToUpstream(t *testing.T) {
+	const code = `
+module.exports = {
+  buildSubmitRequest: function(ctx) { return {method: "POST", path: "/run", json: {u: {__fileRef: ctx.input.images[0], as: "url"}}}; },
+  parseSubmitResponse: function(ctx) { return {immediate: {status: "succeeded", outputs: [{type: "url", url: ctx.channel.baseUrl + "/o.png"}]}}; }
+};`
+	var hits atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		var got map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		if got["u"] != "data:image/png;base64,"+base64.StdEncoding.EncodeToString([]byte("PNGDATA")) {
+			t.Errorf("相对图片地址应内联成 data URL：%v", got)
+		}
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer upstream.Close()
+
+	image := &fakeAssets{userID: 9, files: map[uint64][]byte{5: []byte("PNGDATA")}, url: "/files/u1/a.png"}
+	exec := execWith(code, func(o *plugin.Options) { o.Assets = image })
+	if _, err := exec.Submit(context.Background(), imageSnap(upstream.URL, code), provider.SubmitInput{
+		Task: provider.TaskRef{ID: 1, UserID: 9}, Input: map[string]any{"prompt": "x", "op": "i2i", "images": []uint64{5}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	video := &fakeAssets{userID: 9, files: map[uint64][]byte{6: []byte("MP4")}, url: "/files/u1/a.mp4", kind: "video", mime: "video/mp4"}
+	exec = execWith(code, func(o *plugin.Options) { o.Assets = video })
+	_, err := exec.Submit(context.Background(), imageSnap(upstream.URL, code), provider.SubmitInput{
+		Task: provider.TaskRef{ID: 1, UserID: 9}, Input: map[string]any{"prompt": "x", "op": "i2i", "images": []uint64{6}},
+	})
+	var pe *provider.Error
+	if !errors.As(err, &pe) || pe.Class != provider.ClassTerminal || !strings.Contains(pe.Error(), "公开访问") {
+		t.Fatalf("相对视频地址应明确失败：%v", err)
+	}
+	if hits.Load() != 1 {
+		t.Fatalf("相对视频地址不应发到上游，实际请求 %d 次", hits.Load())
 	}
 }
 

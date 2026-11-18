@@ -114,6 +114,7 @@ ALTER TABLE generation_tasks ADD COLUMN wallet bool NOT NULL DEFAULT false;
 | --- | --- | --- |
 | `APP_TOKENPAY_APP_URL` | 本站对外地址。**必配**，不配则钱包功能整体关闭；同时用作 OAuth `app_url` 归因参数和回调基址 | `https://lianjing.example.com` |
 | `APP_TOKENPAY_KEY_NAME` | 授权页展示的 Key 名称（默认「连镜」） | `连镜` |
+| `APP_STORAGE_LOCAL_BASE_URL` | 可选。本地素材给上游的绝对地址前缀；不填时自动沿用 `APP_TOKENPAY_APP_URL`，避免把 `/files/...` 相对地址发给上游 | `https://lianjing.example.com` |
 
 回调地址固定拼为 `<APP_TOKENPAY_APP_URL>/wallet/tokenpay/callback`，必须与浏览器实际访问地址一致（含 https）。
 
@@ -125,12 +126,15 @@ ALTER TABLE generation_tasks ADD COLUMN wallet bool NOT NULL DEFAULT false;
    - 勾选「钱包渠道」
    - HeadersJSON 填 `{"X-App-URL":"<你的站点地址>"}`（归因头）
    - API Key 填一个任意有效的 TokenDance Key（仅用于拉模型目录，用户请求不走它）
-3. **拉模型并绑定**：从该渠道拉取模型目录，按能力绑定插件：
-   - 文本 → `openai.js`（`/v1/responses`）
-   - 图像 → `openai-image.js`（`/v1/images/generations`）
-   - 视频 → `tokendance-video.js`（seedance，`/ark/v3/generations/tasks`）
-   - 音频 → `tokendance-tts.js`（minimax T2A，`/minimax/v1/t2a_v2`）
-   - 每个模型的「模型协议设置」按上游要求填（如 TTS 的 `voice_id`）。
+3. **同步全部模型**：钱包渠道页点「同步全部模型」，按上游 `supported_protocols` 自动建模型并启用：
+   - 文本 → `openai.js`（Chat Completions）
+   - 图像 → `tokendance-image.js`（Seedream / Qwen Image；含 Seedream 5.5、5.0 Pro）
+   - Seedance → `tokendance-video.js`（`/ark/v3/generations/tasks`）
+   - 可灵 V1/V2、Omni、数字人、视频特效 → `tokendance-kling-video.js`
+   - Wan3.0 / HappyHorse → `tokendance-alibaba-video.js`
+   - MiniMax H3 V2 → `tokendance-minimax-video.js`
+   - 音频 → `tokendance-tts.js`
+   - 同步会跳过渠道下已有的上游模型，可重复点击补齐上游新上架模型；不会修改已存在模型的运营配置。
 4. **走通 DryRun** 再发布模型。
 5. **验证归因**：用自己的 TokenDance 账号连接并生成一单，到 TokenPay 后台确认调用量与 App URL 归因正确。
 

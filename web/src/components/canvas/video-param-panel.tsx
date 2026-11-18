@@ -284,6 +284,18 @@ function ParamRow({
         onChange={set}
       />
     );
+  } else if (field.type === "string") {
+    control = (
+      <Input
+        value={value === undefined || value === null ? "" : String(value)}
+        disabled={disabled}
+        aria-invalid={invalid}
+        aria-label={field.label}
+        placeholder={typeof field.default === "string" ? field.default : undefined}
+        className="h-8 text-xs"
+        onChange={(event) => set(event.target.value)}
+      />
+    );
   } else if (isRatioParam(field)) {
     control = <RatioGrid field={field} value={value} disabled={disabled} onChange={set} />;
   } else {

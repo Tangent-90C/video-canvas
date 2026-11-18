@@ -225,7 +225,13 @@
         "default": 5,
         "unit": "秒",
       },
-    }, // 有序对象，书写顺序就是画布参数面板的显示顺序；参数名会作为任务输入的键传给插件
+      "effect_scene": {
+        "type": "string",
+        "label": "特效模板",
+        "open": true,
+        "default": "color_mixing",
+      },
+    }, // 有序对象，书写顺序就是画布参数面板的显示顺序；type 取 enum / number / boolean / string，参数名会作为任务输入的键传给插件
     "context": { "window": 128000, "output": 8192 }, // 仅 text
     "system": "…", // 仅 text，固定系统提示，不下发给画布
   },

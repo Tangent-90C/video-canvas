@@ -70,6 +70,29 @@ func TestLoad_AllowFakeIP(t *testing.T) {
 	}
 }
 
+// 本地存储的稳定地址默认取站点公开地址：生产只配 APP_TOKENPAY_APP_URL 时，
+// 生成素材也能变成上游可访问的绝对 URL，而不是 /files/....
+func TestLoad_LocalStorageBaseURLFallsBackToAppURL(t *testing.T) {
+	t.Setenv("APP_TOKENPAY_APP_URL", "https://canvas.example.com/")
+	t.Setenv("APP_STORAGE_LOCAL_BASE_URL", "")
+	cfg, err := Load("../../../configs/config.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Storage.Local.BaseURL != "https://canvas.example.com" {
+		t.Fatalf("本地存储应回落到站点公开地址：%q", cfg.Storage.Local.BaseURL)
+	}
+
+	t.Setenv("APP_STORAGE_LOCAL_BASE_URL", "https://assets.example.com/")
+	cfg, err = Load("../../../configs/config.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Storage.Local.BaseURL != "https://assets.example.com/" {
+		t.Fatalf("显式配置不能被站点地址覆盖：%q", cfg.Storage.Local.BaseURL)
+	}
+}
+
 // update：检查新版本默认开、默认仓库；老部署挂载的配置文件里没有 update 段也一样；环境变量能关闭。
 func TestLoad_UpdateDefaultsAndEnvOverride(t *testing.T) {
 	cfg, err := Load("../../../configs/config.yaml")

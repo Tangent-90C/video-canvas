@@ -16,13 +16,45 @@ import (
 // syncPluginMetas 是四个承接插件的 meta：声明 kind 端点与同步规则会用到的协议设置项。
 func syncPluginMetas() map[string]json.RawMessage {
 	return map[string]json.RawMessage{
-		"openai":           []byte(`{"apiVersion":1,"key":"openai","name":"OpenAI","version":"1.0.0","auth":{"type":"bearer"},"endpoints":{"text":{"mode":"sync"}},"channelSettings":{"api":{"type":"enum","label":"接口","options":["responses","chat_completions"],"default":"responses"}}}`),
-		"openai-image":     []byte(`{"apiVersion":1,"key":"openai-image","name":"OpenAI Image","version":"1.0.0","auth":{"type":"bearer"},"endpoints":{"image":{"mode":"sync"}}}`),
-		"tokendance-video": []byte(`{"apiVersion":1,"key":"tokendance-video","name":"TokenDance Video","version":"1.0.0","auth":{"type":"bearer"},"endpoints":{"video":{"mode":"async"}}}`),
-		"tokendance-image": []byte(`{"apiVersion":1,"key":"tokendance-image","name":"TokenDance Image","version":"1.0.0","auth":{"type":"bearer"},"endpoints":{"image":{"mode":"sync"}}}`),
-		"tokendance-tts":   []byte(`{"apiVersion":1,"key":"tokendance-tts","name":"TokenDance TTS","version":"1.0.0","auth":{"type":"bearer"},"endpoints":{"audio":{"mode":"sync"}},"channelSettings":{"voice_id":{"type":"string","label":"音色","default":"male-qn-qingse"}}}`),
+		"openai":                   []byte(`{"apiVersion":1,"key":"openai","name":"OpenAI","version":"1.0.0","auth":{"type":"bearer"},"endpoints":{"text":{"mode":"sync"}},"channelSettings":{"api":{"type":"enum","label":"接口","options":["responses","chat_completions"],"default":"responses"}}}`),
+		"openai-image":             []byte(`{"apiVersion":1,"key":"openai-image","name":"OpenAI Image","version":"1.0.0","auth":{"type":"bearer"},"endpoints":{"image":{"mode":"sync"}}}`),
+		"tokendance-video":         []byte(`{"apiVersion":1,"key":"tokendance-video","name":"TokenDance Video","version":"1.0.0","auth":{"type":"bearer"},"endpoints":{"video":{"mode":"async"}}}`),
+		"tokendance-kling-video":   []byte(`{"apiVersion":1,"key":"tokendance-kling-video","name":"TokenDance Kling Video","version":"1.0.0","auth":{"type":"bearer"},"endpoints":{"video":{"mode":"async"}},"channelSettings":{"api":{"type":"enum","label":"接口","options":["v1","v2","v1-omni","avatar","effects"],"default":"v2"}}}`),
+		"tokendance-alibaba-video": []byte(`{"apiVersion":1,"key":"tokendance-alibaba-video","name":"TokenDance Alibaba Video","version":"1.0.0","auth":{"type":"bearer"},"endpoints":{"video":{"mode":"async"}},"channelSettings":{"family":{"type":"enum","label":"协议族","options":["wan3","happyhorse"],"default":"wan3"}}}`),
+		"tokendance-minimax-video": []byte(`{"apiVersion":1,"key":"tokendance-minimax-video","name":"TokenDance MiniMax Video","version":"1.0.0","auth":{"type":"bearer"},"endpoints":{"video":{"mode":"async"}}}`),
+		"tokendance-image":         []byte(`{"apiVersion":1,"key":"tokendance-image","name":"TokenDance Image","version":"1.0.0","auth":{"type":"bearer"},"endpoints":{"image":{"mode":"sync"}}}`),
+		"tokendance-tts":           []byte(`{"apiVersion":1,"key":"tokendance-tts","name":"TokenDance TTS","version":"1.0.0","auth":{"type":"bearer"},"endpoints":{"audio":{"mode":"sync"}},"channelSettings":{"voice_id":{"type":"string","label":"音色","default":"male-qn-qingse"}}}`),
 	}
 }
+
+// tokenPayMediaCatalog 是 2026-11-18 线上 /gateway/v1/models 里的图像与视频目录快照（只保留本次同步关心的字段）。
+const tokenPayMediaCatalog = `{"data":[
+  {"id":"seedream-5.5","name":"ByteDance Seed: Seedream 5.5","supported_protocols":["ark:image-generations"]},
+  {"id":"seedream-5.0-pro","name":"ByteDance Seed: Seedream 5.0 Pro","supported_protocols":["ark:image-generations"]},
+  {"id":"seedance-2.5-flash","name":"ByteDance: Seedance 2.5 Flash","supported_protocols":["seedance:generations"]},
+  {"id":"seedance-2.5","name":"ByteDance: Seedance 2.5","supported_protocols":["seedance:generations"]},
+  {"id":"seedance-2.0-mini","name":"ByteDance: Seedance 2.0 Mini","supported_protocols":["seedance:generations"]},
+  {"id":"seedance-2.0","name":"ByteDance: Seedance 2.0","supported_protocols":["seedance:generations"]},
+  {"id":"seedance-2.0-fast","name":"ByteDance: Seedance 2.0 Fast","supported_protocols":["seedance:generations"]},
+  {"id":"kling-4.0-flash","name":"Kling: Video 4.0 Flash","supported_protocols":["kling:image2video-v2","kling:omni-video-v2","kling:text2video-v2"]},
+  {"id":"kling-4.0","name":"Kling: Video 4.0","supported_protocols":["kling:image2video-v2","kling:omni-video-v2","kling:text2video-v2"]},
+  {"id":"kling-3.0-turbo","name":"Kling: Video 3.0 Turbo","supported_protocols":["kling:image2video","kling:text2video"]},
+  {"id":"kling-3.0-omni","name":"Kling: Video 3.0 Omni","supported_protocols":["kling:omni-video"]},
+  {"id":"kling-3.0","name":"Kling: Video 3.0","supported_protocols":["kling:image2video","kling:motion-control","kling:text2video"]},
+  {"id":"kling-avatar-image2video","name":"Kling: Kling Avatar","supported_protocols":["kling:avatar"]},
+  {"id":"kling-effects","name":"Kling: Kling Video Effects","supported_protocols":["kling:video-effects"]},
+  {"id":"wan3.0-video","name":"Qwen: Wan3.0","supported_protocols":["wan3:video-synthesis"]},
+  {"id":"wan3.0-video-prime","name":"Qwen: Wan3.0 Prime","supported_protocols":["wan3:video-synthesis"]},
+  {"id":"happyhorse-1.1-t2v","name":"Alibaba: HappyHorse 1.1 Text To Video","supported_protocols":["happyhorse:video-synthesis"]},
+  {"id":"happyhorse-1.1-i2v","name":"Alibaba: HappyHorse 1.1 Image To Video","supported_protocols":["happyhorse:video-synthesis"]},
+  {"id":"happyhorse-1.1-r2v","name":"Alibaba: HappyHorse 1.1 Reference To Video","supported_protocols":["happyhorse:video-synthesis"]},
+  {"id":"happyhorse-1.0-t2v","name":"Alibaba: HappyHorse 1.0 Text To Video","supported_protocols":["happyhorse:video-synthesis"]},
+  {"id":"happyhorse-1.0-i2v","name":"Alibaba: HappyHorse 1.0 Image To Video","supported_protocols":["happyhorse:video-synthesis"]},
+  {"id":"happyhorse-1.0-r2v","name":"Alibaba: HappyHorse 1.0 Reference To Video","supported_protocols":["happyhorse:video-synthesis"]},
+  {"id":"happyhorse-1.0-video-edit","name":"Alibaba: HappyHorse 1.0 Video Edit","supported_protocols":["happyhorse:video-synthesis"]},
+  {"id":"minimax-h3-max","name":"MiniMax: MiniMax H3 Max","supported_protocols":["minimax:video_generation_v2"]},
+  {"id":"minimax-h3","name":"MiniMax: MiniMax H3","supported_protocols":["minimax:video_generation_v2"]}
+]}`
 
 // syncCatalogServer 起一个假上游，返回 /v1/models 目录：覆盖四种可承接协议 + 一种不可承接协议。
 func syncCatalogServer(t *testing.T) *httptest.Server {
@@ -183,6 +215,144 @@ func TestSyncChannelModels(t *testing.T) {
 	if len(notifier.Reasons) != 1 {
 		t.Fatalf("同步后应刷新一次 Registry：%v", notifier.Reasons)
 	}
+}
+
+// TokenPay 图像和视频目录必须全部有承接协议：Seedream 新模型不能再漏，23 个视频模型也不能只剩 Seedance。
+func TestSyncChannelModels_TokenPayAllMediaFamilies(t *testing.T) {
+	ctx := context.Background()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(tokenPayMediaCatalog))
+	}))
+	defer srv.Close()
+	cfg, repo, _ := newSyncEnv(t, srv.URL)
+
+	res, err := cfg.SyncChannelModels(ctx, 5, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Created) != 25 || len(res.Skipped) != 0 {
+		t.Fatalf("应新建 2 个图像 + 23 个视频模型，实际：created=%d skipped=%+v", len(res.Created), res.Skipped)
+	}
+	var videoCount, imageCount int
+	for _, c := range res.Created {
+		switch c.Kind {
+		case "video":
+			videoCount++
+		case "image":
+			imageCount++
+		}
+		if !c.Enabled || c.EnableIssue != "" {
+			t.Fatalf("%s 应直接启用（issue=%s）：%+v", c.UpstreamModel, c.EnableIssue, c)
+		}
+	}
+	if videoCount != 23 || imageCount != 2 {
+		t.Fatalf("模型类型数量不符：video=%d image=%d", videoCount, imageCount)
+	}
+
+	type modelBody struct {
+		Kind     string   `json:"kind"`
+		Tags     []string `json:"tags"`
+		Channels []struct {
+			Protocol struct {
+				Plugin   string         `json:"plugin"`
+				Settings map[string]any `json:"settings"`
+			} `json:"protocol"`
+		} `json:"channels"`
+		Capabilities struct {
+			Ops          []string `json:"ops"`
+			PromptFormat string   `json:"prompt_format"`
+			Refs         struct {
+				Image struct {
+					On  bool `json:"on"`
+					Max int  `json:"max"`
+				} `json:"image"`
+				Video struct {
+					On bool `json:"on"`
+				} `json:"video"`
+			} `json:"refs"`
+			Params map[string]struct {
+				Type string `json:"type"`
+			} `json:"params"`
+		} `json:"capabilities"`
+	}
+	bodyOf := func(key string) modelBody {
+		t.Helper()
+		cur, err := repo.GetModelConfig(ctx, key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var body modelBody
+		if err := json.Unmarshal(cur.BodyJSON, &body); err != nil {
+			t.Fatal(err)
+		}
+		return body
+	}
+	keyOf := func(upstream string) string {
+		for _, c := range res.Created {
+			if c.UpstreamModel == upstream {
+				return c.Key
+			}
+		}
+		t.Fatalf("没有同步 %s", upstream)
+		return ""
+	}
+
+	for _, upstream := range []string{"seedream-5.5", "seedream-5.0-pro"} {
+		body := bodyOf(keyOf(upstream))
+		if body.Kind != "image" || body.Channels[0].Protocol.Plugin != "tokendance-image" {
+			t.Fatalf("%s 应由 tokendance-image 承接：%+v", upstream, body)
+		}
+	}
+
+	wantPlugin := map[string]string{
+		"seedance-2.5":             "tokendance-video",
+		"kling-4.0":                "tokendance-kling-video",
+		"kling-3.0":                "tokendance-kling-video",
+		"kling-3.0-omni":           "tokendance-kling-video",
+		"kling-avatar-image2video": "tokendance-kling-video",
+		"kling-effects":            "tokendance-kling-video",
+		"wan3.0-video":             "tokendance-alibaba-video",
+		"happyhorse-1.1-r2v":       "tokendance-alibaba-video",
+		"minimax-h3":               "tokendance-minimax-video",
+		"minimax-h3-max":           "tokendance-minimax-video",
+	}
+	for upstream, plugin := range wantPlugin {
+		body := bodyOf(keyOf(upstream))
+		if body.Kind != "video" || body.Channels[0].Protocol.Plugin != plugin {
+			t.Fatalf("%s 应由 %s 承接：%+v", upstream, plugin, body)
+		}
+	}
+
+	kling4 := bodyOf(keyOf("kling-4.0"))
+	if kling4.Channels[0].Protocol.Settings["api"] != "v2" || !stringListContains(kling4.Capabilities.Ops, "omni") || !kling4.Capabilities.Refs.Video.On {
+		t.Fatalf("Kling 4.0 的协议设置或能力不对：%+v", kling4)
+	}
+	wan := bodyOf(keyOf("wan3.0-video"))
+	if wan.Channels[0].Protocol.Settings["family"] != "wan3" || !stringListContains(wan.Capabilities.Ops, "omni") || wan.Capabilities.Refs.Image.Max != 10 {
+		t.Fatalf("Wan3.0 的协议设置或能力不对：%+v", wan)
+	}
+	h3max := bodyOf(keyOf("minimax-h3-max"))
+	if h3max.Capabilities.PromptFormat != "h3" || stringListContains(h3max.Capabilities.Ops, "omni") {
+		t.Fatalf("MiniMax H3 Max 只支持文生和首尾帧：%+v", h3max)
+	}
+	effects := bodyOf(keyOf("kling-effects"))
+	if effects.Capabilities.Params["effect_scene"].Type != "string" || !stringListContains(effects.Tags, "effect") {
+		t.Fatalf("视频特效需要字符串模板参数并带 effect 标签：%+v", effects)
+	}
+	avatar := bodyOf(keyOf("kling-avatar-image2video"))
+	if !stringListContains(avatar.Tags, "avatar") {
+		t.Fatalf("数字人模型应带 avatar 标签：%+v", avatar)
+	}
+}
+
+func stringListContains(list []string, want string) bool {
+	for _, item := range list {
+		if item == want {
+			return true
+		}
+	}
+	return false
 }
 
 // TestSyncChannelModelsIdempotent 重复同步：已有的上游模型全部跳过，不再新建。

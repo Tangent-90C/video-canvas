@@ -14,8 +14,8 @@ export interface RefSpec {
   max_mb: number;
 }
 
-/** 生成参数的取值类型 */
-export type ParamType = "enum" | "number" | "boolean";
+/** 生成参数的取值类型；string 用于上游要求的短文本（如特效模板 ID） */
+export type ParamType = "enum" | "number" | "boolean" | "string";
 
 /** enum 的可选值：字符串或数字 */
 export type ParamOption = string | number;

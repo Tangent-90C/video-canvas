@@ -47,7 +47,7 @@ func object(desc string, props obj, required ...string) obj {
 // paramFieldSchema 是 capabilities.params 里单个生成参数的 Schema。
 func paramFieldSchema() obj {
 	return object("生成参数", obj{
-		"type":    enum("参数类型", ParamEnum, ParamNumber, ParamBoolean),
+		"type":    enum("参数类型", ParamEnum, ParamNumber, ParamBoolean, ParamString),
 		"label":   str("画布参数面板里的控件标题"),
 		"open":    boolean("是否开放给用户：true 出现在画布参数面板，false 不出现、按 default 发送"),
 		"options": obj{"type": "array", "maxItems": maxEnumOptions, "description": "enum 的可选值（字符串或数字）", "items": obj{"type": []string{"string", "number"}}},

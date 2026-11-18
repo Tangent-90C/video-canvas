@@ -169,7 +169,7 @@ When it finishes, open `http://{your-ip}:38080`. When accessing through an IP or
 ### First run
 
 1. Open the app and register. The first account in the system becomes the super admin.
-2. Go to **Admin console → TokenPay wallet**, enter the gateway URL and the product-side channel key, then sync the model catalog. That key is only used for catalog sync and never pays on behalf of users.
+2. Go to **Admin console → TokenPay wallet**, enter the gateway URL and the product-side channel key, then sync the model catalog. That key is only used for catalog sync and never pays on behalf of users. Sync covers text, Seedream image, and Seedance, Kling, Wan3.0, HappyHorse and MiniMax video protocols.
 3. Connect your own TokenPay wallet in the profile page.
 4. Go back to the home page to generate, or create a canvas and organize the generation flow with nodes. If the wallet is missing, model entry points open the connection prompt directly.
 

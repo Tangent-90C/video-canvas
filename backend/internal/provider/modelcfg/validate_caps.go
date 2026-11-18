@@ -173,8 +173,10 @@ func validateParam(base string, f ParamField, add func(path, msg string)) bool {
 		validateNumberParam(base, f, add)
 	case ParamBoolean:
 		validateBoolParam(base, f, add)
+	case ParamString:
+		validateStringParam(base, f, add)
 	default:
-		add(base+".type", oneOfMsg([]string{ParamEnum, ParamNumber, ParamBoolean}))
+		add(base+".type", oneOfMsg([]string{ParamEnum, ParamNumber, ParamBoolean, ParamString}))
 		return false
 	}
 	if f.Type != ParamEnum && len(f.Options) > 0 {
@@ -185,6 +187,9 @@ func validateParam(base string, f ParamField, add func(path, msg string)) bool {
 	}
 	if f.Spec && f.Type == ParamNumber {
 		add(base+".spec", "number 参数不能作为规格价格维度（时长对价格的影响用按秒计费表达）")
+	}
+	if f.Spec && f.Type == ParamString {
+		add(base+".spec", "string 参数不能作为规格价格维度")
 	}
 	if f.Fanout {
 		validateFanout(base, f, add)
@@ -218,6 +223,14 @@ func validateEnumParam(base string, f ParamField, add func(path, msg string)) {
 		add(base+".default", "必须设置默认值")
 	} else if _, ok := matchOption(f.Options, f.Default); !ok {
 		add(base+".default", "默认值必须是可选值之一")
+	}
+}
+
+func validateStringParam(base string, f ParamField, add func(path, msg string)) {
+	if f.Default != nil {
+		if _, ok := f.Default.(string); !ok {
+			add(base+".default", "默认值必须是字符串")
+		}
 	}
 }
 

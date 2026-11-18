@@ -232,6 +232,26 @@ describe("buildTaskInput", () => {
     expect(buildTaskInput(video(), { prompt: "x", duration: "8" }).input.duration).toBe(8);
   });
 
+  test("字符串参数去掉首尾空白，空值取默认值", () => {
+    const caps: Capabilities = {
+      ...video(),
+      params: {
+        effect_scene: {
+          type: "string",
+          label: "特效模板",
+          open: true,
+          default: "color_mixing",
+        },
+      },
+    };
+    expect(
+      buildTaskInput(caps, { prompt: "x", effect_scene: "  hug_pro  " }).input.effect_scene,
+    ).toBe("hug_pro");
+    expect(buildTaskInput(caps, { prompt: "x", effect_scene: "  " }).input.effect_scene).toBe(
+      "color_mixing",
+    );
+  });
+
   test("图生：必须有图片；连线 + 手动添加合并去重，超上限报错", () => {
     expect(buildTaskInput(video(), { prompt: "x", op: "i2v" }).errors.images).toContain(
       "至少 1 张",

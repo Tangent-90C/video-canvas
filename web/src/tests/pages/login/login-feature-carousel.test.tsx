@@ -1,14 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
+import { MemoryRouter } from "react-router";
 
+import Login from "@/pages/login";
 import { LOGIN_FEATURE_SLIDES, LoginFeatureCarousel } from "@/pages/login/login-feature-carousel";
+import { installDom } from "@/tests/helpers/dom";
 
 describe("登录页：功能截图轮播", () => {
   test("首帧展示产品首页，并提供可访问的轮播、分页和暂停控件", () => {
     const out = renderToStaticMarkup(<LoginFeatureCarousel />);
 
     expect(out).toContain('data-slot="login-feature-carousel"');
+    expect(out).toContain('data-layout="full-bleed"');
     expect(out).toContain('aria-roledescription="carousel"');
     expect(out).toContain('aria-label="连镜功能预览"');
     expect(out).toContain('aria-roledescription="slide"');
@@ -24,6 +28,26 @@ describe("登录页：功能截图轮播", () => {
     for (const slide of LOGIN_FEATURE_SLIDES) {
       expect(slide.image.startsWith("/login-showcase/")).toBe(true);
       expect(existsSync(new URL(`../../../../public${slide.image}`, import.meta.url))).toBe(true);
+    }
+  });
+
+  test("被拦截到登录页时仍展示占满整页宽的功能轮播，并给出明确的页面锚点", async () => {
+    const env = await installDom();
+
+    try {
+      const out = renderToStaticMarkup(
+        <MemoryRouter initialEntries={["/login?next=%2F"]}>
+          <Login />
+        </MemoryRouter>,
+      );
+
+      expect(out).toContain('data-slot="idea-dock"');
+      expect(out).toContain('data-open="true"');
+      expect(out).toContain('data-slot="login-feature-carousel"');
+      expect(out).toContain('data-layout="full-bleed"');
+      expect(out).toContain('href="#features"');
+    } finally {
+      env.restore();
     }
   });
 });

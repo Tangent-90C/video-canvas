@@ -517,6 +517,12 @@ function checkParam(field: ParamField, value: unknown): { value: unknown } | { e
         return { error: `${field.label}不能大于 ${field.max}` };
       return { value: n };
     }
+    case "string": {
+      if (typeof value !== "string") return { error: `${field.label}需要填写文字` };
+      const text = value.trim();
+      if ([...text].length > 512) return { error: `${field.label}不能超过 512 个字` };
+      return text === "" ? { error: `请填写${field.label}` } : { value: text };
+    }
     default:
       return { value: value === true || value === "true" };
   }
@@ -685,6 +691,10 @@ export function buildTaskInput(
   for (const field of openParams(caps)) {
     const value = effectiveValue(field, params, field.name);
     if (isEmptyValue(value)) {
+      if (field.type === "string" && typeof field.default === "string" && field.default.trim()) {
+        input[field.name] = field.default.trim();
+        continue;
+      }
       if (field.type !== "boolean") errors[field.name] = `请填写${field.label}`;
       else input[field.name] = false;
       continue;
