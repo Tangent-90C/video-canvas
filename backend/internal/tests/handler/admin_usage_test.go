@@ -95,7 +95,7 @@ func TestAdminUsage_List(t *testing.T) {
 				Page     int               `json:"page"`
 				PageSize int               `json:"page_size"`
 			}](t, r)
-			if v.Total != 2 || v.Page != 1 || v.PageSize != 20 || len(v.List) != 2 || v.List[0].User.Username != "tom" || v.List[0].ChargedCredits == nil || v.List[1].ChargedCredits != nil {
+			if v.Total != 2 || v.Page != 1 || v.PageSize != 20 || len(v.List) != 2 || v.List[0].User.Username != "tom" || v.List[0].ChargedCredits != nil || v.List[1].ChargedCredits != nil {
 				t.Fatalf("%+v", v)
 			}
 		}
@@ -138,7 +138,7 @@ func TestAdminUsage_Summary(t *testing.T) {
 	env.usage.counts = []model.UsageStatusCount{{Status: model.TaskSucceeded, Count: 4, Charged: 30}, {Status: model.TaskFailed, Count: 1}, {Status: model.TaskRunning, Count: 2}}
 	r := env.do(http.MethodGet, path, nil, uaAdmin)
 	r.want(t, 200, 0)
-	if v := decode[model.UsageSummary](t, r); v.Total != 7 || v.Succeeded != 4 || v.Failed != 1 || v.Active != 2 || v.ChargedCredits != 30 {
+	if v := decode[model.UsageSummary](t, r); v.Total != 7 || v.Succeeded != 4 || v.Failed != 1 || v.Active != 2 || v.ChargedCredits != 0 {
 		t.Fatalf("%+v", v)
 	}
 	env.do(http.MethodGet, path+"?status=done", nil, uaAdmin).want(t, 400, errcode.ErrInvalidParams.Code)
@@ -166,10 +166,13 @@ func TestAdminUsage_Get(t *testing.T) {
 		if v.Task.TaskRef != ref || v.User.Username != "tom" || v.Input["prompt"] != "海边日落" || v.Error.Upstream == nil || *v.Error.Upstream != "HTTP 503" || len(v.Events) != 1 {
 			t.Fatalf("%+v", v)
 		}
-		for _, field := range []string{`"outputs":[]`, `"ledger":[]`, `"trace":null`} {
+		for _, field := range []string{`"outputs":[]`, `"trace":null`} {
 			if !strings.Contains(r.Raw, field) {
 				t.Fatalf("响应里应有 %s：%s", field, r.Raw)
 			}
+		}
+		if strings.Contains(r.Raw, `"ledger"`) {
+			t.Fatalf("平台积分流水不应再对外返回：%s", r.Raw)
 		}
 	})
 	t.Run("业务错误：任务不存在 -> 404 + 40004", func(t *testing.T) {

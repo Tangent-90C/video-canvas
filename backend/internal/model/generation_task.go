@@ -68,8 +68,8 @@ type GenerationTask struct {
 	ProviderState   datatypes.JSON `gorm:"type:jsonb" json:"-"`                                                                                                                                                                                                  // 插件私有状态（≤64KB），由宿主持久化后下次传回插件
 	ProviderResult  datatypes.JSON `gorm:"type:jsonb" json:"-"`                                                                                                                                                                                                  // 同步接口的即时结果（[]provider.Output），转存前落库，重启后继续转存而不重复调用上游
 	TraceJSON       datatypes.JSON `gorm:"type:jsonb" json:"-"`                                                                                                                                                                                                  // 仅 is_test：插件钩子与 HTTP 的执行追踪（已脱敏），管理端试跑面板展示
-	IsTest          bool           `gorm:"not null;default:false" json:"is_test"`                                                                                                                                                                                // 运营试跑：不扣积分、不推送
-	Wallet          bool           `gorm:"not null;default:false" json:"wallet"`                                                                                                                                                                                 // 钱包任务：渠道是钱包渠道，用发起用户自己的 TokenPay 钱包 Key 支付上游，不冻结 / 不扣积分
+	IsTest          bool           `gorm:"not null;default:false" json:"is_test"`                                                                                                                                                                                // 运营试跑：不推送，费用由发起管理员自己的 TokenPay 钱包承担
+	Wallet          bool           `gorm:"not null;default:false" json:"wallet"`                                                                                                                                                                                 // 钱包任务：用发起用户自己的 TokenPay Key 支付上游
 	AgentRunID      uint64         `gorm:"not null;default:0;index:idx_generation_tasks_agent_run,where:agent_run_id <> 0" json:"-"`                                                                                                                             // 发起它的 Agent 运行 id，0 表示不是 Agent 发起的；任务进入终态时据此通知 Agent
 	NextPollAt      time.Time      `gorm:"not null" json:"-"`                                                                                                                                                                                                    // worker 调度依据（部分索引由迁移补建）
 	PollAttempts    int            `gorm:"not null;default:0" json:"-"`                                                                                                                                                                                          // 已轮询次数
@@ -110,7 +110,7 @@ type GenerationTaskView struct {
 	ErrorCode       string       `json:"error_code"`            // 统一错误码
 	ErrorMessage    string       `json:"error_message"`         // 给用户看的文案
 	Credits         int          `json:"credits"`               // 冻结的积分
-	Wallet          bool         `json:"wallet"`                // 钱包任务：用用户自己的 TokenPay Key 支付，不扣平台积分
+	Wallet          bool         `json:"wallet"`                // 钱包任务：用用户自己的 TokenPay Key 支付
 	ChargedCredits  *int         `json:"charged_credits"`       // 实际扣的积分，未结算为 null
 	Version         int64        `json:"version"`               // 状态版本号，前端据此丢弃过期推送
 	DeadlineAt      time.Time    `json:"deadline_at"`           // 截止时间，超过则 expired
@@ -144,7 +144,7 @@ type CreateTaskItem struct {
 	Error  *TaskItemError      `json:"error,omitempty"`
 }
 
-// TaskItemError 是单个节点提交失败的原因，含义与整体请求的 HTTP 错误一致（402 积分不足、429 并发已满……）。
+// TaskItemError 是单个节点提交失败的原因，含义与整体请求的 HTTP 错误一致（400 钱包未连接、429 并发已满……）。
 type TaskItemError struct {
 	Status  int    `json:"status"`
 	Code    int    `json:"code"`

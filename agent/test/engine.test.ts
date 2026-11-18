@@ -17,7 +17,7 @@ test("一轮对话：发起 → 模型回答 → 成功；事件、用量、会�
       [15, "04c13780543e", "abc1234", "harnesskey01"],
       "版本取自运行准备，之后沿用",
     );
-    assert.equal(run.spentCredits, 1);
+    assert.equal(run.spentCredits, 0, "平台积分已停用，历史字段恒为 0");
     assert.equal(run.contextTokens, 100);
 
     // 事件的类型和顺序：和 Go 现在发的一致（run.usage 在 message.done 之前）
@@ -35,12 +35,12 @@ test("一轮对话：发起 → 模型回答 → 成功；事件、用量、会�
       mode: "all",
       selection: [],
     });
-    assert.deepEqual(e.persisted("run.usage")[0], { spent_credits: 1, context_tokens: 100 });
+    assert.deepEqual(e.persisted("run.usage")[0], { spent_credits: 0, context_tokens: 100 });
     assert.deepEqual(e.persisted("message.done")[0], {
       text: "好的",
       tool_calls: [],
       partial: false,
-      credits: 1,
+      credits: 0,
       estimated: false,
     });
     assert.deepEqual(e.persisted("run.status")[2], { status: "succeeded", error: "" });
@@ -211,21 +211,18 @@ test("模型出错（上游 502）：运行失败，错误信息给用户看，�
     },
   ));
 
-test("本轮额度用完（业务错误码 60008）：运行进入 budget_exhausted 而不是失败，可以追加额度后继续", () =>
+test("历史 60008 不再触发平台预算暂停，按普通模型失败处理", () =>
   withEngine(
     { turns: [{ error: { status: 402, message: "超出本轮积分预算", errorCode: 60008 } }] },
     async (e) => {
       const r = await e.start({ budgetCredits: 5 });
       await e.engine.idle();
-      assert.equal(e.run(r.id).status, "budget_exhausted");
-      const last = e.persisted("run.status").at(-1)!;
-      assert.deepEqual(
-        [last.status, last.title, last.hint],
-        ["budget_exhausted", "本轮额度用完了", "追加额度后可以继续"],
-      );
-      assert.equal(e.run(r.id).budgetCredits, 5);
-      // 画布空出来了
-      assert.equal(e.store.activeRun("7"), undefined);
+      const run = e.run(r.id);
+      assert.equal(run.status, "failed");
+      assert.equal(run.budgetCredits, 0, "平台预算字段只保留历史兼容");
+      assert.equal(run.spentCredits, 0, "平台积分不再计入运行");
+      assert.match(run.errorMessage, /预算/);
+      assert.equal(e.store.activeRun("7"), undefined, "画布空出来了");
     },
   ));
 

@@ -150,6 +150,16 @@ func (s *UserWalletService) doRechargeRequest(req *http.Request, wantStatus int)
 	if resp.StatusCode != wantStatus {
 		return nil, errcode.ErrInternal.WithMsg("TokenDance 充值服务暂时不可用，请稍后重试")
 	}
+	// 官方 Agent Payment 接口把会话放在 {"session": {...}} 里；兼容早期直接返回会话对象的实现。
+	var envelope struct {
+		Session *walletRechargeUpstream `json:"session"`
+	}
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return nil, errcode.ErrInternal.WithMsg("TokenDance 充值服务响应无法解析，请稍后重试")
+	}
+	if envelope.Session != nil {
+		return envelope.Session, nil
+	}
 	var up walletRechargeUpstream
 	if err := json.Unmarshal(raw, &up); err != nil {
 		return nil, errcode.ErrInternal.WithMsg("TokenDance 充值服务响应无法解析，请稍后重试")

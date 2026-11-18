@@ -23,7 +23,6 @@ import { choose as chooseOption } from "@/components/drama/choice-dialog";
 import { useTextHashes } from "@/hooks/use-text-hashes";
 import { useDramaAssets, type DramaAssetsState } from "@/hooks/use-drama-assets";
 import { useDramaVideoModel } from "@/hooks/use-drama-video-model";
-import { useCreditsStore } from "@/store/credits";
 import { useDramaJobsStore } from "@/store/drama";
 import { segmentKey, useDramaSegmentsStore } from "@/store/drama-segments";
 import { useStudioPrefs, useStudioPrefsStore } from "@/store/drama-studio";
@@ -54,8 +53,6 @@ import {
 } from "@/utils/drama/segments";
 import { describeSubmitError } from "@/utils/tasks/submit";
 import { submitSegmentTask } from "@/utils/tasks/gateway";
-import { priceSpecOf } from "@/utils/tasks/capabilities";
-import { quote } from "@/utils/pricing/quote";
 import { ApiError } from "@/utils/requests/request";
 
 import { summarizeSave, type SaveSummary } from "../workspace/use-workspace";
@@ -99,9 +96,6 @@ export type Studio = {
   adaptStateOf: (segment: Segment) => AdaptState | "busy" | null;
   /** 选中片段此刻的组装结果 */
   plan: SegmentPlan | null;
-  /** 选中片段的预估积分；算不出来为 undefined */
-  credits: number | undefined;
-  availableCredits: number | null;
   save: SaveSummary;
   reportSave: (key: string, status: AutosaveStatus) => void;
   /** 正在提交视频的片段 */
@@ -202,7 +196,6 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
   } = useDramaAssets(drama.canvasId, settled);
   const video = useDramaVideoModel(dramaId, drama.videoModel);
   const prefs = useStudioPrefs(dramaId);
-  const availableCredits = useCreditsStore((state) => state.credits?.available ?? null);
 
   const selected = useMemo(
     () => segments.find((item) => item.id === selectedId) ?? segments[0] ?? null,
@@ -254,11 +247,6 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
         : null,
     [assets, caps, drama.ratio, prefs.overrides, prompt, selected],
   );
-  const credits = useMemo(() => {
-    if (!plan || !video.model || Object.keys(plan.input).length === 0) return undefined;
-    return quote(video.model.pricing, caps, priceSpecOf(caps, plan.input));
-  }, [caps, plan, video.model]);
-
   const reportSave = useCallback((name: string, status: AutosaveStatus) => {
     setSaveStates((prev) => (prev[name] === status ? prev : { ...prev, [name]: status }));
   }, []);
@@ -740,8 +728,6 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
     adaptErrors,
     adaptStateOf,
     plan,
-    credits,
-    availableCredits,
     save,
     reportSave,
     submitting,

@@ -150,13 +150,14 @@ describe("「继续规划」确认框", () => {
   const byText = (c: HTMLElement, text: string) =>
     [...c.querySelectorAll("button")].find((b) => (b.textContent ?? "").trim() === text);
 
-  test("默认「全部剩余」：显示剩余范围、预计集数、积分、耗时；确认后 range_end = 0 并刷新、关闭", async () => {
+  test("默认「全部剩余」：显示剩余范围、预计集数、费用口径、耗时；确认后 range_end = 0 并刷新、关闭", async () => {
     const m = await mountBody();
     await dom.flush(400);
     const text = m.container.textContent ?? "";
     expect(text).toContain("第 121–1,215 章");
     expect(text).toContain("预计约 100–160 集");
-    expect(text).toContain("480");
+    expect(text).toContain("费用按 TokenDance 实际账单");
+    expect(text).not.toContain("480");
     expect(text).toContain("约 12 分钟");
     expect(post.mock.calls[0][0]).toBe("/dramas/d1/planning/estimate");
     expect(post.mock.calls[0][1]).toEqual({ range_end: 0 });

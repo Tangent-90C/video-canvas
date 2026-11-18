@@ -1,5 +1,4 @@
 import type { StoryboardSplitJob } from "@/api/storyboard/type";
-import type { PaymentWsUpdate } from "@/store/payment";
 import { describe, expect, test } from "bun:test";
 
 import type { AgentEventDto, CanvasPatchDto } from "@/api/agent/type";
@@ -154,7 +153,6 @@ function setup(
   const tasks: TaskView[] = [];
   const patches: CanvasPatchDto[] = [];
   const agentEvents: AgentEventDto[] = [];
-  const payments: PaymentWsUpdate[] = [];
   const splits: StoryboardSplitJob[] = [];
   const dramaEpisodes: DramaEpisodeEvent[] = [];
   const dramas: { drama_id: string }[] = [];
@@ -176,7 +174,6 @@ function setup(
     onTask: (view) => tasks.push(view),
     onCanvasPatch: (patch) => patches.push(patch),
     onAgentEvent: (event) => agentEvents.push(event),
-    onPayment: (update) => payments.push(update),
     onStoryboardSplit: (job) => splits.push(job),
     onDrama: (event) => dramas.push(event),
     onDramaEpisode: (event) => dramaEpisodes.push(event),
@@ -197,7 +194,6 @@ function setup(
     tasks,
     patches,
     agentEvents,
-    payments,
     splits,
     dramaEpisodes,
     dramas,
@@ -249,25 +245,6 @@ describe("parseServerMessage：Agent 的两种消息", () => {
     );
     expect(msg?.type).toBe("agent.event");
     expect((msg?.data as { canvas_id: string } | undefined)?.canvas_id).toBe("0");
-  });
-});
-
-describe("parseServerMessage：payment.updated", () => {
-  const data = { order_no: "VC1", status: "credited", credits: 10500 };
-
-  test("必须带订单号、状态和积分数", () => {
-    expect(parseServerMessage(JSON.stringify({ type: "payment.updated", data }))?.type).toBe(
-      "payment.updated",
-    );
-    for (const bad of [
-      { ...data, order_no: 1 },
-      { ...data, status: undefined },
-      { ...data, credits: "1" },
-      null,
-      "x",
-    ]) {
-      expect(parseServerMessage(JSON.stringify({ type: "payment.updated", data: bad }))).toBeNull();
-    }
   });
 });
 
@@ -324,20 +301,6 @@ describe("TaskSocketClient", () => {
     t.sockets[0].message({ type: "canvas.patch", data: { canvas_id: 5 } });
     expect(t.patches.map((p) => p.revision_after)).toEqual([4]);
     expect(t.agentEvents.map((e) => e.seq)).toEqual([1]);
-    expect(t.tasks).toHaveLength(0);
-  });
-
-  test("收到 payment.updated 交给支付回调，不影响任务回调；格式不对的丢弃", async () => {
-    const t = setup();
-    t.client.start();
-    await t.flush();
-    t.sockets[0].open();
-    t.sockets[0].message({
-      type: "payment.updated",
-      data: { order_no: "VC1", status: "credited", credits: 10500 },
-    });
-    t.sockets[0].message({ type: "payment.updated", data: { order_no: "VC2" } });
-    expect(t.payments).toEqual([{ order_no: "VC1", status: "credited", credits: 10500 }]);
     expect(t.tasks).toHaveLength(0);
   });
 

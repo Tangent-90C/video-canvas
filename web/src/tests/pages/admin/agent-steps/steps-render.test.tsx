@@ -156,7 +156,8 @@ describe("后台环节技能：抽屉标签渲染", () => {
     expect(out).toContain("缺少字段 shots");
     expect(out).toContain("软问题：2 个镜头未标关键颜色");
     expect(out).toContain("9.2s");
-    expect(out).toContain("✦4");
+    expect(out).toContain("按 TokenDance 实际账单");
+    expect(out).not.toContain("✦4");
   });
 
   test("试跑进行中显示转圈；还没试跑显示空状态", () => {

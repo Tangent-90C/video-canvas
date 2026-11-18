@@ -21,7 +21,7 @@ import (
 )
 
 // 渠道一键同步模型：拉上游 /v1/models 目录，按每个模型声明的 supported_protocols 自动选协议插件、
-// 填协议设置、套用每类模型的默认能力与定价（镜像 web/src/utils/admin/model-template.ts 的新建模板），
+// 填协议设置、套用每类模型的默认能力（镜像 web/src/utils/admin/model-template.ts 的新建模板），
 // 创建并直接启用。为 TokenDance 这类「一个网关、四种能力」的渠道设计：运营者配好渠道后点一次同步
 // 就能获得全部可用模型，不需要逐个绑插件、填设置、逐个发布。目录里没有可承接协议的模型（向量、搜索、
 // OCR、只有其它厂商协议的）跳过并在结果里说明原因。
@@ -35,7 +35,6 @@ type syncModelRule struct {
 	settings    map[string]any // 协议设置（跟随模型，钩子经 ctx.channel.settings 读取）
 	deadline    string         // 任务时限（Go duration 写法）
 	caps        string         // 能力默认值 JSON（与前端 defaultCapabilities 同源）
-	pricing     string         // 定价默认值 JSON（与前端 defaultPricing 同源）
 	contextCaps bool           // 是否把目录里的 context_length 填进能力的上下文窗口（仅文本）
 }
 
@@ -50,7 +49,6 @@ var syncModelRules = []syncModelRule{
 		deadline: "5m", contextCaps: true,
 		caps: `{"refs":{"image":{"on":false,"max":0,"max_mb":0},"audio":{"on":false,"max":0,"max_mb":0},"video":{"on":false,"max":0,"max_mb":0}},` +
 			`"prompt":{"max_length":20000},"params":{},"context":{"window":%d,"output":8192}}`,
-		pricing: `{"billing":"token","token":{"in":2,"out":8},"pending":false}`,
 	},
 	{
 		// ark 原生图像协议与 OpenAI 兼容图像协议在这个网关上是同一个接口（/ark/v3/images/generations），
@@ -60,7 +58,6 @@ var syncModelRules = []syncModelRule{
 		caps: `{"ops":["t2i","i2i"],"refs":{"image":{"on":true,"max":4,"max_mb":10},"audio":{"on":false,"max":0,"max_mb":0},"video":{"on":false,"max":0,"max_mb":0}},` +
 			`"prompt":{"max_length":20000},"params":{"aspect_ratio":{"type":"enum","label":"比例","open":true,"options":["Auto","1:1","16:9","9:16","4:3","3:4"],"default":"1:1"},` +
 			`"count":{"type":"enum","label":"生成数量","open":true,"options":[1,2,4],"default":1,"fanout":true,"unit":"张"}}}`,
-		pricing: `{"billing":"per_call","unit":4,"pending":false}`,
 	},
 	{
 		// ark 图像协议：size 像素制且 >= 3686400（2K 起步），没有 quality/style/n；
@@ -70,7 +67,6 @@ var syncModelRules = []syncModelRule{
 		caps: `{"ops":["t2i","i2i"],"refs":{"image":{"on":true,"max":4,"max_mb":10},"audio":{"on":false,"max":0,"max_mb":0},"video":{"on":false,"max":0,"max_mb":0}},` +
 			`"prompt":{"max_length":20000},"params":{"aspect_ratio":{"type":"enum","label":"比例","open":true,"options":["Auto","1:1","16:9","9:16","4:3","3:4"],"default":"1:1"},` +
 			`"count":{"type":"enum","label":"生成数量","open":true,"options":[1,2,4],"default":1,"fanout":true,"unit":"张"}}}`,
-		pricing: `{"billing":"per_call","unit":4,"pending":false}`,
 	},
 	{
 		protocol: "seedance:generations", plugin: "tokendance-video", kind: "video",
@@ -81,8 +77,6 @@ var syncModelRules = []syncModelRule{
 			`"duration":{"type":"number","label":"视频时长","open":true,"min":4,"max":15,"step":1,"default":5,"unit":"秒"},` +
 			`"generate_audio":{"type":"boolean","label":"生成音频","open":true,"default":true,"spec":true},` +
 			`"count":{"type":"enum","label":"生成数量","open":true,"options":[1,2,4],"default":1,"fanout":true,"unit":"个"}}}`,
-		pricing: `{"billing":"per_second","per_second":2,"pending":false,"tiers":[{"on":true,"when":{"generate_audio":true},"unit":3},` +
-			`{"on":true,"when":{"resolution":"1080P"},"unit":4},{"on":true,"when":{"resolution":"1080P","generate_audio":true},"unit":5}]}`,
 	},
 	{
 		protocol: "minimax:t2a_v2", plugin: "tokendance-tts", kind: "audio",
@@ -90,7 +84,6 @@ var syncModelRules = []syncModelRule{
 		deadline: "30m",
 		caps: `{"refs":{"image":{"on":false,"max":0,"max_mb":0},"audio":{"on":false,"max":0,"max_mb":0},"video":{"on":false,"max":0,"max_mb":0}},` +
 			`"prompt":{"max_length":20000},"params":{}}`,
-		pricing: `{"billing":"per_call","unit":2,"pending":false}`,
 	},
 }
 
@@ -361,7 +354,8 @@ func syncFetchCatalog(ctx context.Context, baseURL, key string) ([]syncCatalogEn
 	return out.Data, nil
 }
 
-// syncModelBody 组装一个同步模型的配置正文：协议、每类默认能力与定价（能力里的上下文窗口取目录值）。
+// syncModelBody 组装一个同步模型的配置正文：协议与每类默认能力（能力里的上下文窗口取目录值）。
+// 平台积分定价已停用，新同步正文不再写入 pricing；计费由用户 TokenPay 钱包按上游账单完成。
 func syncModelBody(key, channelKey string, entry syncCatalogEntry, rule syncModelRule, sort int) ([]byte, error) {
 	caps := rule.caps
 	if rule.contextCaps {
@@ -389,7 +383,6 @@ func syncModelBody(key, channelKey string, entry syncCatalogEntry, rule syncMode
 			"protocol": map[string]any{"plugin": rule.plugin, "version": rule.version, "settings": rule.settings},
 		}},
 		"capabilities": json.RawMessage(caps),
-		"pricing":      json.RawMessage(rule.pricing),
 	}
 	return json.Marshal(body)
 }

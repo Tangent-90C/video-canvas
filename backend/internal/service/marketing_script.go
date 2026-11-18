@@ -230,7 +230,7 @@ func (s *MarketingService) formatInput(c *scriptCtx, st model.MarketingSettings,
 	return in, nil
 }
 
-// videoSnapshot 取视频模型快照：不存在或不是视频模型返回 68004。
+// videoSnapshot 取视频模型快照：不存在、不是视频模型或未接入 TokenPay 钱包返回 68004。
 func (s *MarketingService) videoSnapshot(ctx context.Context, key string) (*provider.Snapshot, error) {
 	snap, err := s.models.Snapshot(ctx, key)
 	if errors.Is(err, provider.ErrModelUnavailable) {
@@ -239,8 +239,8 @@ func (s *MarketingService) videoSnapshot(ctx context.Context, key string) (*prov
 	if err != nil {
 		return nil, err
 	}
-	if snap.Model.Kind != modelcfg.KindVideo {
-		return nil, errcode.ErrMarketingVideoModel
+	if snap.Model.Kind != modelcfg.KindVideo || !snap.Channel.Wallet {
+		return nil, errcode.ErrMarketingVideoModel.WithMsg("该视频模型未接入 TokenPay 钱包")
 	}
 	return snap, nil
 }

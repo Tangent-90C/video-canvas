@@ -46,3 +46,17 @@ func TestAdmin_ManagementScope(t *testing.T) {
 		t.Fatal("残留旧能力限制")
 	}
 }
+
+func TestAdmin_BillingUsesTokenPayOnly(t *testing.T) {
+	got := prompts.Admin([]byte(`{}`))
+	for _, want := range []string{"TokenPay", "TokenDance 实际账单", "未连接", "钱包"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("后台提示词应说明 TokenPay 单一计费，缺少 %q", want)
+		}
+	}
+	for _, bad := range []string{"admin_get_pricing_settings", "admin_get_pricing", "credits_per_yuan", "pricing_basis", "调整普通用户状态、并发与积分", "自动重新发积分"} {
+		if strings.Contains(got, bad) {
+			t.Errorf("后台提示词不应再指导平台积分操作，发现 %q", bad)
+		}
+	}
+}

@@ -142,7 +142,8 @@ type UserListFilter struct {
 // likeEscaper 把 LIKE 通配符转义成普通字符，避免关键字里的 % _ 匹配到不相关的用户。
 var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 
-// ListAdmin 分页查询后台用户列表（id 倒序）：联积分账户与进行中任务数（不含试跑），同时返回满足筛选的总数。
+// ListAdmin 分页查询后台用户列表（id 倒序）：带进行中任务数（不含试跑），同时返回满足筛选的总数。
+// 历史积分账户和流水不再读取；兼容字段由模型零值承接。
 // 软删除的用户不出现。
 func (r *UserRepository) ListAdmin(ctx context.Context, f UserListFilter) ([]model.AdminUserRow, int64, error) {
 	base := r.db.WithContext(ctx).Table("users u").Where("u.deleted_at IS NULL")
@@ -165,10 +166,8 @@ func (r *UserRepository) ListAdmin(ctx context.Context, f UserListFilter) ([]mod
 	}
 	var rows []model.AdminUserRow
 	err := base.Session(&gorm.Session{}).
-		Select(`u.id, u.username, u.email, u.role, u.status, COALESCE(c.balance, 0) AS balance, COALESCE(c.frozen, 0) AS frozen,
-			(c.user_id IS NOT NULL) AS has_credit_account, u.max_active_tasks, u.last_login_at, u.created_at,
+		Select(`u.id, u.username, u.email, u.role, u.status, u.max_active_tasks, u.last_login_at, u.created_at,
 			(SELECT COUNT(*) FROM generation_tasks t WHERE t.user_id = u.id AND t.is_test = FALSE AND t.status IN ?) AS active_tasks`, activeStatuses()).
-		Joins("LEFT JOIN user_credits c ON c.user_id = u.id").
 		Order("u.id DESC").Offset(f.Offset).Limit(f.Limit).Scan(&rows).Error
 	if err != nil {
 		return nil, 0, err
@@ -176,7 +175,7 @@ func (r *UserRepository) ListAdmin(ctx context.Context, f UserListFilter) ([]mod
 	return rows, total, nil
 }
 
-// TaskStats 汇总用户的正式任务统计（不含试跑）与已结算积分。
+// TaskStats 汇总用户的正式任务统计（不含试跑）；历史积分消耗不再读取。
 func (r *UserRepository) TaskStats(ctx context.Context, userID uint64) (*model.UserTaskStats, error) {
 	var st model.UserTaskStats
 	err := r.db.WithContext(ctx).Raw(`
@@ -185,11 +184,6 @@ func (r *UserRepository) TaskStats(ctx context.Context, userID uint64) (*model.U
 		  COUNT(*) FILTER (WHERE status IN ('failed', 'expired')) AS failed,
 		  COUNT(*) FILTER (WHERE created_at >= now() - interval '7 days') AS last7d
 		FROM generation_tasks WHERE user_id = ? AND is_test = FALSE`, userID).Row().Scan(&st.Total, &st.Success, &st.Failed, &st.Last7d)
-	if err != nil {
-		return nil, err
-	}
-	err = r.db.WithContext(ctx).Raw(`SELECT COALESCE(SUM(amount), 0) FROM credit_ledger WHERE user_id = ? AND type = 'settle'`, userID).
-		Row().Scan(&st.SpentCredits)
 	if err != nil {
 		return nil, err
 	}

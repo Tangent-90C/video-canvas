@@ -1,11 +1,8 @@
 import service from "@/utils/requests/service";
 import type {
-  AdjustCreditsRequest,
-  BatchCreditsRequest,
   BatchResult,
   BatchStatusRequest,
   CursorPage,
-  LedgerFilter,
   ListUsersParams,
   LoginFilter,
   ResetPasswordRequest,
@@ -13,9 +10,7 @@ import type {
   SetLimitRequest,
   SetStatusRequest,
   TaskFilter,
-  UserCredits,
   UserDetail,
-  UserLedgerItem,
   UserLoginItem,
   UserPage,
   UserRole,
@@ -80,23 +75,6 @@ export const listUserTasks = async (
   );
 
 /**
- * 积分流水，游标分页
- * @param id 用户 ID
- * @param query type 类型筛选（all / admin / task），cursor 上一页的 next_cursor，limit 每页条数
- * @returns 一页积分流水
- */
-export const listUserLedger = async (
-  id: number,
-  query: { type?: LedgerFilter; cursor?: string | null; limit?: number } = {},
-): Promise<CursorPage<UserLedgerItem>> =>
-  cursorPage(
-    await service.get<CursorPage<UserLedgerItem> | null>(
-      `${withId(id)}/ledger`,
-      clean({ ...query, cursor: query.cursor ?? undefined }),
-    ),
-  );
-
-/**
  * 登录与注册记录，游标分页
  * @param id 用户 ID
  * @param query result 结果筛选（all / fail），cursor 上一页的 next_cursor，limit 每页条数
@@ -114,15 +92,6 @@ export const listUserLogins = async (
   );
 
 /**
- * 调整积分：增加 / 扣减 / 把可用积分设为指定值，写流水与审计
- * @param id 用户 ID
- * @param body 方式、数值与备注（备注必填）
- * @returns 调整后的积分账户
- */
-export const adjustUserCredits = (id: number, body: AdjustCreditsRequest) =>
-  service.post<UserCredits>(`${withId(id)}/credits`, body);
-
-/**
  * 设置单用户并发上限
  * @param id 用户 ID
  * @param body max_active_tasks 为 1 到 64，null 表示改回全局默认
@@ -133,7 +102,7 @@ export const setUserLimit = (id: number, body: SetLimitRequest) =>
 /**
  * 封禁或启用账号；封禁会断开该用户的 WebSocket
  * @param id 用户 ID
- * @param body 目标状态；cancel_active 为 true 时同时取消进行中的任务并退还冻结（不可撤销）
+ * @param body 目标状态；cancel_active 为 true 时同时取消进行中的任务（费用以 TokenDance 账单为准）
  */
 export const setUserStatus = (id: number, body: SetStatusRequest) =>
   service.put<unknown>(`${withId(id)}/status`, body);
@@ -154,15 +123,6 @@ export const setUserRole = (id: number, role: UserRole) =>
  */
 export const resetUserPassword = (id: number, body: ResetPasswordRequest = {}) =>
   service.post<ResetPasswordResult>(`${withId(id)}/reset-password`, body);
-
-/**
- * 批量发积分（只增不减），每个用户独立判断权限，失败的写在 results 里
- * @param body 用户 ID 列表、每人增加的积分与备注
- * @returns 逐项结果
- */
-export const batchAddCredits = async (body: BatchCreditsRequest): Promise<BatchResult> => ({
-  results: (await service.post<BatchResult | null>(`${P}/batch/credits`, body))?.results ?? [],
-});
 
 /**
  * 批量封禁 / 启用（不支持取消任务），每个用户独立判断权限

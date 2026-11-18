@@ -50,7 +50,7 @@ func TestDramaHandler_Compose(t *testing.T) {
 			if tc.busy {
 				repo.jobs = []model.DramaJob{{UserID: 1, DramaID: 7, Status: "running"}}
 			}
-			h := handler.NewDramaHandler(service.NewDramaService(service.DramaDeps{Repo: repo}))
+			h := handler.NewDramaHandler(service.NewDramaService(service.DramaDeps{Repo: repo, Wallets: connectedWalletForHandler{}}))
 			r := gin.New()
 			r.Use(func(c *gin.Context) { c.Set(middleware.CtxUserIDKey, uint(1)); c.Next() })
 			r.POST("/dramas/:id/jobs", h.CreateJob)

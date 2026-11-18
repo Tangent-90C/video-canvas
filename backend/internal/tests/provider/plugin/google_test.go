@@ -55,7 +55,7 @@ func newGoogleEnv(t *testing.T, mod func(*plugin.Options)) *googleEnv {
 func (e *googleEnv) snapshot(baseURL string, caps modelcfg.Capabilities) *provider.Snapshot {
 	return &provider.Snapshot{
 		Model: provider.ModelSnapshot{Key: "veo", Kind: "video", UpstreamModel: "veo-3.0-generate-001", Capabilities: caps},
-		Channel: provider.ChannelSnapshot{
+		Channel: provider.ChannelSnapshot{Wallet: true,
 			Key: "google-main", PluginKey: "google", PluginVersionID: 1, BaseURL: baseURL,
 		},
 		Plugin:          provider.PluginSnapshot{Key: "google", Version: e.meta.Version, SHA256: e.sha, Meta: *e.meta},

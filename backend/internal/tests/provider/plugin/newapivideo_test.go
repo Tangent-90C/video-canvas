@@ -55,7 +55,7 @@ func newNewAPIVideoEnv(t *testing.T, mod func(*plugin.Options)) *newAPIVideoEnv 
 func (e *newAPIVideoEnv) snapshot(baseURL string) *provider.Snapshot {
 	return &provider.Snapshot{
 		Model: provider.ModelSnapshot{Key: "m", Kind: "video", UpstreamModel: "sd2.5-c1", Capabilities: newAPIVideoCaps()},
-		Channel: provider.ChannelSnapshot{
+		Channel: provider.ChannelSnapshot{Wallet: true,
 			Key: "new-api-main", PluginKey: "new-api-video", PluginVersionID: 1, BaseURL: baseURL,
 		},
 		Plugin:          provider.PluginSnapshot{Key: "new-api-video", Version: e.meta.Version, SHA256: e.sha, Meta: *e.meta},

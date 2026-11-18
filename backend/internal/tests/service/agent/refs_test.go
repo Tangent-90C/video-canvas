@@ -26,13 +26,14 @@ func TestParseAgentChips(t *testing.T) {
 	}
 }
 
-// refsEnv 是带模型注册表的环境：已发布 seedream（图片）和 claude（agent）。
+// refsEnv 是带模型注册表的环境：已发布 seedream（钱包图片）、legacy-image（旧平台渠道）和 claude（agent）。
 func refsEnv(t *testing.T) *agentEnv {
 	t.Helper()
 	e := newAgentEnv(t)
 	reg := &fakeAgentRegistry{models: []provider.ModelInfo{
-		{Key: "seedream", Kind: "image", Label: "Seedream"},
-		{Key: "seedance", Kind: "video", Label: "Seedance"},
+		{Key: "seedream", Kind: "image", Label: "Seedream", Wallet: true},
+		{Key: "seedance", Kind: "video", Label: "Seedance", Wallet: true},
+		{Key: "legacy-image", Kind: "image", Label: "旧平台渠道图片模型"},
 		{Key: "claude", Kind: "agent", Label: "Claude"},
 	}}
 	e.svc = NewAgentService(AgentDeps{

@@ -164,9 +164,7 @@ export function ScriptsBody({
         </div>
         <div className="shrink-0 text-xs tabular-nums">
           {estimate.status === "ready" ? (
-            <>
-              约 <b className="text-credit text-sm">{estimate.credits}</b> 积分
-            </>
+            <>费用按 TokenDance 实际账单</>
           ) : estimate.status === "loading" ? (
             <span className="text-muted-foreground">估算中…</span>
           ) : estimate.status === "error" ? (

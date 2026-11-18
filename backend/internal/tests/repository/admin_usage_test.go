@@ -75,7 +75,7 @@ func TestAdminUsageRepo_List(t *testing.T) {
 			t.Fatalf("应为 t3,t2,t1，实际 %v", got)
 		}
 		r1 := rows[2]
-		if r1.Username != "alice" || r1.TaskRef != t1.TaskRef || r1.ModelName != "可灵 v2" || r1.ChargedCredits == nil || *r1.ChargedCredits != 6 {
+		if r1.Username != "alice" || r1.TaskRef != t1.TaskRef || r1.ModelName != "可灵 v2" || r1.ChargedCredits != nil {
 			t.Fatalf("字段映射不对：%+v", r1)
 		}
 		if r1.DurationMs == nil || *r1.DurationMs != fin.Sub(t1.CreatedAt).Milliseconds() {
@@ -203,7 +203,7 @@ func TestAdminUsageRepo_Summary(t *testing.T) {
 	for _, r := range rows {
 		got[r.Status] = r
 	}
-	if got[model.TaskSucceeded].Count != 2 || got[model.TaskSucceeded].Charged != 8 || got[model.TaskFailed].Count != 1 || got[model.TaskRunning].Count != 1 {
+	if got[model.TaskSucceeded].Count != 2 || got[model.TaskSucceeded].Charged != 0 || got[model.TaskFailed].Count != 1 || got[model.TaskRunning].Count != 1 {
 		t.Fatalf("摘要分组不对（试跑应被排除）：%+v", got)
 	}
 	rows, _ = repo.Summary(ctx, UsageFilter{From: now.Add(-24 * time.Hour), To: now.Add(time.Minute), IncludeTest: true})

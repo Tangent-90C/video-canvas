@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 /**
- * 删除组的确认框：组里的节点会一起被删，而节点里有生成结果和积分花费，所以不能一键就清掉。
+ * 删除组的确认框：组里的节点会一起被删，而节点里有生成结果和实际费用，所以不能一键就清掉。
  * 虽然 ⌘Z 能整体恢复，仍按设计稿 6.10 保留确认。
  */
 export function GroupDeleteDialog({

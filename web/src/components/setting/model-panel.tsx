@@ -19,8 +19,9 @@ import { SettingRow } from "./setting-controls";
 export type SettingModelOption = {
   id: string;
   label: string;
-  credits: number;
+  priceLabel?: string;
   hint?: string;
+  wallet?: boolean;
 };
 
 /** 按节点种类分好的模型清单，由调用方喂进来 */
@@ -52,7 +53,7 @@ export function ModelPanel({ groups }: ModelPanelProps) {
           <SettingRow
             key={group.kind}
             title={`${group.label}节点`}
-            hint={`新建时默认用 ${current.credits} 积分的模型`}
+            hint={current.priceLabel ?? "按 TokenDance 实际账单"}
           >
             <DropdownMenu>
               <DropdownMenuTrigger
@@ -82,8 +83,8 @@ export function ModelPanel({ groups }: ModelPanelProps) {
                             </span>
                           )}
                         </span>
-                        <span className="text-muted-foreground ml-auto text-xs">
-                          {item.credits} 积分
+                        <span className="text-muted-foreground ml-auto max-w-36 truncate text-right text-xs">
+                          {item.priceLabel ?? "按 TokenDance 实际账单"}
                         </span>
                       </DropdownMenuRadioItem>
                     ))}

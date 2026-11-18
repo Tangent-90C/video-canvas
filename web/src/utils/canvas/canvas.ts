@@ -6,7 +6,6 @@ import {
   MODEL_LIBRARY,
   NODE_LIBRARY,
 } from "@/constants/canvas";
-import type { CustomModel } from "@/store";
 import type { ModelOption, NodeKind } from "@/types";
 
 /** 从某个节点的某一端拉线时，允许新建的种类；从 target 端拉线要反查谁能生成它 */
@@ -38,27 +37,17 @@ export function getModels(kind: NodeKind): readonly ModelOption[] {
   return MODEL_LIBRARY[kind];
 }
 
-/** 自定义模型按输入框认得的形状摊平，下拉里的小字给模型标识 */
-function toOption(model: CustomModel): ModelOption {
-  return {
-    id: model.id,
-    label: model.label,
-    credits: model.credits,
-    hint: model.modelId,
-  };
-}
-
 /**
- * 某种类真正能挑的模型：内置清单加上设置里接进来的那些。
- * 服务端下发清单的种类（视频、文本）只认 remote，不混本地演示项，也不支持自定义模型。
+ * 某种类真正能挑的模型：用户侧只认服务端下发清单；导演台、角色卡等不调模型的节点没有模型。
+ * @param kind 节点种类
+ * @param remote 服务端下发的模型选项
  */
 export function getModelOptions(
   kind: NodeKind,
-  customModels: readonly CustomModel[],
   remote: readonly ModelOption[] = [],
 ): ModelOption[] {
   if (isRemoteModelKind(kind)) return [...remote];
-  return [...getModels(kind), ...customModels.filter((model) => model.kind === kind).map(toOption)];
+  return [...getModels(kind)];
 }
 
 /** 取当前该用的模型：存的那个已经删了就退回清单第一条 */

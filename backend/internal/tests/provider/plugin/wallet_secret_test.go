@@ -129,8 +129,8 @@ func TestTokendanceVideoWalletUsesUserKey(t *testing.T) {
 	}
 }
 
-// 普通任务：仍用渠道 Key，走同一个插件的同一条路径。
-func TestTokendanceVideoPlainUsesChannelKey(t *testing.T) {
+// 历史非钱包任务已经不允许再回退到产品方渠道 Key：执行前失败，且不读取任何凭证、不发上游请求。
+func TestTokendanceVideoPlainFailsClosedWithoutWallet(t *testing.T) {
 	resolver := &walletResolver{values: map[string]string{
 		"channel:tp-main": "channel-key",
 		"wallet:7":        "wallet-key-of-user-7",
@@ -145,14 +145,10 @@ func TestTokendanceVideoPlainUsesChannelKey(t *testing.T) {
 	if _, err := env.exec.Submit(context.Background(), env.snapshot(srv.URL, false), provider.SubmitInput{
 		Task:  provider.TaskRef{ID: 2, UserID: 7},
 		Input: map[string]any{"prompt": "一只猫在跳舞"},
-	}); err != nil {
-		t.Fatal(err)
+	}); err == nil {
+		t.Fatal("非钱包历史任务必须失败，不能回退到渠道 Key")
 	}
-	got := up.last()
-	if got.Auth != "Bearer channel-key" {
-		t.Fatalf("普通任务应注入渠道 Key，实际：%q", got.Auth)
-	}
-	if resolver.askedFor("wallet:7") {
-		t.Fatalf("普通任务不应读用户钱包密钥，实际请求了 %v", resolver.asked())
+	if got := resolver.asked(); len(got) != 0 {
+		t.Fatalf("非钱包历史任务不应读取任何凭证，实际请求了 %v", got)
 	}
 }

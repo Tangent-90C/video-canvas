@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DURATION, EASE_OUT_CSS, ms } from "@/lib/motion";
 import { cn } from "@/lib/utils";
-import { useCreditsStore } from "@/store/credits";
 import { successRate } from "@/utils/profile/profile-rules";
 
 /** 加载中旧内容变淡的过渡：只动 opacity */
@@ -43,15 +42,13 @@ function StatCard({
   );
 }
 
-/** 4 张统计卡片：累计生成、成功率、画布、累计消耗积分（设计 §6.3） */
+/** 3 张统计卡片：累计生成、成功率、画布 */
 function StatCards() {
   const [stats, setStats] = useState<MeStatsDto | null>(null);
   /** 重试计数：变了就重新请求 */
   const [attempt, setAttempt] = useState(0);
   /** 最近一次落定的请求：第几次、是否失败；与 attempt 不同就是在加载中 */
   const [settled, setSettled] = useState<{ attempt: number; error: boolean } | null>(null);
-  const credits = useCreditsStore((s) => s.credits);
-  const refreshCredits = useCreditsStore((s) => s.refresh);
   const state =
     settled?.attempt !== attempt ? "loading" : settled.error ? "error" : ("ready" as const);
 
@@ -70,10 +67,6 @@ function StatCards() {
       stale = true;
     };
   }, [attempt]);
-
-  useEffect(() => {
-    void refreshCredits();
-  }, [refreshCredits]);
 
   if (state === "loading" && !stats) {
     return (
@@ -105,11 +98,6 @@ function StatCards() {
           label="画布"
           value={s ? <NumberFlow value={s.canvasCount} /> : null}
           hint={s && "未删除的画布数"}
-        />
-        <StatCard
-          label="累计消耗积分"
-          value={s ? <NumberFlow value={s.spentCredits} /> : null}
-          hint={s && credits && `当前可用 ${credits.available.toLocaleString()}`}
         />
       </div>
       {failed && (

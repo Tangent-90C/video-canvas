@@ -76,13 +76,12 @@ describe("拆解是否有改动（决定「按拆解重写跟拍版」）", () =
 });
 
 describe("按拆解重写跟拍版", () => {
-  const cost = 3;
-  test("没改动：禁用写原因；改了且余额够：可点", () => {
-    expect(refollowState(round(), null, 100, cost)).toEqual({
+  test("没改动：禁用写原因；改了即可点", () => {
+    expect(refollowState(round(), null)).toEqual({
       disabled: true,
       reason: "拆解没有改动",
     });
-    expect(refollowState(round({ reverseDirty: true }), null, 100, cost)).toEqual({
+    expect(refollowState(round({ reverseDirty: true }), null)).toEqual({
       disabled: false,
       reason: "只重跑跟拍改写",
     });
@@ -90,17 +89,14 @@ describe("按拆解重写跟拍版", () => {
 
   test("跟拍版正在重写或出片：禁用", () => {
     for (const status of ["rewriting", "rendering"] as const) {
-      expect(
-        refollowState(round({ reverseDirty: true, scripts: [follow(status)] }), null, 100, cost),
-      ).toEqual({ disabled: true, reason: "跟拍版正在生成或出片" });
+      expect(refollowState(round({ reverseDirty: true, scripts: [follow(status)] }), null)).toEqual(
+        { disabled: true, reason: "跟拍版正在生成或出片" },
+      );
     }
   });
 
-  test("余额不足：禁用", () => {
-    expect(refollowState(round({ reverseDirty: true }), null, 2, cost)).toEqual({
-      disabled: true,
-      reason: "余额不足",
-    });
+  test("平台余额不再参与判断", () => {
+    expect(refollowState(round({ reverseDirty: true }), null).disabled).toBe(false);
   });
 
   test("拆解在编辑时（跟拍版出片中）整张表只读", () => {

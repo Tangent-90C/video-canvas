@@ -12,6 +12,7 @@ import (
 // 宿主自己产生、provider 包之外的错误码（provider.Error.Code）。
 const (
 	codeSecretUnavailable = "secret_unavailable" // 渠道 Key 未设置或无法解密
+	codeWalletRequired    = "wallet_required"    // 历史非钱包任务已禁止执行，必须重新用 TokenPay 钱包提交
 	codeInvalidInput      = "invalid_input"      // 任务输入不符合 input_schema（防御性再校验）
 	codeAssetUnavailable  = "asset_unavailable"  // 文件引用指向的素材不存在、不属于任务用户或没有可访问地址
 	codeMediaTooLarge     = "media_too_large"    // base64 / dataUrl 内联的素材超过上限

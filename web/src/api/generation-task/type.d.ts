@@ -1,4 +1,3 @@
-import type { PaymentWsUpdate } from "@/store/payment";
 import type { AgentEventDto, CanvasPatchDto } from "@/api/agent/type";
 import type { BackendJobView, DramaEpisodeEvent, DramaSegmentEvent } from "@/api/drama/type";
 import type { MarketingRoundEvent, MarketingScriptEvent } from "@/api/marketing/type";
@@ -66,7 +65,7 @@ export interface TaskView {
   task_ref?: string;
   /** 冻结的积分 */
   credits: number;
-  /** 钱包任务：用用户自己的 TokenPay Key 支付，不扣平台积分 */
+  /** 钱包任务：用用户自己的 TokenPay Key 支付 */
   wallet: boolean;
   /** 实际扣的积分（Token 计费按用量结算，可能小于冻结额），未结算为 null */
   charged_credits: number | null;
@@ -131,8 +130,6 @@ export type ServerMessage =
   | { type: "canvas.patch"; channel?: string; data: CanvasPatchDto }
   /** 画布 Agent 会话里的一条事件（文本增量、工具调用、审批……） */
   | { type: "agent.event"; channel?: string; data: AgentEventDto }
-  /** 支付订单状态变化（入账、关单……）：前端据此刷新商城面板和余额 */
-  | { type: "payment.updated"; channel?: string; data: PaymentWsUpdate }
   /** 短剧项目的规划阶段 / 游标变化：前端重新拉详情（含 phase、plan_cursor） */
   | { type: "drama"; channel?: string; data: { drama_id: string } }
   /** 短剧逐集写入完成。 */

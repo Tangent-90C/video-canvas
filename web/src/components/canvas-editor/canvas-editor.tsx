@@ -722,7 +722,7 @@ export const CanvasEditor = memo(function CanvasEditor({
     paste: pasteContent,
   });
 
-  // 设置里要列的模型清单：每种节点一行，内置清单后面接上自定义模型
+  // 设置里要列的模型清单：只列服务端托管、可在用户侧使用的模型
   const modelGroups = useMemo<SettingModelGroup[]>(
     () =>
       NODE_LIBRARY.map((meta) => ({
@@ -731,11 +731,10 @@ export const CanvasEditor = memo(function CanvasEditor({
         icon: <meta.icon />,
         models: getModelOptions(
           meta.kind,
-          settings.customModels,
           remoteModels[meta.kind as keyof typeof remoteModels]?.options,
         ),
       })).filter((group) => group.models.length > 0),
-    [remoteModels, settings.customModels],
+    [remoteModels],
   );
 
   // 拉线落空时只放行接得上的种类，双击空白则全部可点；

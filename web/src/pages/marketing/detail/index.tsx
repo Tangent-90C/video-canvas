@@ -14,7 +14,6 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useMarketingProject } from "@/hooks/use-marketing-project";
 import { cn } from "@/lib/utils";
-import { useCreditsStore } from "@/store/credits";
 import { useWorkbenchStore } from "@/store/marketing-workbench";
 import { formatPageTitle } from "@/utils/page-title";
 import {
@@ -106,7 +105,6 @@ function Columns({
  */
 function Workbench({ project }: { project: Project }) {
   const actions = useMarketingActions(project);
-  const available = useCreditsStore((state) => state.credits?.available ?? null);
   const { round, selection, script } = useWorkbenchTarget(project.id);
   const [composerOpen, setComposerOpen] = useState(false);
   const [factsOpen, setFactsOpen] = useState(false);
@@ -191,18 +189,10 @@ function Workbench({ project }: { project: Project }) {
   if (!round || (round.status !== "ready" && !(selection === "ref" && round.refVideo))) {
     inspector = <InspectorPlaceholder loading={round?.status === "scripting"} />;
   } else if (selection === "ref") {
-    inspector = (
-      <ReverseInspector project={project} round={round} available={available} actions={actions} />
-    );
+    inspector = <ReverseInspector round={round} actions={actions} />;
   } else if (script) {
     inspector = (
-      <ScriptInspector
-        project={project}
-        round={round}
-        script={script}
-        available={available}
-        actions={actions}
-      />
+      <ScriptInspector project={project} round={round} script={script} actions={actions} />
     );
   } else {
     inspector = <InspectorPlaceholder loading={false} />;
@@ -213,7 +203,6 @@ function Workbench({ project }: { project: Project }) {
       <TopBar
         project={project}
         round={round}
-        available={available}
         actions={actions}
         composerOpen={composerOpen}
         onRound={(id) => {
@@ -227,7 +216,7 @@ function Workbench({ project }: { project: Project }) {
         list={
           <AssetList project={project} round={round} actions={actions} onEditFacts={openFacts} />
         }
-        stage={<Stage project={project} available={available} actions={actions} />}
+        stage={<Stage project={project} actions={actions} />}
         inspector={inspector}
       />
 

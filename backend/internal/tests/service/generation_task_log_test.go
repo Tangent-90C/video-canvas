@@ -13,7 +13,6 @@ import (
 func TestGenerationTaskLog_CreateAndFail(t *testing.T) {
 	read := serviceLog(t)
 	env := newTaskSvcEnv(defaultTaskLimits())
-	env.repo.addCredit(1, 50, 0)
 	view, err := createSingle(context.Background(), env.svc, 1, "", validCreateReq())
 	assertTaskCode(t, err, 0)
 	task := env.repo.tasks[view.ID]
@@ -27,14 +26,20 @@ func TestGenerationTaskLog_CreateAndFail(t *testing.T) {
 		t.Fatalf("应有 1 行 run.create：%v", lines)
 	}
 	wantFields(t, "run.create", creates[0], map[string]any{"run_kind": "gen", "run_id": view.TaskRef, "user_id": float64(1),
-		"kind": model.KindVideo, "model": "m1", "frozen_credits": float64(task.Credits)})
+		"kind": model.KindVideo, "model": "m1", "wallet": true})
+	if _, ok := creates[0]["frozen_credits"]; ok {
+		t.Errorf("平台积分已停用，run.create 不应再记录 frozen_credits：%v", creates[0])
+	}
 
 	fins := logEvents(lines, logger.EventRunFinish)
 	if len(fins) != 1 {
 		t.Fatalf("应有 1 行 run.finish：%v", lines)
 	}
 	wantFields(t, "run.finish", fins[0], map[string]any{"run_kind": "gen", "run_id": view.TaskRef, "status": "failed", "level": "warn",
-		"error_code": "upstream_error", "error_type": "upstream_error", "error_message": "参数不合法", "upstream": `{"error":"bad size"}`, "charged_credits": float64(0)})
+		"error_code": "upstream_error", "error_type": "upstream_error", "error_message": "参数不合法", "upstream": `{"error":"bad size"}`})
+	if _, ok := fins[0]["charged_credits"]; ok {
+		t.Errorf("平台积分已停用，run.finish 不应再记录 charged_credits：%v", fins[0])
+	}
 	if _, ok := fins[0]["total_ms"]; !ok {
 		t.Errorf("收尾应带创建到结束的总耗时：%v", fins[0])
 	}
@@ -43,12 +48,11 @@ func TestGenerationTaskLog_CreateAndFail(t *testing.T) {
 func TestGenerationTaskLog_SucceededAndCanceled(t *testing.T) {
 	read := serviceLog(t)
 	env := newTaskSvcEnv(defaultTaskLimits())
-	env.repo.addCredit(1, 50, 20)
-	done := env.repo.addTask(model.GenerationTask{UserID: 1, Status: model.TaskFinalizing, Credits: 10, Kind: model.KindVideo})
+	done := env.repo.addTask(model.GenerationTask{UserID: 1, Status: model.TaskFinalizing, Wallet: true, Kind: model.KindVideo})
 	if _, err := env.svc.Complete(context.Background(), done, nil, nil); err != nil {
 		t.Fatal(err)
 	}
-	pending := env.repo.addTask(model.GenerationTask{UserID: 1, Status: model.TaskPending, Credits: 10})
+	pending := env.repo.addTask(model.GenerationTask{UserID: 1, Status: model.TaskPending, Wallet: true})
 	if _, err := env.svc.Cancel(context.Background(), 1, pending.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +60,7 @@ func TestGenerationTaskLog_SucceededAndCanceled(t *testing.T) {
 	for _, m := range logEvents(read(), logger.EventRunFinish) {
 		byID[m["run_id"].(string)] = m
 	}
-	wantFields(t, "成功", byID[idcodec.Encode(done.ID)], map[string]any{"status": "succeeded", "level": "info", "charged_credits": float64(10)})
+	wantFields(t, "成功", byID[idcodec.Encode(done.ID)], map[string]any{"status": "succeeded", "level": "info", "wallet": true})
 	wantFields(t, "取消", byID[idcodec.Encode(pending.ID)], map[string]any{"status": "canceled", "level": "warn", "user_id": float64(1)})
 }
 
@@ -64,7 +68,6 @@ func TestGenerationTaskLog_SucceededAndCanceled(t *testing.T) {
 func TestGenerationTaskLog_AgentParent(t *testing.T) {
 	read := serviceLog(t)
 	env := newTaskSvcEnv(defaultTaskLimits())
-	env.repo.addCredit(1, 50, 0)
 	req := validCreateReq()
 	req.AgentRunID = 88213
 	if _, err := createSingle(context.Background(), env.svc, 1, "", req); err != nil {

@@ -67,7 +67,7 @@ const FALLBACK: Record<number, string> = {
   [DRAMA_ERR.episodeLocked]: "这一集已拆解资产，剧本已锁定",
   [DRAMA_ERR.stepNotReady]: "前置步骤未完成",
   [DRAMA_ERR.noTextModel]: "没有可用的 Agent 模型，请联系管理员启用",
-  [DRAMA_ERR.outputInvalid]: "模型输出无法解析，失败不扣积分，可以重试",
+  [DRAMA_ERR.outputInvalid]: "模型输出无法解析，可以重试；费用以 TokenDance 实际账单为准",
   [DRAMA_ERR.segmentNotFound]: "片段不存在，可能已被删除",
   [DRAMA_ERR.nothingToCompose]: "这一集还没有可合成的片段",
   [DRAMA_ERR.takeInvalid]: "只能采用本片段已成功的结果",

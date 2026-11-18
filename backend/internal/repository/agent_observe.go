@@ -304,7 +304,7 @@ func (r *AgentObserveRepository) Stats(ctx context.Context, q model.StatsQuery) 
 		COALESCE(COUNT(*) FILTER (WHERE status IN ?)::float / NULLIF(COUNT(*), 0), 0) AS fail_end_rate,
 		COALESCE(percentile_cont(0.5) WITHIN GROUP (ORDER BY duration_ms), 0) AS median_duration_ms,
 		COALESCE(percentile_cont(0.5) WITHIN GROUP (ORDER BY steps), 0) AS median_steps,
-		COALESCE(AVG(spent_credits), 0) AS avg_credits,
+		0::float AS avg_credits,
 		MAX(prompt_version) AS prompt_version,
 		COALESCE(MAX(build_sha), '') AS build_sha,
 		MAX(created_at) AS last_at`, col)

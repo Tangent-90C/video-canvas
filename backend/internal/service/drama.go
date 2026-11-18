@@ -51,12 +51,6 @@ type DramaCoverReader interface {
 	CoverKeys(ctx context.Context, userID uint64, canvasIDs []uint64) (map[uint64]string, error)
 }
 
-// DramaCreditPolicy 提供与现有生成任务一致的新账户初始积分。
-type DramaCreditPolicy interface {
-	// InitialCredits 返回后台当前生效的新账户初始积分。
-	InitialCredits(context.Context) (int, error)
-}
-
 // DramaStoryboardCanvasReader 提供按用户隔离的分镜资产画布。
 type DramaStoryboardCanvasReader interface {
 	// GetByID 按用户和画布ID读取当前资产节点。
@@ -84,7 +78,7 @@ type DramaDeps struct {
 	Secrets      provider.SecretResolver
 	Canvas       DramaCanvasWriter
 	Broadcaster  ws.Broadcaster
-	Credits      DramaCreditPolicy
+	Wallets      WalletChecker // TokenPay 钱包连接状态；生产装配必须提供
 	CanvasAssets DramaStoryboardCanvasReader
 	Segments     DramaSegmentSummary
 	Compose      DramaVideoComposer
@@ -104,7 +98,7 @@ type DramaService struct {
 	secrets      provider.SecretResolver
 	canvas       DramaCanvasWriter
 	bc           ws.Broadcaster
-	credits      DramaCreditPolicy
+	wallets      WalletChecker
 	canvasAssets DramaStoryboardCanvasReader
 	segments     DramaSegmentSummary
 	compose      DramaVideoComposer
@@ -115,7 +109,7 @@ type DramaService struct {
 
 // NewDramaService 创建短剧服务，不启动后台任务。
 func NewDramaService(d DramaDeps) *DramaService {
-	return &DramaService{settings: d.Settings, skills: d.Skills, repo: d.Repo, registry: d.Registry, streamer: d.Streamer, secrets: d.Secrets, canvas: d.Canvas, bc: d.Broadcaster, credits: d.Credits, canvasAssets: d.CanvasAssets, segments: d.Segments, compose: d.Compose, assets: d.Assets, covers: d.Covers, coverURL: d.CoverURL}
+	return &DramaService{settings: d.Settings, skills: d.Skills, repo: d.Repo, registry: d.Registry, streamer: d.Streamer, secrets: d.Secrets, canvas: d.Canvas, bc: d.Broadcaster, wallets: d.Wallets, canvasAssets: d.CanvasAssets, segments: d.Segments, compose: d.Compose, assets: d.Assets, covers: d.Covers, coverURL: d.CoverURL}
 }
 
 // Create 校验原文和风格，在同一事务建立项目、画布与首个研读任务。
@@ -134,6 +128,9 @@ func (s *DramaService) Create(ctx context.Context, userID uint64, req *model.Cre
 	parsed := drama.Preflight(draft.Text, req.SourceKind)
 	if len(parsed.Units) == 0 {
 		return nil, errcode.ErrDramaSourceInvalid
+	}
+	if err := s.ensureWallet(ctx, userID); err != nil {
+		return nil, err
 	}
 	end := req.RangeEnd
 	if end == 0 {
@@ -158,10 +155,6 @@ func (s *DramaService) Create(ctx context.Context, userID uint64, req *model.Cre
 	}
 	raw, _ := json.Marshal(settings)
 	imageModels, _ := json.Marshal(req.ImageModels)
-	initial, err := s.dramaInitialCredits(ctx)
-	if err != nil {
-		return nil, err
-	}
 	title := strings.TrimSpace(req.Title)
 	if title == "" && draft.Filename != "" {
 		base := filepath.Base(draft.Filename)
@@ -197,11 +190,7 @@ func (s *DramaService) Create(ctx context.Context, userID uint64, req *model.Cre
 			return e
 		}
 		var e error
-		j, e = s.enqueue(ctx, tx, p, &model.DramaJobReq{Step: "analyze"}, snap, nil, initial, nil)
-		var business *errcode.Error
-		if errors.As(e, &business) && business.Code == errcode.ErrInsufficientCredits.Code {
-			return setPlanningState(ctx, tx, p, "paused", "credits", business.Msg)
-		}
+		j, e = s.enqueue(ctx, tx, p, &model.DramaJobReq{Step: "analyze"}, snap, nil, nil)
 		return e
 	})
 	if err != nil {
@@ -459,7 +448,7 @@ func (s *DramaService) dramaEpisodeView(ctx context.Context, ep model.DramaEpiso
 
 // jobView 映射任务状态并保证空范围为[]。
 func jobView(j model.DramaJob) model.DramaJobView {
-	v := model.DramaJobView{ID: idcodec.ID(j.ID), Lane: j.Lane, BatchFrom: j.BatchFrom, BatchTo: j.BatchTo, Step: j.Step, Episodes: append([]int{}, j.Episodes...), Status: j.Status, Progress: j.Progress, Credits: j.Credits, ErrorCode: j.ErrorCode, ErrorMessage: j.ErrorMessage, CreatedAt: j.CreatedAt, FinishedAt: j.FinishedAt}
+	v := model.DramaJobView{ID: idcodec.ID(j.ID), Lane: j.Lane, BatchFrom: j.BatchFrom, BatchTo: j.BatchTo, Step: j.Step, Episodes: append([]int{}, j.Episodes...), Status: j.Status, Progress: j.Progress, Credits: 0, ErrorCode: j.ErrorCode, ErrorMessage: j.ErrorMessage, CreatedAt: j.CreatedAt, FinishedAt: j.FinishedAt}
 	if j.Step == "compose" && j.Status == "succeeded" {
 		var result model.DramaComposeResult
 		if json.Unmarshal(j.Output, &result) == nil && result.Asset.ID != 0 {
@@ -518,12 +507,4 @@ func dramaFailure(err error) (int, string) {
 		return errcode.ErrDramaModelCall.Code, msg
 	}
 	return errcode.ErrInternal.Code, errcode.ErrInternal.Msg
-}
-
-// dramaInitialCredits 只在业务事务外读取后台策略。
-func (s *DramaService) dramaInitialCredits(ctx context.Context) (int, error) {
-	if s.credits != nil {
-		return s.credits.InitialCredits(ctx)
-	}
-	return DefaultInitialCredits, nil
 }

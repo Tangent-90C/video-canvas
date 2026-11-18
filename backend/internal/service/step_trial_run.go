@@ -12,6 +12,7 @@ import (
 	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/provider"
+	"video-canvas/internal/provider/modelcfg"
 	"video-canvas/internal/repository"
 	"video-canvas/internal/stepkit"
 )
@@ -19,7 +20,7 @@ import (
 // stepTrialErrorRunes 是写进试跑 error 列的失败原因的最大字符数。
 const stepTrialErrorRunes = 500
 
-// trialOutcome 是一次试跑执行的结果，finishTrial 据此落库和结算。
+// trialOutcome 是一次试跑执行的结果，finishTrial 据此落库。
 type trialOutcome struct {
 	status string // succeeded / failed
 	passed bool   // 格式校验是否通过（仅 succeeded 有意义）
@@ -31,7 +32,7 @@ type trialOutcome struct {
 	charge bool // 上游确实被调用并产生了费用
 }
 
-// HandleStepTrial 执行一条试跑（River job 的入口）：读样例和候选方法 → 调模型 → 校验 → 落库并结算积分。
+// HandleStepTrial 执行一条试跑（River job 的入口）：读样例和候选方法 → 调模型 → 校验 → 落库。
 // 业务失败（模型不可用、技能已删、调用失败、输出不合格）都落成试跑结果并返回 nil，不让队列重试；
 // 只有读库等基础设施错误才返回 error，由队列重试。试跑已结束或不存在时直接返回 nil（幂等）。
 func (s *StepAdminService) HandleStepTrial(ctx context.Context, trialID uint64) error {
@@ -51,7 +52,7 @@ func (s *StepAdminService) HandleStepTrial(ctx context.Context, trialID uint64) 
 	if err != nil {
 		return err
 	}
-	// 3. 落库并结算。
+	// 3. 落库。
 	if err := s.finishTrial(ctx, t, out); err != nil {
 		return err
 	}
@@ -82,6 +83,9 @@ func (s *StepAdminService) executeTrial(ctx context.Context, t *model.StepTrial)
 	}
 	if err != nil {
 		return nil, err
+	}
+	if snap == nil || !snap.Channel.Wallet || snap.Model.Kind != modelcfg.KindAgent {
+		return failedTrial("所选文本模型未接入 TokenPay 钱包"), nil
 	}
 	method, out, err := s.trialMethod(ctx, st, t)
 	if err != nil || out != nil {
@@ -152,14 +156,10 @@ func clipTrialError(err error) string {
 	return string(r)
 }
 
-// finishTrial 在一个事务里写回结果并结算积分：成功按用量扣费、多冻结的退回，失败全额退回。
-// 事务内重新加锁读试跑，已经结束就什么都不做，保证重复投递不会二次结算。
+// finishTrial 在一个事务里写回结果；费用由 TokenPay 钱包直接结算。
+// 事务内重新加锁读试跑，已经结束就什么都不做，保证重复投递不会重复写结果。
 func (s *StepAdminService) finishTrial(ctx context.Context, t *model.StepTrial, out *trialOutcome) error {
-	credits := 0
-	if out.charge && out.res != nil && out.snap != nil {
-		credits = min(max(stepkit.Cost(out.snap, out.res), 0), t.Frozen)
-	}
-	fields, err := trialFields(out, credits, s.now())
+	fields, err := trialFields(out, 0, s.now())
 	if err != nil {
 		return err
 	}
@@ -170,9 +170,6 @@ func (s *StepAdminService) finishTrial(ctx context.Context, t *model.StepTrial, 
 		}
 		if cur.Status == model.StepTrialSucceeded || cur.Status == model.StepTrialFailed {
 			return nil
-		}
-		if err := settleTrialCredit(ctx, tx, cur, credits); err != nil {
-			return err
 		}
 		return tx.UpdateTrial(ctx, t.ID, fields)
 	})
@@ -213,28 +210,4 @@ func nonNilFlags(f stepkit.Flags) stepkit.Flags {
 		return stepkit.Flags{}
 	}
 	return f
-}
-
-// settleTrialCredit 结算一条试跑的冻结：扣 credits，其余退回；两条流水（settle / refund）各最多一条，
-// 以 settle 的 inserted 判断是否第一次结算，只有第一次才动账户，重复调用是空操作。
-func settleTrialCredit(ctx context.Context, tx repository.StepTx, t *model.StepTrial, credits int) error {
-	if t.Frozen <= 0 {
-		return nil
-	}
-	if _, err := tx.LockCredit(ctx, t.CreatedBy); err != nil {
-		return err
-	}
-	inserted, err := tx.InsertLedger(ctx, &model.CreditLedger{UserID: t.CreatedBy, StepTrialID: &t.ID, Type: model.LedgerSettle, Amount: credits})
-	if err != nil {
-		return err
-	}
-	if rest := t.Frozen - credits; rest > 0 {
-		if _, err := tx.InsertLedger(ctx, &model.CreditLedger{UserID: t.CreatedBy, StepTrialID: &t.ID, Type: model.LedgerRefund, Amount: rest}); err != nil {
-			return err
-		}
-	}
-	if !inserted {
-		return nil
-	}
-	return tx.AddCredit(ctx, t.CreatedBy, -credits, -t.Frozen)
 }

@@ -258,7 +258,7 @@ func TestAdminUsageService_List_Page(t *testing.T) {
 		t.Fatalf("应回显总数与修正后的页码 / 每页条数：%+v", page)
 	}
 	first := page.List[0]
-	if first.User.ID != 1 || first.User.Username != "alice" || first.ModelName != "可灵 v2" || *first.ChargedCredits != 6 || *first.DurationMs != 4200 || first.TaskRef != "r30" {
+	if first.User.ID != 1 || first.User.Username != "alice" || first.ModelName != "可灵 v2" || first.Credits != 0 || first.ChargedCredits != nil || *first.DurationMs != 4200 || first.TaskRef != "r30" {
 		t.Fatalf("行映射不对：%+v", first)
 	}
 	if !page.List[1].IsTest || page.List[1].ChargedCredits != nil || page.List[1].DurationMs != nil {
@@ -289,7 +289,7 @@ func TestAdminUsageService_Summary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := model.UsageSummary{Total: 14, Succeeded: 5, Failed: 2, Canceled: 1, Expired: 3, Active: 3, ChargedCredits: 40}
+	want := model.UsageSummary{Total: 14, Succeeded: 5, Failed: 2, Canceled: 1, Expired: 3, Active: 3}
 	if *got != want {
 		t.Fatalf("摘要折叠不对：%+v 期望 %+v", *got, want)
 	}
@@ -323,10 +323,6 @@ func TestAdminUsageService_Get(t *testing.T) {
 				{ID: 2, TaskID: 9, Event: model.TaskEventSubmitted, FromStatus: model.TaskPending, ToStatus: model.TaskQueued, DetailJSON: datatypes.JSON(`{"provider_task_id_set":true}`), CreatedAt: created.Add(time.Second)},
 				{ID: 3, TaskID: 9, Event: model.TaskEventFailed, FromStatus: model.TaskQueued, ToStatus: model.TaskFailed, DetailJSON: datatypes.JSON(`{"upstream":"HTTP 503 overloaded"}`), CreatedAt: created.Add(time.Minute)},
 			},
-			ledger: []model.CreditLedger{
-				{ID: 1, Type: model.LedgerFreeze, Amount: 8, CreatedAt: created},
-				{ID: 2, Type: model.LedgerRefund, Amount: 8, CreatedAt: created.Add(time.Minute)},
-			},
 		}
 		if mut != nil {
 			mut(repo)
@@ -334,7 +330,7 @@ func TestAdminUsageService_Get(t *testing.T) {
 		return repo
 	}
 
-	t.Run("成功：基础信息、输入、产物、时间线、上游原文、带符号的积分流水", func(t *testing.T) {
+	t.Run("成功：基础信息、输入、产物、时间线、上游原文；不暴露平台积分流水", func(t *testing.T) {
 		repo := newRepo(nil)
 		d, err := newUsageSvc(repo).Get(ctx, "  "+idcodec.Encode(9)+" ")
 		if err != nil {
@@ -359,8 +355,8 @@ func TestAdminUsageService_Get(t *testing.T) {
 		if len(d.Events) != 3 || d.Events[0].Event != model.TaskEventCreated || d.Events[0].Detail != nil || d.Events[2].Detail["upstream"] != "HTTP 503 overloaded" {
 			t.Fatalf("时间线不对：%+v", d.Events)
 		}
-		if len(d.Ledger) != 2 || d.Ledger[0].Amount != -8 || d.Ledger[1].Amount != 8 {
-			t.Fatalf("freeze 应为负、refund 为正：%+v", d.Ledger)
+		if len(d.Ledger) != 0 || d.Task.Credits != 0 || d.Task.ChargedCredits != nil {
+			t.Fatalf("平台积分字段应停用：ledger=%+v task=%+v", d.Ledger, d.Task)
 		}
 		if d.Trace != nil {
 			t.Fatalf("正式任务没有试跑追踪：%s", d.Trace)
@@ -419,7 +415,7 @@ func TestAdminUsageService_Get(t *testing.T) {
 			t.Fatalf("应返回 ErrTaskNotFound：%v", err)
 		}
 		boom := errors.New("boom")
-		for _, m := range []string{"GetTaskByRef", "GetUser", "ListEvents", "ListTaskLedger"} {
+		for _, m := range []string{"GetTaskByRef", "GetUser", "ListEvents"} {
 			_, err := newUsageSvc(newRepo(func(r *fakeUsageRepo) { r.errs = map[string]error{m: boom} })).Get(ctx, task.TaskRef)
 			if !errors.Is(err, boom) {
 				t.Fatalf("%s 的错误应原样返回：%v", m, err)

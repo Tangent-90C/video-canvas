@@ -101,10 +101,6 @@ func TestParseModel_Agent限制(t *testing.T) {
 			mcCaps(m)["context"] = map[string]any{"window": 1000, "output": 1000}
 		}, "capabilities.context.output", "小于"},
 		{"不能有固定系统提示：由平台维护", func(m map[string]any) { mcAsAgent(m); mcCaps(m)["system"] = "你是助手" }, "capabilities.system", "平台"},
-		{"只能按 Token 计费", func(m map[string]any) {
-			mcAsAgent(m)
-			m["pricing"] = map[string]any{"billing": "per_call", "unit": 5}
-		}, "pricing.billing", "Token"},
 		{"不能有生成方式", func(m map[string]any) { mcAsAgent(m); mcCaps(m)["ops"] = []any{"t2i"} }, "capabilities.ops", ""},
 		{"不能有生成参数", func(m map[string]any) {
 			mcAsAgent(m)
@@ -117,6 +113,16 @@ func TestParseModel_Agent限制(t *testing.T) {
 		{"单条消息字数上限必须设置", func(m map[string]any) { mcAsAgent(m); delete(mcCaps(m), "prompt") }, "capabilities.prompt.max_length", ""},
 		{"图片模型不能声明 vision", func(m map[string]any) { mcCaps(m)["vision"] = true }, "capabilities.vision", "文本或 Agent"},
 	})
+}
+
+func TestParseModel_AgentLegacyPricingIgnored(t *testing.T) {
+	m := mcLoadFixture(t, "model_video.json")
+	mcAsAgent(m)
+	m["pricing"] = map[string]any{"billing": "per_call", "unit": 5, "pending": true}
+	got, issues := modelcfg.ParseModel(mcMarshal(t, m))
+	if got == nil || len(issues) != 0 {
+		t.Fatalf("历史 pricing 不应阻止 Agent 模型：got=%+v issues=%v", got, mcIssueList(issues))
+	}
 }
 
 func TestParseModel_Agent不影响文本模型的既有规则(t *testing.T) {

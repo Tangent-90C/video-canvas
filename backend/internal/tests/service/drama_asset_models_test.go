@@ -19,14 +19,15 @@ func intPtr(n int) *int { return &n }
 
 // 登记一个启用的视频模型与图片、文本模型；video 带可调的时长参数。
 func dramaModelRegistry(registry *dramaRegistry, duration *modelcfg.ParamField) {
-	video := &provider.Snapshot{ModelRevisionID: 20, Model: provider.ModelSnapshot{Key: "vid", Kind: "video"}}
+	video := &provider.Snapshot{ModelRevisionID: 20, Model: provider.ModelSnapshot{Key: "vid", Kind: "video"}, Channel: provider.ChannelSnapshot{Key: "wallet", Wallet: true}}
 	if duration != nil {
 		video.Model.Capabilities.Params = modelcfg.ParamSet{{Name: "duration", ParamField: *duration}}
 	}
 	registry.snaps = map[string]*provider.Snapshot{
-		"vid": video,
-		"img": {ModelRevisionID: 21, Model: provider.ModelSnapshot{Key: "img", Kind: "image"}},
-		"txt": {ModelRevisionID: 22, Model: provider.ModelSnapshot{Key: "txt", Kind: "text"}},
+		"vid":    video,
+		"img":    {ModelRevisionID: 21, Model: provider.ModelSnapshot{Key: "img", Kind: "image"}, Channel: provider.ChannelSnapshot{Key: "wallet", Wallet: true}},
+		"txt":    {ModelRevisionID: 22, Model: provider.ModelSnapshot{Key: "txt", Kind: "text"}},
+		"legacy": {ModelRevisionID: 23, Model: provider.ModelSnapshot{Key: "legacy", Kind: "video"}, Channel: provider.ChannelSnapshot{Key: "legacy"}},
 	}
 	registry.unavailable = map[string]bool{"off": true}
 }
@@ -50,6 +51,7 @@ func TestDramaCreateValidatesVideoAndImageModels(t *testing.T) {
 		{"图片模型是文本类型", "", model.DramaImageModels{Scene: "txt"}, 10001},
 		{"图片模型是视频类型", "", model.DramaImageModels{Prop: "vid"}, 10001},
 		{"图片模型已停用", "", model.DramaImageModels{Character: "off"}, 10001},
+		{"非钱包视频模型", "legacy", model.DramaImageModels{}, 10001},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newDramaMemory()

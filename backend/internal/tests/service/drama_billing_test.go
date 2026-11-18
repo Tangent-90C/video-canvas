@@ -11,16 +11,15 @@ import (
 	"video-canvas/internal/service"
 )
 
-// 积分流水必须满足 freeze = settle + refund，且失败任务整笔退回、不扣费。
-func TestDramaLedgerConservation(t *testing.T) {
+// TokenPay 钱包任务无论成功还是失败，都不创建平台积分流水或改动积分账户。
+func TestDramaWalletBillingDoesNotTouchPlatformCredits(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		outputs []string
 		status  string
-		settled int
 	}{
-		{"成功只结算实际费用", []string{`{"script_md":"剧本"}`}, "succeeded", 5},
-		{"校验两次失败整笔退回", []string{`{bad`, `{bad`}, "failed", 0},
+		{"成功", []string{`{"script_md":"剧本"}`}, "succeeded"},
+		{"校验两次失败", []string{`{bad`, `{bad`}, "failed"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newDramaMemory()
@@ -33,21 +32,14 @@ func TestDramaLedgerConservation(t *testing.T) {
 			if err := s.HandleDrama(context.Background(), 7, 1, uint64(j.ID)); err != nil {
 				t.Fatal(err)
 			}
-			sum := map[string]int{}
-			for _, e := range r.ledger {
-				sum[e.Type] += e.Amount
-			}
-			if sum[model.LedgerFreeze] != sum[model.LedgerSettle]+sum[model.LedgerRefund] {
-				t.Fatalf("流水不守恒: %v", sum)
-			}
-			if sum[model.LedgerSettle] != tc.settled || r.jobs[0].Status != tc.status || r.credit.Frozen != 0 {
-				t.Fatalf("sum=%v job=%+v credit=%+v", sum, r.jobs[0], r.credit)
+			if r.jobs[0].Status != tc.status || r.jobs[0].Credits != 0 || len(r.ledger) != 0 || r.credit.Balance != 1000 || r.credit.Frozen != 0 {
+				t.Fatalf("钱包任务不应触碰平台积分：job=%+v credit=%+v ledger=%+v", r.jobs[0], r.credit, r.ledger)
 			}
 			// 重复投递终态任务不得再次结算或调用模型。
 			if err := s.HandleDrama(context.Background(), 7, 1, uint64(j.ID)); err != nil {
 				t.Fatal(err)
 			}
-			if r.credit.Balance != 1000-tc.settled {
+			if r.credit.Balance != 1000 || len(r.ledger) != 0 {
 				t.Fatalf("重复投递改变了余额: %+v", r.credit)
 			}
 		})
@@ -76,7 +68,7 @@ func TestDramaAssetPromptsRetryKeepsNewAssetList(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 拆解里的提示词两次输出非法：拆解照样成功、只扣拆解那次，接一个提示词任务。
-	if r.jobs[0].Status != "succeeded" || r.jobs[0].Credits != 5 || c.applied != 1 || len(r.jobs) != 2 || r.jobs[1].Step != "asset_prompts" {
+	if r.jobs[0].Status != "succeeded" || r.jobs[0].Credits != 0 || c.applied != 1 || len(r.jobs) != 2 || r.jobs[1].Step != "asset_prompts" {
 		t.Fatalf("jobs=%+v applied=%d", r.jobs, c.applied)
 	}
 	if err = s.HandleDrama(ctx, 7, 1, r.jobs[1].ID); err != nil {
@@ -87,7 +79,7 @@ func TestDramaAssetPromptsRetryKeepsNewAssetList(t *testing.T) {
 		t.Fatalf("job=%+v prompts=%v prompt=%s", r.jobs[1], c.prompts, last)
 	}
 	// 失败的提示词不扣费，成功的拆解与接续任务各扣一次。
-	if r.credit.Balance != 1000-2*5 || r.credit.Frozen != 0 {
+	if r.credit.Balance != 1000 || r.credit.Frozen != 0 || len(r.ledger) != 0 {
 		t.Fatalf("credit=%+v", r.credit)
 	}
 }

@@ -9,7 +9,7 @@ import { isUserNotFound } from "@/utils/admin/user-rules";
 export const DEFAULT_PAGE_SIZE = 20;
 
 /** 弹窗页签 */
-export type UserTab = "overview" | "tasks" | "credits" | "logins";
+export type UserTab = "overview" | "tasks" | "logins";
 
 /** 状态筛选：all 为不筛 */
 export type StatusFilter = "all" | UserStatus;

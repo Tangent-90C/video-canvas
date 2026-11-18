@@ -4,6 +4,7 @@ import type { ModelInfo } from "@/api/model/type";
 import { ModelLogo } from "@/components/model-logo";
 import { useRemoteModels } from "@/hooks/use-models";
 import { cn } from "@/lib/utils";
+import { modelPriceLabel } from "@/utils/pricing/model-price";
 
 import { ChipPopover } from "./pickers";
 
@@ -83,12 +84,17 @@ export function AgentModelPicker({
                   onChange(index === 0 ? "" : item.key);
                 }}
                 className={cn(
-                  "hover:bg-muted focus-visible:ring-ring/50 flex min-h-8 items-center gap-2 rounded-md px-2 text-left text-sm outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent",
+                  "hover:bg-muted focus-visible:ring-ring/50 flex min-h-8 items-center gap-2 rounded-md px-2 py-1 text-left text-sm outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent",
                   active && "bg-muted font-medium",
                 )}
               >
                 <ModelLogo vendor={item.vendor} name={item.label} className="size-5" />
-                <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                <span className="grid min-w-0 flex-1 gap-0.5">
+                  <span className="truncate">{item.label}</span>
+                  <span className="text-muted-foreground truncate text-[11px] font-normal">
+                    {modelPriceLabel(item)}
+                  </span>
+                </span>
                 {blocked && (
                   <span className="text-muted-foreground shrink-0 text-[10px]">不可选</span>
                 )}

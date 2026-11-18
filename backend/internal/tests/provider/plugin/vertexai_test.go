@@ -87,7 +87,7 @@ func newVertexaiEnv(t *testing.T, mod func(*plugin.Options)) *vertexaiEnv {
 func (e *vertexaiEnv) snapshot(baseURL string, settings map[string]any) *provider.Snapshot {
 	return &provider.Snapshot{
 		Model: provider.ModelSnapshot{Key: "veo", Kind: "video", UpstreamModel: "veo-3.0-generate-001", Capabilities: vertexaiCaps},
-		Channel: provider.ChannelSnapshot{
+		Channel: provider.ChannelSnapshot{Wallet: true,
 			Key: "vertex-main", PluginKey: "vertex-ai", PluginVersionID: 1, BaseURL: baseURL,
 			Settings: settings,
 		},

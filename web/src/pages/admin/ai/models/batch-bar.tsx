@@ -204,26 +204,18 @@ function EditDialog({
   onClose: () => void;
   onSubmit: (patch: BatchPatch) => void;
 }) {
-  const [creditsOn, setCreditsOn] = useState(false);
-  const [credits, setCredits] = useState("");
   const [deadlineOn, setDeadlineOn] = useState(false);
   const [deadline, setDeadline] = useState("30m");
   const [channelOn, setChannelOn] = useState(false);
   const [channel, setChannel] = useState("");
 
-  const creditsValue = Number(credits);
-  const creditsError =
-    creditsOn && (credits.trim() === "" || !Number.isInteger(creditsValue) || creditsValue <= 0)
-      ? "请填写大于 0 的整数"
-      : null;
   const deadlineError = deadlineOn ? checkDeadline(deadline) : null;
   const channelError = channelOn && !channel ? "请选择渠道" : null;
-  const nothing = !creditsOn && !deadlineOn && !channelOn;
-  const invalid = nothing || !!creditsError || !!deadlineError || !!channelError;
+  const nothing = !deadlineOn && !channelOn;
+  const invalid = nothing || !!deadlineError || !!channelError;
 
   const submit = () => {
     const patch: BatchPatch = {};
-    if (creditsOn) patch.price = creditsValue;
     if (deadlineOn) patch.deadline = deadline.trim();
     if (channelOn) patch.channel = channel;
     onSubmit(patch);
@@ -236,26 +228,6 @@ function EditDialog({
           <DialogTitle>批量修改 {count} 个模型</DialogTitle>
         </DialogHeader>
         <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
-            <label className="flex items-center gap-2 text-sm font-medium">
-              <Checkbox checked={creditsOn} onCheckedChange={(v) => setCreditsOn(!!v)} />
-              默认价格
-            </label>
-            {creditsOn && (
-              <FormField
-                label="统一设置为（积分）"
-                hint="规格价不变，按 Token 计费的跳过"
-                error={creditsError ?? undefined}
-              >
-                <Input
-                  inputMode="numeric"
-                  value={credits}
-                  onChange={(event) => setCredits(event.target.value)}
-                  aria-label="默认价格"
-                />
-              </FormField>
-            )}
-          </div>
           <div className="flex flex-col gap-2">
             <label className="flex items-center gap-2 text-sm font-medium">
               <Checkbox checked={deadlineOn} onCheckedChange={(v) => setDeadlineOn(!!v)} />

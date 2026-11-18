@@ -21,7 +21,7 @@ import (
 //   - reauthorize_api_key → secret_unavailable（钱包任务文案「请重新连接钱包」）
 //   - api_key_quota → key_quota（等待额度刷新或重新授权）
 //
-// 同一判定对钱包任务和普通渠道任务都生效（渠道无关，认头不认渠道）。
+// 现在所有真实任务都走钱包；宿主仍按响应头优先分类。
 func TestTokendanceRecoveryActionHeader(t *testing.T) {
 	cases := []struct {
 		action string
@@ -93,7 +93,7 @@ func TestTokendanceImageSizeRules(t *testing.T) {
 	exec := plugin.New(plugin.Options{
 		Runner:    runner,
 		Codes:     codeStore{"code": string(src)},
-		Secrets:   &walletResolver{values: map[string]string{"channel:tp-main": "channel-key"}},
+		Secrets:   &walletResolver{values: map[string]string{"wallet:7": "wallet-key", "channel:tp-main": "product-key"}},
 		Assets:    &fakeAssets{userID: 7, files: map[uint64][]byte{1: []byte("a")}},
 		IPAllowed: allowLoopback,
 	})
@@ -107,7 +107,7 @@ func TestTokendanceImageSizeRules(t *testing.T) {
 	caps.Params = modelcfg.ParamSet{{Name: "aspect_ratio", ParamField: enum}}
 	snap := &provider.Snapshot{
 		Model:           provider.ModelSnapshot{Key: "m", Kind: "image", UpstreamModel: "seedream-5.0-lite", Capabilities: caps},
-		Channel:         provider.ChannelSnapshot{Key: "tp-main", PluginKey: "tokendance-image", PluginVersionID: 1, BaseURL: srv.URL},
+		Channel:         provider.ChannelSnapshot{Wallet: true, Key: "tp-main", PluginKey: "tokendance-image", PluginVersionID: 1, BaseURL: srv.URL},
 		Plugin:          provider.PluginSnapshot{Key: "tokendance-image", Version: meta.Version, SHA256: pre.SHA256, Meta: *meta},
 		ModelRevisionID: 1,
 	}
@@ -146,30 +146,5 @@ func TestTokendanceImageSizeRules(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("1024x1024 小于 3686400 像素，应直接报错")
-	}
-}
-
-// 普通渠道任务（非钱包）同样认头：渠道 Key 撞上 api_key_quota 也分类为 key_quota。
-func TestRecoveryActionHeaderAppliesToPlainChannel(t *testing.T) {
-	up := &fakeNewAPI{handler: func(w http.ResponseWriter, _ *http.Request, _ map[string]any) {
-		w.Header().Set("TokenDance-Recovery-Action", "api_key_quota")
-		w.WriteHeader(http.StatusForbidden)
-		_, _ = w.Write([]byte(`{"error":{"message":"quota exceeded"}}`))
-	}}
-	srv := httptest.NewServer(up)
-	defer srv.Close()
-
-	resolver := &walletResolver{values: map[string]string{"channel:tp-main": "channel-key"}}
-	env := newTokendanceEnv(t, resolver)
-	_, err := env.exec.Submit(context.Background(), env.snapshot(srv.URL, false), provider.SubmitInput{
-		Task:  provider.TaskRef{ID: 2, UserID: 7},
-		Input: map[string]any{"prompt": "一只猫在跳舞"},
-	})
-	if err == nil {
-		t.Fatal("应该提交失败")
-	}
-	var pe *provider.Error
-	if !errors.As(err, &pe) || pe.Class != provider.ClassKeyQuota {
-		t.Fatalf("普通渠道任务也应按恢复动作头分类为 key_quota：%v", err)
 	}
 }

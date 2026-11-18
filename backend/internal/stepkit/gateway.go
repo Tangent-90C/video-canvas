@@ -9,6 +9,7 @@ import (
 
 	"video-canvas/internal/llmgateway"
 	"video-canvas/internal/model"
+	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/provider"
 )
@@ -30,18 +31,17 @@ func (g *GatewayCaller) Complete(ctx context.Context, snap *provider.Snapshot, m
 	if g.Streamer == nil || g.Secrets == nil {
 		return nil, errors.New("文本模型网关未配置")
 	}
-	name := model.ChannelSecretName(snap.Channel.Key)
-	if snap.Channel.Wallet {
-		userID := logger.UserIDOf(ctx)
-		if userID == 0 {
-			return nil, errors.New("钱包文本模型缺少用户上下文")
-		}
-		name = model.WalletSecretName(userID)
+	if !snap.Channel.Wallet {
+		return nil, errcode.ErrWalletNotConnected.WithMsg("该模型未接入 TokenPay 钱包，请选择钱包模型")
 	}
-	key, err := g.Secrets.Get(ctx, name)
+	userID := logger.UserIDOf(ctx)
+	if userID == 0 {
+		return nil, errcode.ErrInternal.WithMsg("钱包文本模型缺少用户上下文")
+	}
+	key, err := g.Secrets.Get(ctx, model.WalletSecretName(userID))
 	if err != nil {
 		logger.Warn("环节模型渠道 Key 读取失败", zap.String("channel", snap.Channel.Key), zap.Error(err))
-		return nil, errors.New("模型渠道暂不可用")
+		return nil, errcode.ErrWalletNotConnected
 	}
 	target := llmgateway.Target{
 		ChannelKey: snap.Channel.Key, BaseURL: snap.Channel.BaseURL, APIKey: key, Headers: snap.Channel.Headers,

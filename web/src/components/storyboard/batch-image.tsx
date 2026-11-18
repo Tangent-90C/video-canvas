@@ -16,7 +16,7 @@ import {
 type Plan = { targets: string[]; missingScene: number };
 
 /**
- * 弹窗标题栏里的「批量生成分镜图」（放在清透胶囊里）：只补没图的行，点了先确认要生成几张（会花积分）。
+ * 弹窗标题栏里的「批量生成分镜图」（放在清透胶囊里）：只补没图的行，点了先确认要生成几张；费用按 TokenDance 实际账单。
  * 要处理哪些行在点击那一刻现算，不随表格实时订阅；一张都不用生成时不弹确认，只提示一句。
  * @param plan 算出这次要生成的行，以及没写画面描述被跳过的行数
  * @param onConfirm 确认后开始生成这些行
@@ -58,7 +58,7 @@ export function BatchImageButton({
           <AlertDialogHeader>
             <AlertDialogTitle>生成 {current.targets.length} 张分镜图？</AlertDialogTitle>
             <AlertDialogDescription>
-              给还没有分镜图的镜头生成，已有图和正在生成的不动，会消耗积分。
+              给还没有分镜图的镜头生成，已有图和正在生成的不动，费用按 TokenDance 实际账单。
               {current.missingScene > 0 &&
                 `另有 ${current.missingScene} 镜没写画面描述，这次先跳过。`}
             </AlertDialogDescription>

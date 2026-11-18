@@ -62,20 +62,20 @@ const round = (scripts: Script[], patch: Partial<Round> = {}): Round =>
 
 describe("脚本出片按钮", () => {
   test("正常脚本可出片；已出片 / 失败的叫重出", () => {
-    expect(scriptRenderState(script(), 500)).toEqual({ disabled: false, reason: "", again: false });
-    expect(scriptRenderState(script({ status: "done" }), 500).again).toBe(true);
-    expect(scriptRenderState(script({ status: "failed" }), 500).again).toBe(true);
+    expect(scriptRenderState(script())).toEqual({ disabled: false, reason: "", again: false });
+    expect(scriptRenderState(script({ status: "done" })).again).toBe(true);
+    expect(scriptRenderState(script({ status: "failed" })).again).toBe(true);
   });
 
   test("出片中 / 重写中禁用", () => {
-    expect(scriptRenderState(script({ status: "rendering" }), 500).disabled).toBe(true);
-    expect(scriptRenderState(script({ status: "rewriting" }), 500).disabled).toBe(true);
+    expect(scriptRenderState(script({ status: "rendering" })).disabled).toBe(true);
+    expect(scriptRenderState(script({ status: "rewriting" })).disabled).toBe(true);
     expect(isScriptBusy("rendering")).toBe(true);
     expect(isScriptBusy("rewriting")).toBe(true);
     expect(isScriptBusy("done")).toBe(false);
   });
 
-  test("旁白有问题：禁用并列出问题；比余额不足优先", () => {
+  test("旁白有问题：禁用并列出问题", () => {
     const flagged = script({
       flags: [
         { shot: 0, type: "forbidden", text: "最" },
@@ -83,14 +83,13 @@ describe("脚本出片按钮", () => {
         { shot: 1, type: "forbidden", text: "最" },
       ],
     });
-    const state = scriptRenderState(flagged, 1);
+    const state = scriptRenderState(flagged);
     expect(state.disabled).toBe(true);
     expect(state.reason).toBe("旁白有问题：禁用说法「最」、背书无依据「销量第一」");
   });
 
-  test("余额不足禁用；还没拿到余额不拦", () => {
-    expect(scriptRenderState(script(), 50)).toMatchObject({ disabled: true, reason: "余额不足" });
-    expect(scriptRenderState(script(), null).disabled).toBe(false);
+  test("平台积分余额不参与出片判断", () => {
+    expect(scriptRenderState(script()).disabled).toBe(false);
   });
 
   test("问题镜头集合与按类型去重的问题标签", () => {
@@ -131,21 +130,18 @@ describe("全部出片", () => {
         script({ id: "c", status: "rendering" }),
         script({ id: "d", flags: [{ shot: 0, type: "brand", text: "x" }] }),
       ]),
-      1000,
     );
-    expect(state).toEqual({ show: true, count: 2, credits: 200, disabled: false, reason: "" });
+    expect(state).toEqual({ show: true, count: 2, disabled: false, reason: "" });
   });
 
-  test("可出片的不足 2 份不显示按钮；轮次不是 ready 不显示；余额不足禁用写原因", () => {
-    expect(renderAllState(round([script()]), 1000).show).toBe(false);
+  test("可出片的不足 2 份不显示按钮；轮次不是 ready 不显示；余额不参与判断", () => {
+    expect(renderAllState(round([script()])).show).toBe(false);
     expect(
-      renderAllState(
-        round([script({ id: "a" }), script({ id: "b" })], { status: "scripting" }),
-        1000,
-      ).show,
+      renderAllState(round([script({ id: "a" }), script({ id: "b" })], { status: "scripting" }))
+        .show,
     ).toBe(false);
-    const low = renderAllState(round([script({ id: "a" }), script({ id: "b" })]), 150);
-    expect(low).toMatchObject({ show: true, disabled: true, reason: "余额不足" });
+    const ready = renderAllState(round([script({ id: "a" }), script({ id: "b" })]));
+    expect(ready).toMatchObject({ show: true, disabled: false, reason: "" });
   });
 });
 

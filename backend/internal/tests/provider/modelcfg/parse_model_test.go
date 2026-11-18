@@ -381,8 +381,6 @@ func TestParseModel_未知字段与类型错误(t *testing.T) {
 		{"key 不是字符串", func(m map[string]any) { m["key"] = 5 }, "key", "字符串"},
 		{"label 不是字符串", func(m map[string]any) { m["label"] = true }, "label", "字符串"},
 		{"旧的 credits 已不存在", func(m map[string]any) { m["credits"] = 10 }, "credits", "未知字段"},
-		{"价格是小数", func(m map[string]any) { mcPricing(m)["per_second"] = 1.5 }, "pricing.per_second", "整数"},
-		{"价格是字符串", func(m map[string]any) { mcPricing(m)["per_second"] = "2" }, "pricing.per_second", "整数"},
 		{"enabled 不是布尔", func(m map[string]any) { m["enabled"] = "yes" }, "enabled", "布尔"},
 		{"sort 是字符串", func(m map[string]any) { m["sort"] = "1" }, "sort", "整数"},
 		{"deadline 是布尔", func(m map[string]any) { m["deadline"] = true }, "deadline", "字符串"},
@@ -424,7 +422,7 @@ func TestParseModel_多个问题一次报出(t *testing.T) {
 	}
 	mcParam(m, "duration")["type"] = "text"
 	_, issues := modelcfg.ParseModel(mcMarshal(t, m))
-	for _, p := range []string{"key", "kind", "pricing.per_second", "channels", "channels[0].channel", "channels[0].upstream_model", "capabilities.params.duration.type"} {
+	for _, p := range []string{"key", "kind", "channels", "channels[0].channel", "channels[0].upstream_model", "capabilities.params.duration.type"} {
 		if _, ok := mcHasIssue(issues, p); !ok {
 			t.Errorf("缺少路径 %s，实际 %v", p, mcIssueList(issues))
 		}
@@ -529,56 +527,34 @@ func TestParseModel_合法变体(t *testing.T) {
 	}
 }
 
-func TestParseModel_定价规则(t *testing.T) {
-	tier := func(m map[string]any, when map[string]any) {
-		mcPricing(m)["tiers"] = []any{map[string]any{"on": true, "when": when, "unit": 1}}
-	}
-	mcRunCases(t, []mcCase{
-		{"没有 pricing", func(m map[string]any) { delete(m, "pricing") }, "pricing.billing", "per_call"},
-		{"计费方式非法", func(m map[string]any) { mcPricing(m)["billing"] = "monthly" }, "pricing.billing", "per_call"},
-		{"按秒计费需要 duration 参数", func(m map[string]any) { delete(mcParams(m), "duration") }, "pricing.billing", "duration"},
-		{"默认价为 0", func(m map[string]any) { mcPricing(m)["per_second"] = 0 }, "pricing.per_second", "大于 0"},
-		{"价格超过上限", func(m map[string]any) { mcPricing(m)["per_second"] = 1000001 }, "pricing.per_second", "1000000"},
-		{"按次计费默认价为 0", func(m map[string]any) { m["pricing"] = map[string]any{"billing": "per_call"} }, "pricing.unit", "大于 0"},
-		{"视频不能按 Token 计费", func(m map[string]any) {
+func TestParseModel_PricingIsLegacyCompatibilityOnly(t *testing.T) {
+	// 平台积分停用后，pricing 只为旧配置兼容而保留：缺失、旧值或旧结构都不能再阻止模型保存/启用。
+	for _, tc := range []struct {
+		name   string
+		mutate func(map[string]any)
+	}{
+		{"没有 pricing", func(m map[string]any) { delete(m, "pricing") }},
+		{"旧计费方式非法", func(m map[string]any) { mcPricing(m)["billing"] = "monthly" }},
+		{"旧按秒价格为零", func(m map[string]any) { mcPricing(m)["per_second"] = 0 }},
+		{"旧按次价格为零", func(m map[string]any) {
+			m["pricing"] = map[string]any{"billing": "per_call"}
+		}},
+		{"旧视频 Token 价格结构", func(m map[string]any) {
 			m["pricing"] = map[string]any{"billing": "token", "token": map[string]any{"in": 1, "out": 1}}
-		}, "pricing.billing", "文本"},
-		{"Token 计费缺单价", func(m map[string]any) { mcAsText(m); delete(mcPricing(m), "token") }, "pricing.token", "输入价"},
-		{"Token 单价都为 0", func(m map[string]any) {
-			mcAsText(m)
-			mcPricing(m)["token"] = map[string]any{"in": 0, "out": 0}
-		}, "pricing.token", "都为 0"},
-		{"Token 计费不支持规格价格", func(m map[string]any) {
-			mcAsText(m)
-			mcPricing(m)["tiers"] = []any{map[string]any{"on": true, "when": map[string]any{"op": "x"}, "unit": 1}}
-		}, "pricing.tiers", "不支持"},
-		{"规格价格条件的参数不存在", func(m map[string]any) { tier(m, map[string]any{"fps": 30}) }, "pricing.tiers[0].when.fps", "不存在"},
-		{"规格价格条件的参数不是规格维度", func(m map[string]any) {
-			tier(m, map[string]any{"aspect_ratio": "16:9"})
-		}, "pricing.tiers[0].when.aspect_ratio", "规格价格维度"},
-		{"规格价格条件的可选值被取消", func(m map[string]any) {
-			tier(m, map[string]any{"resolution": "4K"})
-		}, "pricing.tiers[0].when.resolution", "4K 已不可选"},
-		{"布尔条件不是布尔", func(m map[string]any) {
-			tier(m, map[string]any{"generate_audio": "yes"})
-		}, "pricing.tiers[0].when.generate_audio", "true / false"},
-		{"生成方式条件未勾选", func(m map[string]any) {
-			mcCaps(m)["ops"] = []any{"t2v", "i2v"}
-			tier(m, map[string]any{"op": "omni"})
-		}, "pricing.tiers[0].when.op", "已勾选"},
-		{"参考视频未开启却作为条件", func(m map[string]any) {
-			tier(m, map[string]any{"ref_video": true})
-		}, "pricing.tiers[0].when.ref_video", "没有开启"},
-		{"规格价格为负", func(m map[string]any) {
-			mcPricing(m)["tiers"] = []any{map[string]any{"on": true, "when": map[string]any{"op": "t2v"}, "unit": -1}}
-		}, "pricing.tiers[0].unit", "0 –"},
-		{"成本为负", func(m map[string]any) { mcDig(m, "pricing.cost")["per_second"] = -1 }, "pricing.cost.per_second", "0 –"},
-		{"规格成本为负", func(m map[string]any) {
-			mcPricing(m)["tiers"] = []any{map[string]any{"on": true, "when": map[string]any{"op": "t2v"}, "unit": 1,
-				"cost": map[string]any{"on": true, "per_second": -1}}}
-		}, "pricing.tiers[0].cost.per_second", "0 –"},
-		{"规格价格里的未知字段", func(m map[string]any) {
-			mcPricing(m)["tiers"] = []any{map[string]any{"on": true, "when": map[string]any{"op": "t2v"}, "unit": 1, "x": 1}}
-		}, "pricing.tiers[0].x", "未知字段"},
-	})
+		}},
+		{"旧规格价格条件失效", func(m map[string]any) {
+			mcPricing(m)["tiers"] = []any{map[string]any{"on": true, "when": map[string]any{"fps": 30}, "unit": -1}}
+		}},
+		{"旧成本为负", func(m map[string]any) { mcDig(m, "pricing.cost")["per_second"] = -1 }},
+		{"旧 pricing 含未知字段", func(m map[string]any) { mcPricing(m)["legacy_field"] = true }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := mcLoadFixture(t, "model_video.json")
+			tc.mutate(m)
+			got, issues := modelcfg.ParseModel(mcMarshal(t, m))
+			if got == nil || len(issues) != 0 {
+				t.Fatalf("历史 pricing 不应再参与校验：got=%+v issues=%v", got, mcIssueList(issues))
+			}
+		})
+	}
 }

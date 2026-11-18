@@ -1,29 +1,10 @@
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
-import {
-  adjustUserCredits,
-  batchAddCredits,
-  batchSetStatus,
-  setUserLimit,
-  setUserRole,
-  setUserStatus,
-} from "@/api/admin/users";
-import type {
-  AdjustCreditsRequest,
-  UserDetail,
-  UserListItem,
-  UserRole,
-  UserStatus,
-} from "@/api/admin/users/type.d";
+import { batchSetStatus, setUserLimit, setUserRole, setUserStatus } from "@/api/admin/users";
+import type { UserDetail, UserListItem, UserRole, UserStatus } from "@/api/admin/users/type.d";
 import { confirm } from "@/components/admin-ui/confirm-dialog";
-import {
-  batchPlan,
-  creditUndoRequest,
-  USER_ROLE_LABEL,
-  type Actor,
-  type BatchUser,
-} from "@/utils/admin/user-rules";
+import { batchPlan, USER_ROLE_LABEL, type Actor, type BatchUser } from "@/utils/admin/user-rules";
 
 /** 撤销 toast 停留的时间（毫秒） */
 const UNDO_MS = 5000;
@@ -35,16 +16,13 @@ export type ActionUser = Pick<
   | "username"
   | "role"
   | "status"
-  | "balance"
-  | "frozen"
-  | "available"
   | "max_active_tasks"
   | "effective_max_active_tasks"
   | "active_tasks"
 >;
 
 /**
- * 用户管理的全部写操作：行菜单、积分格、弹窗、批量条共用。
+ * 用户管理的全部写操作：行菜单、弹窗、批量条共用。
  * 请求失败的全局 toast 由拦截器弹，这里不重复，只在失败后保持界面状态（按钮恢复、浮层不关）。
  * 成功后用接口返回值原地更新（让数字滚动），再静默刷新列表与弹窗。
  * @param options.actor 当前管理员，批量跳过规则要用
@@ -76,54 +54,6 @@ export function useUserActions(options: {
       }
     },
     [],
-  );
-
-  /**
-   * 调整积分，成功后 toast 带 5 秒撤销（反向 add / sub，备注「撤销：原备注」）
-   * @returns 是否成功；失败时浮层保持打开
-   */
-  const adjustCredits = useCallback(
-    async (user: ActionUser, body: AdjustCreditsRequest): Promise<boolean> => {
-      const before = user.available;
-      const result = await run(`${user.id}:credit`, () => adjustUserCredits(user.id, body));
-      if (!result) return false;
-      patch(user.id, {
-        balance: result.balance,
-        frozen: result.frozen,
-        available: result.available,
-        has_credit_account: true,
-      });
-      refresh(user.id);
-      const delta = result.available - before;
-      const message =
-        body.mode === "set"
-          ? `已将 ${user.username} 的可用积分设为 ${result.available}`
-          : delta >= 0
-            ? `已为 ${user.username} 增加 ${delta} 积分`
-            : `已为 ${user.username} 扣减 ${-delta} 积分`;
-      const undo = creditUndoRequest(delta, body.note);
-      toast.success(message, {
-        duration: UNDO_MS,
-        action: undo && {
-          label: "撤销",
-          onClick: () => {
-            void adjustUserCredits(user.id, undo)
-              .then((back) => {
-                patch(user.id, {
-                  balance: back.balance,
-                  frozen: back.frozen,
-                  available: back.available,
-                });
-                refresh(user.id);
-                toast(`已撤销，${user.username} 可用积分恢复为 ${back.available}`);
-              })
-              .catch(() => undefined);
-          },
-        },
-      });
-      return true;
-    },
-    [patch, refresh, run],
   );
 
   /** 设置并发上限（null 为改回全局默认），toast 带撤销 */
@@ -204,15 +134,13 @@ export function useUserActions(options: {
         title: `封禁 ${user.username} 并取消任务？`,
         destructive: true,
         confirmLabel: "封禁并取消任务",
-        description: `将取消 ${user.active_tasks} 个进行中任务并退还 ${user.frozen} 冻结积分，无法撤销。`,
+        description: `将取消 ${user.active_tasks} 个进行中任务，无法撤销。`,
         onConfirm: () => setUserStatus(user.id, { status: "disabled", cancel_active: true }),
       });
       if (!done) return false;
       patch(user.id, { status: "disabled", active_tasks: 0 });
       refresh(user.id);
-      toast.success(
-        `已封禁 ${user.username}，取消 ${user.active_tasks} 个任务并退还 ${user.frozen} 积分`,
-      );
+      toast.success(`已封禁 ${user.username}，取消 ${user.active_tasks} 个任务`);
       return true;
     },
     [patch, refresh],
@@ -283,50 +211,14 @@ export function useUserActions(options: {
     [actor, patch, refresh, run],
   );
 
-  /**
-   * 批量发积分（只增不减）。批量接口只增不减，所以这里不提供一键撤销，要撤回请逐个扣减。
-   * @returns 是否成功提交；失败时弹窗保持打开
-   */
-  const bulkCredits = useCallback(
-    async (users: ActionUser[], amount: number, note: string): Promise<boolean> => {
-      const plan = batchPlan(actor, users, "credit");
-      if (plan.run.length === 0) {
-        toast.info(plan.skipText || "没有可发放的用户");
-        return false;
-      }
-      const result = await run("bulk:credit", () =>
-        batchAddCredits({ ids: plan.run.map((u) => u.id), amount, note }),
-      );
-      if (!result) return false;
-      const okIds = new Set(result.results.filter((r) => r.ok).map((r) => r.id));
-      const failed = result.results.filter((r) => !r.ok);
-      plan.run.forEach((u) => {
-        if (okIds.has(u.id)) {
-          patch(u.id, { available: u.available + amount, balance: u.balance + amount });
-        }
-      });
-      refresh();
-      const parts = [
-        `已给 ${okIds.size} 个用户各发 ${amount} 积分`,
-        plan.skipText,
-        failed.length ? `失败 ${failed.length} 个：${failed[0]?.error ?? "未知原因"}` : "",
-      ].filter(Boolean);
-      toast.success(parts.join("，"));
-      return true;
-    },
-    [actor, patch, refresh, run],
-  );
-
   return {
     isBusy,
     busy,
-    adjustCredits,
     setLimit,
     setStatus,
     banAndCancel,
     changeRole,
     bulkStatus,
-    bulkCredits,
   };
 }
 

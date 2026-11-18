@@ -164,11 +164,11 @@ describe("任务胶囊：自动规划", () => {
     await m.unmount();
   });
 
-  test("积分不足、规划失败：胶囊显示 1 个失败；面板写原因，给「继续 / 重试」", async () => {
+  test("TokenPay 需要处理、规划失败：胶囊显示 1 个失败；面板写原因，给「继续 / 重试」", async () => {
     const credits = await mountPill(drama({ phase: "paused", pauseCode: "credits" }), []);
     expect(pill(credits.container)?.textContent).toContain("1 个失败");
     const panel = await openPanel(credits.container);
-    expect(panel.textContent).toContain("积分不足，充值后继续");
+    expect(panel.textContent).toContain("TokenPay 钱包授权或额度需要处理，连接钱包后继续");
     expect(byText(panel, "继续")).toBeTruthy();
     await credits.unmount();
 

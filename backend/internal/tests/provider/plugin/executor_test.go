@@ -60,7 +60,7 @@ func testSnapshot(baseURL, code, kind string, auth pluginmeta.Auth) *provider.Sn
 			Key: "test-model", Kind: kind, UpstreamModel: "upstream",
 			Capabilities: modelcfg.Capabilities{Prompt: modelcfg.PromptSpec{MaxLength: 10000}},
 		},
-		Channel: provider.ChannelSnapshot{
+		Channel: provider.ChannelSnapshot{Wallet: true,
 			Key: "test-channel", PluginKey: "test-plugin", PluginVersionID: 1,
 			BaseURL: baseURL,
 		},

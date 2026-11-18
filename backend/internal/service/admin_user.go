@@ -69,7 +69,7 @@ func (s *AdminUserService) List(ctx context.Context, req *model.ListAdminUserReq
 		return nil, 0, q, err
 	}
 
-	// 3. 查询并补算可用积分与实际生效的并发上限；返回的切片永远不是 nil
+	// 3. 查询并补算实际生效的并发上限；历史积分字段不再参与；返回的切片永远不是 nil
 	rows, total, err := s.repo.ListAdmin(ctx, repository.UserListFilter{
 		Q: strings.TrimSpace(req.Q), Status: req.Status, Role: req.Role, Offset: q.Offset(), Limit: q.Limit(),
 	})
@@ -83,13 +83,13 @@ func (s *AdminUserService) List(ctx context.Context, req *model.ListAdminUserReq
 	return items, total, q, nil
 }
 
-// toAdminListItem 把查询行补成列表项：可用 = 余额 - 冻结；实际并发上限 = 单用户覆盖，没有则用全局默认。
+// toAdminListItem 把查询行补成列表项：实际并发上限 = 单用户覆盖，没有则用全局默认；历史积分为兼容零值。
 func toAdminListItem(r model.AdminUserRow, defMax int) model.AdminUserListItem {
 	eff := defMax
 	if r.MaxActiveTasks != nil {
 		eff = *r.MaxActiveTasks
 	}
-	return model.AdminUserListItem{AdminUserRow: r, Available: r.Balance - r.Frozen, EffectiveMaxActiveTasks: eff}
+	return model.AdminUserListItem{AdminUserRow: r, EffectiveMaxActiveTasks: eff}
 }
 
 // recentAuditLimit 是用户详情里展示的最近审计条数。
@@ -124,6 +124,7 @@ func (s *AdminUserService) Get(ctx context.Context, id uint64) (*model.AdminUser
 	if err != nil {
 		return nil, err
 	}
+	stats.SpentCredits = 0 // 历史平台积分字段只保留结构兼容，不参与当前响应。
 	audits, err := s.audit.RecentForUser(ctx, id, recentAuditLimit)
 	if err != nil {
 		return nil, err

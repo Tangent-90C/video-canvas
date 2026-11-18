@@ -97,40 +97,14 @@ func capabilitiesSchema() obj {
 	}, "prompt")
 }
 
-func tokenPriceSchema(desc string) obj {
-	return object(desc, obj{
-		"in":  obj{"type": "integer", "minimum": 0, "maximum": maxPrice, "description": "输入价（积分 / 百万 Token）"},
-		"out": obj{"type": "integer", "minimum": 0, "maximum": maxPrice, "description": "输出价（积分 / 百万 Token）"},
-	}, "in", "out")
-}
-
-func priceInt(desc string) obj {
-	return obj{"type": "integer", "minimum": 0, "maximum": maxPrice, "description": desc}
-}
-
-// pricingSchema 是 pricing 的 Schema。
+// pricingSchema 是历史平台积分字段的兼容占位。新模型不要填写，它不再参与校验、展示或计费。
 func pricingSchema() obj {
-	return object("定价：价格一律是整数积分", obj{
-		"pending":    boolean("售价待确认，仅未启用的测试草稿可用；不要填写占位售价，发布前必须完成定价并移除此标识"),
-		"billing":    enum("计费方式：per_call 按次 / per_second 按秒（乘以时长参数 duration）/ token 按 Token（仅文本）", Billings...),
-		"unit":       priceInt("按次：积分 / 次"),
-		"per_second": priceInt("按秒：积分 / 秒"),
-		"token":      tokenPriceSchema("按 Token：输入价与输出价"),
-		"tiers": obj{
-			"type": "array", "description": "规格价格：满足全部条件时覆盖默认价；条件最多的一条胜出，条件数相同取靠前的",
-			"items": object("一条规格价格", obj{
-				"on":   boolean("是否可供用户使用"),
-				"when": obj{"type": "object", "minProperties": 1, "description": "条件：spec 参数名 -> 取值，或 op（生成方式）、ref_video（参考素材里有视频）"},
-				"unit": priceInt("价格，单位随计费方式（积分 / 次、积分 / 秒）"),
-			}, "on", "when", "unit"),
-		},
-		"cost": object("积分成本，仅管理端可见，不参与扣费", obj{
-			"on":         boolean("是否填写成本"),
-			"unit":       priceInt("按次成本"),
-			"per_second": priceInt("按秒成本"),
-			"token":      tokenPriceSchema("按 Token 成本"),
-		}, "on"),
-	}, "billing")
+	return obj{
+		"type":                 "object",
+		"description":          "历史平台积分字段，仅为旧配置兼容保留；新模型不要填写，也不参与校验、展示或计费",
+		"deprecated":           true,
+		"additionalProperties": true,
+	}
 }
 
 // protocolSchema 是 channels[].protocol 的 Schema：模型选的协议插件、固定版本与协议设置项取值。
@@ -175,9 +149,9 @@ func modelSchema() obj {
 		"$schema":              "http://json-schema.org/draft-07/schema#",
 		"title":                "Model（模型）",
 		"type":                 "object",
-		"description":          "画布用户选择的一项模型：绑定哪个渠道与上游模型、模型能力、定价",
+		"description":          "画布用户选择的一项模型：绑定哪个渠道与上游模型，以及模型能力；计费统一由用户 TokenPay 钱包按 TokenDance 实际账单结算",
 		"additionalProperties": false,
-		"required":             []string{"key", "kind", "label", "channels", "pricing"},
+		"required":             []string{"key", "kind", "label", "channels"},
 		"properties": obj{
 			"key":   obj{"type": "string", "pattern": modelKeyRe.String(), "description": "模型唯一标识"},
 			"kind":  enum("模型类型", Kinds...),
@@ -201,7 +175,7 @@ func modelSchema() obj {
 				"description": "绑定的渠道。数据结构是数组，预留多渠道故障切换，首期只支持一个渠道",
 			},
 			"capabilities": capabilitiesSchema(),
-			"pricing":      pricingSchema(),
+			"pricing":      pricingSchema(), // 历史兼容；不要填
 		},
 	}
 }

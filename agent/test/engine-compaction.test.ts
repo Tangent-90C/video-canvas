@@ -83,7 +83,7 @@ test("历史超过触发线：用画布专用的提示词写摘要，请求走�
     },
   ));
 
-test("摘要调用也要计费并推 run.usage；对话调用的积分不会错配到摘要调用上", () =>
+test("摘要调用和对话调用都推进 run.usage 观测，但平台积分字段保持 0", () =>
   withEngine(
     {
       setup: SMALL_WINDOW,
@@ -97,10 +97,10 @@ test("摘要调用也要计费并推 run.usage；对话调用的积分不会错�
       const mainIds = e.go.callLog.filter((c) => c.purpose === "main").map((c) => c.callId);
       const summaryIds = e.go.callLog.filter((c) => c.purpose === "summary").map((c) => c.callId);
       assert.ok(summaryIds.length >= 1);
-      // 每条 message.done 的积分是它自己那次调用的
+      // 平台积分已停用：message.done 的历史字段恒为 0
       assert.deepEqual(
         e.persisted("message.done").map((m) => m.credits),
-        mainIds.map(chargedOf),
+        mainIds.map(() => 0),
       );
       // 每次结算（对话或摘要）都有一条 run.usage
       assert.equal(e.persisted("run.usage").length, mainIds.length + summaryIds.length);

@@ -21,7 +21,7 @@ const maxGenerateItems = 8
 
 // AgentGenTasks 是 Agent 用到的生成任务能力：创建（批准后）和查询（task_get）。*GenerationTaskService 实现它。
 type AgentGenTasks interface {
-	// Create 提交生成任务，规则与用户在画布上点生成完全一致（校验、计价、冻结积分、并发上限）。
+	// Create 提交生成任务，规则与用户在画布上点生成完全一致（校验、钱包、并发上限）。
 	Create(ctx context.Context, userID uint64, idempotencyKey string, req *model.CreateGenerationTaskReq) (*model.CreateGenerationTaskResp, error)
 	// Get 查用户自己的一个任务。
 	Get(ctx context.Context, userID, id uint64) (*model.GenerationTaskView, error)
@@ -83,7 +83,7 @@ func pickOp(ops []string, chosen any, hasImage bool) string {
 }
 
 // toolGenerate 申请生成：逐个节点预检（有没有产物、选了模型、参数合不合法），算价后创建审批并让本轮停下。
-// 不直接生成：生成花积分，必须用户批准。已有产物的节点不会被覆盖。
+// 不直接生成：会调用用户 TokenPay 钱包，必须用户批准。已有产物的节点不会被覆盖。
 func (b *AgentBridge) toolGenerate(ctx context.Context, tc *toolCall) (*toolOut, error) {
 	var a struct {
 		Items []struct {
@@ -110,23 +110,21 @@ func (b *AgentBridge) toolGenerate(ctx context.Context, tc *toolCall) (*toolOut,
 		return nil, err
 	}
 	p := GeneratePayload{Reason: truncateRunes(a.Reason, 200), Wait: a.Wait == nil || *a.Wait}
-	total := 0
 	for _, src := range srcs {
 		it, err := b.precheck(ctx, tc.run.UserID, src)
 		if err != nil {
 			return nil, err
 		}
 		p.Items = append(p.Items, it)
-		total += it.Price
 	}
-	if err := b.requestApproval(ctx, tc, model.ApprovalGenerate, p, total); err != nil {
+	if err := b.requestApproval(ctx, tc, model.ApprovalGenerate, p, 0); err != nil {
 		return nil, err
 	}
 	return &toolOut{content: "已提交给用户批准，等待决定。用户决定后你会收到结果；批准后任务才会创建并开始生成。", terminate: true,
-		summary: fmt.Sprintf("申请生成 %d 个节点（预估 %d 积分）", len(p.Items), total)}, nil
+		summary: fmt.Sprintf("申请生成 %d 个节点", len(p.Items))}, nil
 }
 
-// precheck 预检一个节点能不能生成，通过时返回它的审批条目（含预估价）。不通过的原因是写给模型看的，说明怎么改。
+// precheck 预检一个节点能不能生成，通过时返回它的审批条目。不通过的原因是写给模型看的，说明怎么改。
 func (b *AgentBridge) precheck(ctx context.Context, userID uint64, src *canvasgraph.GenSource) (GenerateItem, error) {
 	name := fmt.Sprintf("节点 %q（%s）", src.NodeID, src.Label)
 	switch {
@@ -148,6 +146,9 @@ func (b *AgentBridge) precheck(ctx context.Context, userID uint64, src *canvasgr
 	if snap.Model.Kind != remoteKindOf(src.Kind) {
 		return GenerateItem{}, fail("%s是%s节点，模型 %q 是%s模型，种类对不上。", name, src.Kind, src.Model, snap.Model.Kind)
 	}
+	if !snap.Channel.Wallet {
+		return GenerateItem{}, fail("%s选的模型 %q 未接入 TokenPay 钱包，请重新选择。", name, src.Model)
+	}
 	rawInput, err := buildGenInput(caps, src)
 	if err != nil {
 		return GenerateItem{}, fail("%s：%s", name, err.Error())
@@ -155,11 +156,11 @@ func (b *AgentBridge) precheck(ctx context.Context, userID uint64, src *canvasgr
 	if err := validateCharacterVoiceTasks(ctx, b.d.Tasks, src, userID); err != nil {
 		return GenerateItem{}, fail("%s：%s", name, err.Error())
 	}
-	input, fieldErrs := modelcfg.ValidateInput(snap.Model.Kind, caps, rawInput)
+	_, fieldErrs := modelcfg.ValidateInput(snap.Model.Kind, caps, rawInput)
 	if len(fieldErrs) > 0 {
 		return GenerateItem{}, fail("%s的参数不合法：%s。请用 canvas_apply_ops 修正后再申请。", name, modelcfg.JoinFieldErrors(fieldErrs))
 	}
-	price := max(modelcfg.Quote(snap.Model.Pricing, caps, modelcfg.SpecFromInput(input, caps.System)), 0)
+	price := 0 // TokenPay 钱包计费后不再展示或计算平台积分。
 	return GenerateItem{NodeID: src.NodeID, Label: src.Label, ModelKey: snap.Model.Key, ModelName: snap.Model.Label, Price: price, Count: 1}, nil
 }
 

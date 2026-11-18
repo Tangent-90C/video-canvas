@@ -207,7 +207,7 @@ type AgentStatsRow struct {
 	FailEndRate      float64   `json:"fail_end_rate"`      // 失败结束的运行占比，见 FailedRunStatuses
 	MedianDurationMs float64   `json:"median_duration_ms"` // 耗时中位数
 	MedianSteps      float64   `json:"median_steps"`       // 步数中位数
-	AvgCredits       float64   `json:"avg_credits"`        // 平均每次运行花的积分
+	AvgCredits       float64   `json:"avg_credits"`        // 历史兼容字段，恒为 0；费用以 TokenDance 实际账单为准
 	PromptVersion    int       `json:"prompt_version"`     // 这一组的提示词版本（按 harness_key 分组时唯一；其他分组取最大值，仅供参考）
 	BuildSHA         string    `json:"build_sha"`          // 这一组的构建号（同上）
 	LastAt           time.Time `json:"last_at"`            // 这一组最近一次运行的创建时间，版本对比按它挑「最近几个版本」

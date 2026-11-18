@@ -51,7 +51,6 @@ export const getUsageDetail = async (ref: string): Promise<UsageDetail> => {
     input: detail.input ?? {},
     outputs: detail.outputs ?? [],
     events: detail.events ?? [],
-    ledger: detail.ledger ?? [],
     trace: detail.trace ?? null,
   };
 };

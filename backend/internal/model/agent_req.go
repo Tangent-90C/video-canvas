@@ -2,12 +2,14 @@ package model
 
 // AgentModelView 是面向画布的 Agent 模型清单项。
 type AgentModelView struct {
-	Key           string `json:"key"`            // 模型 key
-	Name          string `json:"name"`           // 显示名
-	Vendor        string `json:"vendor"`         // 厂商 slug，画布据此显示 logo；没配是空串
-	Vision        bool   `json:"vision"`         // 是否支持看图
-	Video         bool   `json:"video"`          // 是否支持理解视频画面和声音
-	ContextWindow int    `json:"context_window"` // 上下文窗口（Token），没配置是 0；画布据此显示上下文用量
+	Key           string `json:"key"`                      // 模型 key
+	Name          string `json:"name"`                     // 显示名
+	Vendor        string `json:"vendor"`                   // 厂商 slug，画布据此显示 logo；没配是空串
+	Vision        bool   `json:"vision"`                   // 是否支持看图
+	Video         bool   `json:"video"`                    // 是否支持理解视频画面和声音
+	ContextWindow int    `json:"context_window"`           // 上下文窗口（Token），没配置是 0；画布据此显示上下文用量
+	UpstreamModel string `json:"upstream_model,omitempty"` // TokenDance 上游模型 slug，用于匹配公开价目
+	PriceLabel    string `json:"price_label,omitempty"`    // TokenDance 公开价目摘要；拿不到时为空
 }
 
 // ApprovalItemDecision 是对审批里某一项的决定。

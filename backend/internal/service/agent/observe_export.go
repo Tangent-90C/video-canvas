@@ -83,7 +83,7 @@ func writeMarkdownHeader(sb *strings.Builder, f *model.AgentExportFacts) {
 		dur = run.EndedAt.Sub(run.CreatedAt).Round(time.Second).String()
 		dur = strings.NewReplacer("h0m0s", "h", "m0s", "m").Replace(dur)
 	}
-	fmt.Fprintf(sb, "status: %s\nsteps: %d\ncredits: %d\nduration: %s\n", run.Status, run.Steps, run.SpentCredits, dur)
+	fmt.Fprintf(sb, "status: %s\nsteps: %d\nduration: %s\n", run.Status, run.Steps, dur)
 	fb, reasons := 0, []string{}
 	if f.Feedback != nil {
 		fb = f.Feedback.Rating

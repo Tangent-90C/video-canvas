@@ -478,7 +478,7 @@ func fakeTaskSnapshot(kind string, credits int) *provider.Snapshot {
 				Prompt: modelcfg.PromptSpec{MaxLength: 1000},
 			},
 		},
-		Channel:         provider.ChannelSnapshot{Key: "p1", PluginKey: "demo", PluginVersionID: 7, BaseURL: "https://up.example.com"},
+		Channel:         provider.ChannelSnapshot{Key: "p1", PluginKey: "demo", PluginVersionID: 7, BaseURL: "https://up.example.com", Wallet: true},
 		Plugin:          provider.PluginSnapshot{Key: "demo", Version: "1.2.0", SHA256: "abc123", Meta: pluginmeta.Meta{Key: "demo", Version: "1.2.0"}},
 		ModelRevisionID: 42,
 	}
@@ -495,6 +495,10 @@ type taskSvcEnv struct {
 	now      time.Time
 }
 
+type connectedWallet struct{}
+
+func (connectedWallet) Connected(context.Context, uint64) (bool, error) { return true, nil }
+
 // newTaskSvcEnv 组装任务服务；limits 决定并发上限与初始积分（生产里来自系统设置，库里没有值时回落到代码常量）。
 func newTaskSvcEnv(limits TaskLimits) *taskSvcEnv {
 	env := &taskSvcEnv{
@@ -506,16 +510,16 @@ func newTaskSvcEnv(limits TaskLimits) *taskSvcEnv {
 		now:      time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC),
 	}
 	env.svc = NewGenerationTaskService(GenerationTaskDeps{
-		Repo: env.repo, Registry: env.registry, Executor: env.exec, Assets: env.assets, Broadcaster: env.bc, Limits: limits,
+		Repo: env.repo, Registry: env.registry, Executor: env.exec, Assets: env.assets, Broadcaster: env.bc, Limits: limits, Wallets: connectedWallet{},
 	},
 		WithTaskClock(func() time.Time { return env.now }),
 	)
 	return env
 }
 
-// defaultTaskLimits 是多数用例的限额：并发上限 2、初始积分 50。
+// defaultTaskLimits 是多数用例的限额：并发上限 2；积分已停用。
 func defaultTaskLimits() TaskLimits {
-	return &fakeLimits{initial: 50, defMax: 2}
+	return &fakeLimits{defMax: 2}
 }
 
 func assertTaskCode(t *testing.T, err error, want int) {
@@ -589,24 +593,18 @@ func TestGenerationTaskService_Create(t *testing.T) {
 		check    func(t *testing.T, env *taskSvcEnv, view *model.GenerationTaskView)
 	}{
 		{
-			name: "成功：冻结积分、写 freeze 流水、任务 pending、唤醒 worker 并推送",
-			setup: func(env *taskSvcEnv) {
-				env.repo.addCredit(user, 50, 0)
-			},
-			req: validCreateReq,
+			name:  "成功：钱包任务 pending、唤醒 worker 并推送，不触碰平台积分",
+			setup: func(env *taskSvcEnv) {},
+			req:   validCreateReq,
 			check: func(t *testing.T, env *taskSvcEnv, v *model.GenerationTaskView) {
-				if v.Status != model.TaskPending || v.Version != 1 || v.Credits != 10 || v.Outputs == nil || len(v.Outputs) != 0 {
+				if v.Status != model.TaskPending || v.Version != 1 || v.Credits != 0 || !v.Wallet || v.Outputs == nil || len(v.Outputs) != 0 {
 					t.Fatalf("视图不对：%+v", v)
 				}
 				if v.CanvasProjectID == nil || *v.CanvasProjectID != 7 || v.NodeID != "n1" || v.ModelID != "m1" {
 					t.Fatalf("画布 / 节点 / 模型没带上：%+v", v)
 				}
-				acc := env.repo.credits[user]
-				if acc.Balance != 50 || acc.Frozen != 10 {
-					t.Fatalf("应冻结 10（余额不变）：%+v", acc)
-				}
-				if l := env.repo.ledgerOf(v.ID, model.LedgerFreeze); l == nil || l.Amount != 10 || l.UserID != user {
-					t.Fatalf("缺少 freeze 流水：%+v", env.repo.ledger)
+				if _, ok := env.repo.credits[user]; ok || len(env.repo.ledger) != 0 {
+					t.Fatalf("钱包任务不应创建积分账户或流水：credits=%+v ledger=%+v", env.repo.credits, env.repo.ledger)
 				}
 				task := env.repo.tasks[v.ID]
 				if task.NextPollAt != env.now || task.Provider != "p1" || task.Status != model.TaskPending {
@@ -654,13 +652,12 @@ func TestGenerationTaskService_Create(t *testing.T) {
 			},
 		},
 		{
-			name:  "账户不存在时按配置的初始积分惰性创建",
+			name:  "账户不存在也不创建平台积分账户",
 			setup: func(env *taskSvcEnv) {},
 			req:   validCreateReq,
 			check: func(t *testing.T, env *taskSvcEnv, v *model.GenerationTaskView) {
-				acc := env.repo.credits[user]
-				if acc == nil || acc.Balance != 50 || acc.Frozen != 10 {
-					t.Fatalf("应以 50 创建并冻结 10：%+v", acc)
+				if _, ok := env.repo.credits[user]; ok || len(env.repo.ledger) != 0 {
+					t.Fatalf("不应创建积分账户：credits=%+v ledger=%+v", env.repo.credits, env.repo.ledger)
 				}
 			},
 		},
@@ -695,15 +692,14 @@ func TestGenerationTaskService_Create(t *testing.T) {
 			},
 		},
 		{
-			name: "模型积分配置为负数按 0 处理，不倒贴积分",
+			name: "历史积分配置不影响钱包任务",
 			setup: func(env *taskSvcEnv) {
-				env.repo.addCredit(user, 50, 0)
 				env.registry.snap.Model.Pricing.Unit = -5
 			},
 			req: validCreateReq,
 			check: func(t *testing.T, env *taskSvcEnv, v *model.GenerationTaskView) {
-				if v.Credits != 0 || env.repo.credits[user].Frozen != 0 || env.repo.credits[user].Balance != 50 {
-					t.Fatalf("负积分应按 0：view=%+v acc=%+v", v, env.repo.credits[user])
+				if v.Credits != 0 || len(env.repo.ledger) != 0 {
+					t.Fatalf("历史定价不应产生平台扣费：view=%+v ledger=%+v", v, env.repo.ledger)
 				}
 			},
 		},
@@ -810,10 +806,10 @@ func TestGenerationTaskService_Create(t *testing.T) {
 			wantCode: -1,
 		},
 		{
-			name:     "积分不足返回 ErrInsufficientCredits 且不创建任务",
+			name:     "平台积分为零仍可创建钱包任务",
 			setup:    func(env *taskSvcEnv) { env.repo.addCredit(user, 15, 10) },
 			req:      validCreateReq,
-			wantCode: errcode.ErrInsufficientCredits.Code,
+			wantCode: 0,
 			check:    nil,
 		},
 		{
@@ -842,21 +838,6 @@ func TestGenerationTaskService_Create(t *testing.T) {
 				env.repo.addCredit(user, 50, 0)
 				env.repo.errs["InsertTask"] = errors.New("db down")
 			},
-			req:      validCreateReq,
-			wantCode: -1,
-		},
-		{
-			name: "冻结积分出错整体回滚（任务也不留下）",
-			setup: func(env *taskSvcEnv) {
-				env.repo.addCredit(user, 50, 0)
-				env.repo.errs["InsertLedger"] = errors.New("db down")
-			},
-			req:      validCreateReq,
-			wantCode: -1,
-		},
-		{
-			name:     "账户加锁出错透传",
-			setup:    func(env *taskSvcEnv) { env.repo.errs["LockCredit"] = errors.New("db down") },
 			req:      validCreateReq,
 			wantCode: -1,
 		},
@@ -1010,17 +991,16 @@ func TestGenerationTaskService_Create_Idempotency(t *testing.T) {
 		if second.ID != first.ID {
 			t.Fatalf("应返回同一个任务：%d vs %d", second.ID, first.ID)
 		}
-		if len(env.repo.tasks) != 1 || len(env.repo.ledger) != 1 || env.repo.credits[user].Frozen != 10 {
-			t.Fatalf("不应重复创建 / 冻结：tasks=%d ledger=%d acc=%+v", len(env.repo.tasks), len(env.repo.ledger), env.repo.credits[user])
+		if len(env.repo.tasks) != 1 || len(env.repo.ledger) != 0 {
+			t.Fatalf("不应重复创建或写积分流水：tasks=%d ledger=%d", len(env.repo.tasks), len(env.repo.ledger))
 		}
 		if len(env.repo.enqueued) != 0 || len(env.bc.msgs) != 0 {
 			t.Fatal("重复提交不应再入队或推送")
 		}
 	})
 
-	t.Run("重复提交时即使积分已不足也返回第一次的任务", func(t *testing.T) {
+	t.Run("重复提交时即使平台积分为零也返回第一次的任务", func(t *testing.T) {
 		env := newTaskSvcEnv(defaultTaskLimits())
-		env.repo.addCredit(user, 10, 0)
 		first, err := createSingle(context.Background(), env.svc, user, "key-1", validCreateReq())
 		assertTaskCode(t, err, 0)
 		again, err := createSingle(context.Background(), env.svc, user, "key-1", validCreateReq())
@@ -1042,8 +1022,7 @@ func TestGenerationTaskService_Create_Idempotency(t *testing.T) {
 
 	t.Run("并发竞争：幂等查询都没看到，唯一索引拦住后回滚并返回赢家的任务", func(t *testing.T) {
 		env := newTaskSvcEnv(defaultTaskLimits())
-		env.repo.addCredit(user, 50, 10)
-		winner := env.repo.addTask(model.GenerationTask{UserID: user, Status: model.TaskPending, IdempotencyKey: "race", Credits: 10})
+		winner := env.repo.addTask(model.GenerationTask{UserID: user, Status: model.TaskPending, IdempotencyKey: "race", Wallet: true})
 		env.repo.hideKeyLookups = 2 // 快速路径和事务内复查都“没看到”赢家
 
 		view, err := createSingle(context.Background(), env.svc, user, "race", validCreateReq())
@@ -1051,8 +1030,8 @@ func TestGenerationTaskService_Create_Idempotency(t *testing.T) {
 		if view.ID != winner.ID {
 			t.Fatalf("应返回赢家的任务 %d，实际 %d", winner.ID, view.ID)
 		}
-		if env.repo.credits[user].Frozen != 10 || len(env.repo.ledger) != 0 {
-			t.Fatalf("输家不应冻结积分：%+v ledger=%d", env.repo.credits[user], len(env.repo.ledger))
+		if len(env.repo.ledger) != 0 {
+			t.Fatalf("输家不应写积分流水：%+v", env.repo.ledger)
 		}
 		if len(env.bc.msgs) != 0 {
 			t.Fatal("输家不应推送")
@@ -1512,8 +1491,7 @@ func TestGenerationTaskService_GetTestTrace(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestGenerationTaskService_Cancel(t *testing.T) {
-	// 用户取消：还没提交给平台（排队中）全额退回积分；已经进入生成（同步请求已发出、平台已受理或生成中）
-	// 平台会照常产生费用，取消后冻结积分全额扣除、不退，并尽力通知平台取消。转存中结果已经到手，不再允许取消。
+	// 用户取消只改变任务状态和尽力通知上游；平台积分体系已停用，任何阶段都不再冻结、扣费或退款。
 	const user = uint64(1)
 	submittedAt := time.Date(2026, 10, 17, 10, 0, 0, 0, time.UTC)
 	tests := []struct {
@@ -1537,7 +1515,6 @@ func TestGenerationTaskService_Cancel(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			env := newTaskSvcEnv(defaultTaskLimits())
-			env.repo.addCredit(user, 50, 10)
 			task := env.repo.addTask(tt.task)
 
 			view, err := env.svc.Cancel(context.Background(), user, task.ID)
@@ -1553,8 +1530,8 @@ func TestGenerationTaskService_Cancel(t *testing.T) {
 				if len(env.bc.msgs) != 0 {
 					t.Fatal("失败时不应推送")
 				}
-				if acc := env.repo.credits[user]; acc.Frozen != 10 {
-					t.Fatalf("失败时冻结额不应变化：%+v", acc)
+				if len(env.repo.ledger) != 0 {
+					t.Fatalf("失败时不应写积分流水：%+v", env.repo.ledger)
 				}
 				if got := env.repo.tasks[task.ID].Status; got != tt.task.Status {
 					t.Fatalf("被拒绝的取消不能改任务状态：%s -> %s", tt.task.Status, got)
@@ -1564,26 +1541,8 @@ func TestGenerationTaskService_Cancel(t *testing.T) {
 			if view.Status != model.TaskCanceled || view.ErrorCode != TaskErrCanceled {
 				t.Fatalf("视图不对：%+v", view)
 			}
-			if tt.wantCharge {
-				if acc := env.repo.credits[user]; acc.Frozen != 0 || acc.Balance != 40 {
-					t.Fatalf("已进入生成：冻结应全额扣除（余额 50→40）：%+v", acc)
-				}
-				if l := env.repo.ledgerOf(task.ID, model.LedgerSettle); l == nil || l.Amount != 10 {
-					t.Fatalf("缺少 settle 流水：%+v", env.repo.ledger)
-				}
-				if l := env.repo.ledgerOf(task.ID, model.LedgerRefund); l != nil {
-					t.Fatalf("已进入生成的取消不该有 refund 流水：%+v", l)
-				}
-				if view.ChargedCredits == nil || *view.ChargedCredits != 10 || strings.Contains(view.ErrorMessage, "已退回") {
-					t.Fatalf("视图要带实扣积分、文案不能说已退回：%+v", view)
-				}
-				return
-			}
-			if acc := env.repo.credits[user]; acc.Frozen != 0 || acc.Balance != 50 {
-				t.Fatalf("应退回冻结、余额不变：%+v", acc)
-			}
-			if l := env.repo.ledgerOf(task.ID, model.LedgerRefund); l == nil || l.Amount != 10 {
-				t.Fatalf("缺少 refund 流水：%+v", env.repo.ledger)
+			if len(env.repo.ledger) != 0 || len(env.repo.credits) != 0 || (view.ChargedCredits != nil && *view.ChargedCredits != 0) {
+				t.Fatalf("钱包任务取消不应产生平台积分变化：view=%+v credits=%+v ledger=%+v", view, env.repo.credits, env.repo.ledger)
 			}
 		})
 	}
@@ -1614,7 +1573,6 @@ func TestGenerationTaskService_CancelForced(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			env := newTaskSvcEnv(defaultTaskLimits())
-			env.repo.addCredit(user, 50, 10)
 			task := env.repo.addTask(tt.task)
 			env.exec.cancelErr = tt.cancelErr
 
@@ -1627,19 +1585,16 @@ func TestGenerationTaskService_CancelForced(t *testing.T) {
 				if len(env.bc.msgs) != 0 {
 					t.Fatal("失败时不应推送")
 				}
-				if acc := env.repo.credits[user]; acc.Frozen != 10 {
-					t.Fatalf("失败时冻结额不应变化：%+v", acc)
+				if len(env.repo.ledger) != 0 {
+					t.Fatalf("失败时不应写积分流水：%+v", env.repo.ledger)
 				}
 				return
 			}
 			if view.Status != model.TaskCanceled || view.Version != 2 || view.FinishedAt == nil || view.ErrorCode != TaskErrCanceled {
 				t.Fatalf("视图不对：%+v", view)
 			}
-			if acc := env.repo.credits[user]; acc.Frozen != 0 || acc.Balance != 50 {
-				t.Fatalf("应退回冻结、余额不变：%+v", acc)
-			}
-			if l := env.repo.ledgerOf(task.ID, model.LedgerRefund); l == nil || l.Amount != 10 {
-				t.Fatalf("缺少 refund 流水：%+v", env.repo.ledger)
+			if len(env.repo.credits) != 0 || len(env.repo.ledger) != 0 {
+				t.Fatalf("取消不应触碰平台积分：credits=%+v ledger=%+v", env.repo.credits, env.repo.ledger)
 			}
 			if len(env.bc.msgs) != 1 {
 				t.Fatalf("应推送一次：%d", len(env.bc.msgs))
@@ -1652,7 +1607,6 @@ func TestGenerationTaskService_CancelForced(t *testing.T) {
 
 	t.Run("取消上游时带冻结的快照与任务引用（渠道与插件版本按快照，不读当前配置）", func(t *testing.T) {
 		env := newTaskSvcEnv(defaultTaskLimits())
-		env.repo.addCredit(user, 50, 10)
 		snapJSON, _ := json.Marshal(fakeTaskSnapshot(model.KindVideo, 10))
 		task := env.repo.addTask(model.GenerationTask{
 			UserID: user, Status: model.TaskRunning, Credits: 10, ProviderTaskID: "pt-9", ConfigSnapshot: snapJSON,
@@ -1674,7 +1628,6 @@ func TestGenerationTaskService_CancelForced(t *testing.T) {
 
 	t.Run("快照损坏时跳过上游取消，本地取消与退款照常完成", func(t *testing.T) {
 		env := newTaskSvcEnv(defaultTaskLimits())
-		env.repo.addCredit(user, 50, 10)
 		task := env.repo.addTask(model.GenerationTask{
 			UserID: user, Status: model.TaskRunning, Credits: 10, ProviderTaskID: "pt-9", ConfigSnapshot: []byte(`{bad`),
 		})
@@ -1685,14 +1638,13 @@ func TestGenerationTaskService_CancelForced(t *testing.T) {
 		if len(env.exec.cancelCalls) != 0 {
 			t.Fatal("快照损坏不应通知上游")
 		}
-		if acc := env.repo.credits[user]; acc.Frozen != 0 || acc.Balance != 50 {
-			t.Fatalf("应退回冻结：%+v", acc)
+		if len(env.repo.credits) != 0 || len(env.repo.ledger) != 0 {
+			t.Fatalf("取消不应触碰平台积分：credits=%+v ledger=%+v", env.repo.credits, env.repo.ledger)
 		}
 	})
 
 	t.Run("CAS 没命中（刚好被别的流程结束）返回不可取消", func(t *testing.T) {
 		env := newTaskSvcEnv(defaultTaskLimits())
-		env.repo.addCredit(user, 50, 10)
 		task := env.repo.addTask(model.GenerationTask{UserID: user, Status: model.TaskRunning, Credits: 10})
 		env.repo.errs["UpdateIf"] = repository.ErrStateConflict
 		_, err := env.svc.CancelForced(context.Background(), user, task.ID)
@@ -1701,9 +1653,8 @@ func TestGenerationTaskService_CancelForced(t *testing.T) {
 
 	t.Run("事务内出错整体回滚，透传错误", func(t *testing.T) {
 		env := newTaskSvcEnv(defaultTaskLimits())
-		env.repo.addCredit(user, 50, 10)
 		task := env.repo.addTask(model.GenerationTask{UserID: user, Status: model.TaskRunning, Credits: 10})
-		env.repo.errs["AddCredit"] = errors.New("db down")
+		env.repo.errs["UpdateIf"] = errors.New("db down")
 		if _, err := env.svc.CancelForced(context.Background(), user, task.ID); err == nil {
 			t.Fatal("期望返回错误")
 		}
@@ -1714,44 +1665,6 @@ func TestGenerationTaskService_CancelForced(t *testing.T) {
 			t.Fatal("回滚后不应推送或通知平台")
 		}
 	})
-}
-
-// ---------------------------------------------------------------------------
-// 积分
-// ---------------------------------------------------------------------------
-
-func TestGenerationTaskService_GetCredits(t *testing.T) {
-	tests := []struct {
-		name    string
-		setup   func(r *fakeTaskRepo)
-		errs    map[string]error
-		want    model.CreditView
-		wantErr bool
-	}{
-		{"已有账户：可用 = 余额 - 冻结", func(r *fakeTaskRepo) { r.addCredit(1, 40, 15) }, nil, model.CreditView{Balance: 40, Frozen: 15, Available: 25}, false},
-		{"账户不存在时按初始积分惰性创建", func(r *fakeTaskRepo) {}, nil, model.CreditView{Balance: 50, Frozen: 0, Available: 50}, false},
-		{"创建账户出错透传", func(r *fakeTaskRepo) {}, map[string]error{"EnsureCredit": errors.New("db down")}, model.CreditView{}, true},
-		{"读取账户出错透传", func(r *fakeTaskRepo) { r.addCredit(1, 1, 0) }, map[string]error{"GetCredit": errors.New("db down")}, model.CreditView{}, true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			env := newTaskSvcEnv(defaultTaskLimits())
-			tt.setup(env.repo)
-			for k, v := range tt.errs {
-				env.repo.errs[k] = v
-			}
-			got, err := env.svc.GetCredits(context.Background(), 1)
-			if tt.wantErr {
-				if err == nil {
-					t.Fatal("期望返回错误")
-				}
-				return
-			}
-			if err != nil || *got != tt.want {
-				t.Fatalf("got=%+v err=%v want=%+v", got, err, tt.want)
-			}
-		})
-	}
 }
 
 // ---------------------------------------------------------------------------
@@ -1766,13 +1679,11 @@ func TestGenerationTaskService_Transitions(t *testing.T) {
 
 	newEnv := func(status string, mut func(t *model.GenerationTask)) (*taskSvcEnv, *model.GenerationTask) {
 		env := newTaskSvcEnv(defaultTaskLimits())
-		env.repo.addCredit(user, 50, 10)
-		tk := model.GenerationTask{UserID: user, Status: status, Credits: 10, Provider: "p1"}
+		tk := model.GenerationTask{UserID: user, Status: status, Wallet: true, Provider: "p1"}
 		if mut != nil {
 			mut(&tk)
 		}
 		task := env.repo.addTask(tk)
-		env.repo.ledger = append(env.repo.ledger, model.CreditLedger{UserID: user, TaskID: model.TaskIDPtr(task.ID), Type: model.LedgerFreeze, Amount: 10})
 		return env, task
 	}
 
@@ -1845,9 +1756,9 @@ func TestGenerationTaskService_Transitions(t *testing.T) {
 			mut    func(*model.GenerationTask)
 			want   string
 		}{
-			{"排队中的 pending", model.TaskPending, nil, "排队超时，积分已退回"},
-			{"提交重试过的 pending", model.TaskPending, func(tk *model.GenerationTask) { tk.PollAttempts = 2 }, "生成超时，积分已退回"},
-			{"已在上游的 running", model.TaskRunning, nil, "生成超时，积分已退回"},
+			{"排队中的 pending", model.TaskPending, nil, "排队超时"},
+			{"提交重试过的 pending", model.TaskPending, func(tk *model.GenerationTask) { tk.PollAttempts = 2 }, "生成超时"},
+			{"已在上游的 running", model.TaskRunning, nil, "生成超时"},
 		}
 		for _, c := range cases {
 			env, task := newEnv(c.status, c.mut)
@@ -1947,7 +1858,7 @@ func TestGenerationTaskService_Transitions(t *testing.T) {
 		}
 	})
 
-	t.Run("Complete：结算积分（余额和冻结各减 credits）、写 settle 流水与 output_json", func(t *testing.T) {
+	t.Run("Complete：写 output_json 与终态，不结算平台积分", func(t *testing.T) {
 		env, task := newEnv(model.TaskFinalizing, nil)
 		outs := []model.TaskOutput{{AssetID: 5, URL: "http://x/a.mp4", MediaType: "video"}}
 		applied, err := env.svc.Complete(ctx, task, outs, nil)
@@ -1962,29 +1873,25 @@ func TestGenerationTaskService_Transitions(t *testing.T) {
 		if err := json.Unmarshal(got.OutputJSON, &back); err != nil || len(back) != 1 || back[0].AssetID != 5 {
 			t.Fatalf("output_json 不对：%s %v", got.OutputJSON, err)
 		}
-		if acc := env.repo.credits[user]; acc.Balance != 40 || acc.Frozen != 0 {
-			t.Fatalf("应结算：%+v", acc)
-		}
-		if l := env.repo.ledgerOf(task.ID, model.LedgerSettle); l == nil || l.Amount != 10 {
-			t.Fatal("缺少 settle 流水")
+		if len(env.repo.credits) != 0 || len(env.repo.ledger) != 0 || got.ChargedCredits == nil || *got.ChargedCredits != 0 {
+			t.Fatalf("钱包任务不应结算平台积分：credits=%+v ledger=%+v task=%+v", env.repo.credits, env.repo.ledger, got)
 		}
 		if len(env.bc.msgs) != 1 {
 			t.Fatal("应推送")
 		}
 	})
 
-	t.Run("Complete：Token 计费按用量扣、差额退回，写 settle + refund 两笔流水", func(t *testing.T) {
+	t.Run("Complete：历史 Token 定价与用量不影响平台积分", func(t *testing.T) {
 		snap := fakeTaskSnapshot(model.KindText, 0)
 		snap.Model.Pricing = modelcfg.Pricing{Billing: modelcfg.BillingToken, Token: &modelcfg.TokenPrice{In: 2000, Out: 8000}}
 		raw, _ := json.Marshal(snap)
 		for _, c := range []struct {
-			name           string
-			usage          *modelcfg.Usage
-			charge, refund int
+			name  string
+			usage *modelcfg.Usage
 		}{
-			{"实际 6 积分", &modelcfg.Usage{InputTokens: 1000, OutputTokens: 500}, 6, 4},
-			{"实际超过冻结额只扣冻结额", &modelcfg.Usage{InputTokens: 1_000_000, OutputTokens: 1_000_000}, 10, 0},
-			{"没回传用量按冻结额扣", nil, 10, 0},
+			{"实际用量", &modelcfg.Usage{InputTokens: 1000, OutputTokens: 500}},
+			{"大量用量", &modelcfg.Usage{InputTokens: 1_000_000, OutputTokens: 1_000_000}},
+			{"没回传用量", nil},
 		} {
 			t.Run(c.name, func(t *testing.T) {
 				env, task := newEnv(model.TaskFinalizing, func(t *model.GenerationTask) { t.ConfigSnapshot = raw })
@@ -1993,47 +1900,37 @@ func TestGenerationTaskService_Transitions(t *testing.T) {
 					t.Fatalf("applied=%v err=%v", applied, err)
 				}
 				got := env.repo.tasks[task.ID]
-				if got.ChargedCredits == nil || *got.ChargedCredits != c.charge {
-					t.Fatalf("charged_credits 应为 %d：%v", c.charge, got.ChargedCredits)
-				}
-				if acc := env.repo.credits[user]; acc.Balance != 50-c.charge || acc.Frozen != 0 {
-					t.Fatalf("应扣 %d 并全部解冻：%+v", c.charge, acc)
-				}
-				if l := env.repo.ledgerOf(task.ID, model.LedgerSettle); l == nil || l.Amount != c.charge {
-					t.Fatalf("settle 流水应为 %d：%+v", c.charge, l)
-				}
-				refund := env.repo.ledgerOf(task.ID, model.LedgerRefund)
-				if (c.refund == 0) != (refund == nil) || (refund != nil && refund.Amount != c.refund) {
-					t.Fatalf("refund 流水应为 %d：%+v", c.refund, refund)
+				if got.ChargedCredits == nil || *got.ChargedCredits != 0 || len(env.repo.credits) != 0 || len(env.repo.ledger) != 0 {
+					t.Fatalf("平台积分不应变化：task=%+v credits=%+v ledger=%+v", got, env.repo.credits, env.repo.ledger)
 				}
 			})
 		}
 	})
 
-	t.Run("Complete 重复执行不会重复扣款", func(t *testing.T) {
+	t.Run("Complete 重复执行不重复处理", func(t *testing.T) {
 		env, task := newEnv(model.TaskFinalizing, nil)
 		_, _ = env.svc.Complete(ctx, task, nil, nil)
 		applied, err := env.svc.Complete(ctx, task, nil, nil)
 		if err != nil || applied {
 			t.Fatalf("第二次应 applied=false：%v %v", applied, err)
 		}
-		if acc := env.repo.credits[user]; acc.Balance != 40 || acc.Frozen != 0 {
-			t.Fatalf("不应重复扣款：%+v", acc)
+		if len(env.repo.credits) != 0 || len(env.repo.ledger) != 0 {
+			t.Fatalf("不应产生平台积分变化：credits=%+v ledger=%+v", env.repo.credits, env.repo.ledger)
 		}
 		if len(env.bc.msgs) != 1 {
 			t.Fatal("重复执行不应重复推送")
 		}
 	})
 
-	t.Run("Complete：settle 流水已存在（重放）时不再改余额，状态仍迁移", func(t *testing.T) {
+	t.Run("Complete：历史流水存在时不影响状态迁移", func(t *testing.T) {
 		env, task := newEnv(model.TaskFinalizing, nil)
 		env.repo.ledger = append(env.repo.ledger, model.CreditLedger{UserID: user, TaskID: model.TaskIDPtr(task.ID), Type: model.LedgerSettle, Amount: 10})
 		applied, err := env.svc.Complete(ctx, task, nil, nil)
 		if err != nil || !applied {
 			t.Fatalf("applied=%v err=%v", applied, err)
 		}
-		if acc := env.repo.credits[user]; acc.Balance != 50 || acc.Frozen != 10 {
-			t.Fatalf("流水已存在，账户不应再变：%+v", acc)
+		if len(env.repo.credits) != 0 {
+			t.Fatalf("不应创建积分账户：%+v", env.repo.credits)
 		}
 		if env.repo.tasks[task.ID].Status != model.TaskSucceeded {
 			t.Fatal("状态应迁移为 succeeded")
@@ -2046,8 +1943,8 @@ func TestGenerationTaskService_Transitions(t *testing.T) {
 		if err != nil || applied {
 			t.Fatalf("running 不能直接 Complete：%v %v", applied, err)
 		}
-		if acc := env.repo.credits[user]; acc.Balance != 50 || acc.Frozen != 10 {
-			t.Fatalf("账户不应变化：%+v", acc)
+		if len(env.repo.credits) != 0 || len(env.repo.ledger) != 0 {
+			t.Fatalf("账户不应变化：credits=%+v ledger=%+v", env.repo.credits, env.repo.ledger)
 		}
 	})
 
@@ -2066,7 +1963,7 @@ func TestGenerationTaskService_Transitions(t *testing.T) {
 	}
 	for _, fc := range failCases {
 		for _, from := range model.ActiveTaskStatuses {
-			t.Run(fc.name+"：从 "+from+" 迁到终态并退回冻结积分", func(t *testing.T) {
+			t.Run(fc.name+"：从 "+from+" 迁到终态且不触碰平台积分", func(t *testing.T) {
 				env, task := newEnv(from, nil)
 				applied, err := fc.do(env, task)
 				if err != nil || !applied {
@@ -2076,46 +1973,43 @@ func TestGenerationTaskService_Transitions(t *testing.T) {
 				if got.Status != fc.want || got.ErrorCode != fc.code || got.ErrorMessage == "" || got.FinishedAt == nil {
 					t.Fatalf("字段不对：%+v", got)
 				}
-				if acc := env.repo.credits[user]; acc.Balance != 50 || acc.Frozen != 0 {
-					t.Fatalf("应退回冻结：%+v", acc)
-				}
-				if l := env.repo.ledgerOf(task.ID, model.LedgerRefund); l == nil || l.Amount != 10 {
-					t.Fatal("缺少 refund 流水")
+				if len(env.repo.credits) != 0 || len(env.repo.ledger) != 0 {
+					t.Fatalf("不应触碰平台积分：credits=%+v ledger=%+v", env.repo.credits, env.repo.ledger)
 				}
 				if len(env.bc.msgs) != 1 {
 					t.Fatal("应推送")
 				}
 			})
 		}
-		t.Run(fc.name+"：已是终态不再处理，不重复退款", func(t *testing.T) {
+		t.Run(fc.name+"：已是终态不再处理", func(t *testing.T) {
 			env, task := newEnv(model.TaskCanceled, nil)
 			applied, err := fc.do(env, task)
 			if err != nil || applied {
 				t.Fatalf("applied=%v err=%v", applied, err)
 			}
-			if acc := env.repo.credits[user]; acc.Frozen != 10 {
-				t.Fatalf("账户不应变化：%+v", acc)
+			if len(env.repo.credits) != 0 || len(env.repo.ledger) != 0 {
+				t.Fatalf("账户不应变化：credits=%+v ledger=%+v", env.repo.credits, env.repo.ledger)
 			}
 		})
 	}
 
-	t.Run("Fail 重复执行只退一次款", func(t *testing.T) {
+	t.Run("Fail 重复执行不产生积分变化", func(t *testing.T) {
 		env, task := newEnv(model.TaskRunning, nil)
 		_, _ = env.svc.Fail(ctx, task, "provider_error", "平台繁忙，请稍后重试")
 		_, _ = env.svc.Fail(ctx, task, "provider_error", "平台繁忙，请稍后重试")
-		if acc := env.repo.credits[user]; acc.Frozen != 0 || acc.Balance != 50 {
-			t.Fatalf("只应退一次：%+v", acc)
+		if len(env.repo.credits) != 0 || len(env.repo.ledger) != 0 {
+			t.Fatalf("不应产生平台积分变化：credits=%+v ledger=%+v", env.repo.credits, env.repo.ledger)
 		}
 	})
 
 	t.Run("终态事务出错整体回滚：状态不变、无流水、不推送", func(t *testing.T) {
 		env, task := newEnv(model.TaskRunning, nil)
-		env.repo.errs["AddCredit"] = errors.New("db down")
+		env.repo.errs["UpdateIf"] = errors.New("db down")
 		applied, err := env.svc.Fail(ctx, task, "provider_error", "x")
 		if err == nil || applied {
 			t.Fatalf("期望返回错误：%v %v", applied, err)
 		}
-		if env.repo.tasks[task.ID].Status != model.TaskRunning || env.repo.ledgerOf(task.ID, model.LedgerRefund) != nil {
+		if env.repo.tasks[task.ID].Status != model.TaskRunning || len(env.repo.ledger) != 0 {
 			t.Fatal("应整体回滚")
 		}
 		if len(env.bc.msgs) != 0 {
@@ -2123,16 +2017,13 @@ func TestGenerationTaskService_Transitions(t *testing.T) {
 		}
 	})
 
-	t.Run("试跑任务终态不动积分也不推送", func(t *testing.T) {
+	t.Run("试跑任务终态不创建积分流水也不推送", func(t *testing.T) {
 		env, task := newEnv(model.TaskFinalizing, func(t *model.GenerationTask) { t.IsTest = true; t.Credits = 0 })
 		applied, err := env.svc.Complete(ctx, task, nil, nil)
 		if err != nil || !applied {
 			t.Fatalf("applied=%v err=%v", applied, err)
 		}
-		if acc := env.repo.credits[user]; acc.Balance != 50 || acc.Frozen != 10 {
-			t.Fatalf("试跑不应动积分：%+v", acc)
-		}
-		if env.repo.ledgerOf(task.ID, model.LedgerSettle) != nil || len(env.bc.msgs) != 0 {
+		if len(env.repo.credits) != 0 || len(env.repo.ledger) != 0 || len(env.bc.msgs) != 0 {
 			t.Fatal("试跑不应有流水或推送")
 		}
 	})
@@ -2314,14 +2205,12 @@ func TestGenerationTaskService_CancelActiveByUser(t *testing.T) {
 
 	t.Run("取消该用户全部进行中的正式任务并退还冻结；终态、试跑、别人的任务不动", func(t *testing.T) {
 		env := newTaskSvcEnv(defaultTaskLimits())
-		env.repo.addCredit(user, 100, 30)
-		a := env.repo.addTask(model.GenerationTask{UserID: user, Status: model.TaskPending, Credits: 10})
-		b := env.repo.addTask(model.GenerationTask{UserID: user, Status: model.TaskRunning, Credits: 10, ProviderTaskID: "pt-1"})
-		c := env.repo.addTask(model.GenerationTask{UserID: user, Status: model.TaskFinalizing, Credits: 10})
-		done := env.repo.addTask(model.GenerationTask{UserID: user, Status: model.TaskSucceeded, Credits: 10})
+		a := env.repo.addTask(model.GenerationTask{UserID: user, Status: model.TaskPending, Wallet: true})
+		b := env.repo.addTask(model.GenerationTask{UserID: user, Status: model.TaskRunning, Wallet: true, ProviderTaskID: "pt-1"})
+		c := env.repo.addTask(model.GenerationTask{UserID: user, Status: model.TaskFinalizing, Wallet: true})
+		done := env.repo.addTask(model.GenerationTask{UserID: user, Status: model.TaskSucceeded, Wallet: true})
 		test := env.repo.addTask(model.GenerationTask{UserID: user, Status: model.TaskRunning, IsTest: true})
-		env.repo.addCredit(2, 50, 10)
-		other := env.repo.addTask(model.GenerationTask{UserID: 2, Status: model.TaskRunning, Credits: 10})
+		other := env.repo.addTask(model.GenerationTask{UserID: 2, Status: model.TaskRunning, Wallet: true})
 
 		res, err := env.svc.CancelActiveByUser(ctx, user)
 		if err != nil {
@@ -2334,12 +2223,9 @@ func TestGenerationTaskService_CancelActiveByUser(t *testing.T) {
 			if env.repo.tasks[tk.ID].Status != model.TaskCanceled {
 				t.Fatalf("任务 %d 应已取消：%s", tk.ID, env.repo.tasks[tk.ID].Status)
 			}
-			if l := env.repo.ledgerOf(tk.ID, model.LedgerRefund); l == nil || l.Amount != 10 {
-				t.Fatalf("任务 %d 缺少 refund 流水（复用 settleLedger）", tk.ID)
-			}
 		}
-		if acc := env.repo.credits[user]; acc.Frozen != 0 || acc.Balance != 100 {
-			t.Fatalf("冻结应全部退还、余额不变：%+v", acc)
+		if len(env.repo.credits) != 0 || len(env.repo.ledger) != 0 {
+			t.Fatalf("取消不应触碰平台积分：credits=%+v ledger=%+v", env.repo.credits, env.repo.ledger)
 		}
 		if env.repo.tasks[done.ID].Status != model.TaskSucceeded || env.repo.tasks[test.ID].Status != model.TaskRunning || env.repo.tasks[other.ID].Status != model.TaskRunning {
 			t.Fatal("终态 / 试跑 / 别人的任务不能被动")
@@ -2351,9 +2237,8 @@ func TestGenerationTaskService_CancelActiveByUser(t *testing.T) {
 
 	t.Run("单个失败不影响其他：失败的 id 在结果里，已成功的不回滚", func(t *testing.T) {
 		env := newTaskSvcEnv(defaultTaskLimits())
-		env.repo.addCredit(user, 100, 20)
-		a := env.repo.addTask(model.GenerationTask{UserID: user, Status: model.TaskRunning, Credits: 10})
-		b := env.repo.addTask(model.GenerationTask{UserID: user, Status: model.TaskRunning, Credits: 10})
+		a := env.repo.addTask(model.GenerationTask{UserID: user, Status: model.TaskRunning, Wallet: true})
+		b := env.repo.addTask(model.GenerationTask{UserID: user, Status: model.TaskRunning, Wallet: true})
 		env.repo.failUpdateIDs = map[uint64]error{b.ID: errors.New("db down")}
 
 		res, err := env.svc.CancelActiveByUser(ctx, user)
@@ -2366,15 +2251,14 @@ func TestGenerationTaskService_CancelActiveByUser(t *testing.T) {
 		if env.repo.tasks[a.ID].Status != model.TaskCanceled || env.repo.tasks[b.ID].Status != model.TaskRunning {
 			t.Fatal("a 应已取消，b 保持原状")
 		}
-		if acc := env.repo.credits[user]; acc.Frozen != 10 {
-			t.Fatalf("只退回 a 的冻结：%+v", acc)
+		if len(env.repo.ledger) != 0 {
+			t.Fatalf("不应写积分流水：%+v", env.repo.ledger)
 		}
 	})
 
 	t.Run("任务在取消前已被别的流程结束：不算失败也不算取消", func(t *testing.T) {
 		env := newTaskSvcEnv(defaultTaskLimits())
-		env.repo.addCredit(user, 100, 10)
-		a := env.repo.addTask(model.GenerationTask{UserID: user, Status: model.TaskRunning, Credits: 10})
+		a := env.repo.addTask(model.GenerationTask{UserID: user, Status: model.TaskRunning, Wallet: true})
 		env.repo.failUpdateIDs = map[uint64]error{a.ID: repository.ErrStateConflict}
 		res, err := env.svc.CancelActiveByUser(ctx, user)
 		if err != nil || res.Canceled != 0 || len(res.Failed) != 0 {

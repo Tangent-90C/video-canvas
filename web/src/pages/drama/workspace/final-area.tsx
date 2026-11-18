@@ -173,7 +173,7 @@ export function FinalArea({
         <div className="px-4 pt-4 pb-2">
           <h3 className="text-[15px] font-semibold">合成整集</h3>
           <p className="text-muted-foreground mt-0.5 text-xs">
-            按片段顺序拼接采用的版本，统一到项目比例 · 不扣积分
+            按片段顺序拼接采用的版本，统一到项目比例 · 不调用模型
           </p>
         </div>
         <div className="grid min-h-0 flex-1 content-start gap-3.5 overflow-y-auto px-4 pb-4">
@@ -267,7 +267,7 @@ export function FinalArea({
               className="w-full"
               variant={state === "fresh" ? "outline" : "default"}
               disabled={!check.enabled || composing}
-              title={check.reason ?? "按顺序拼接各片段采用的视频，不扣积分"}
+              title={check.reason ?? "按顺序拼接各片段采用的视频，不调用模型"}
               onClick={() => void compose(no)}
             >
               {composing ? <Loader2 className="animate-spin" /> : <Combine />}

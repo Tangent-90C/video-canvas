@@ -15,13 +15,11 @@ import AgentStepsPage from "@/pages/admin/agent-steps";
 import AgentTokensPage from "@/pages/admin/agent-tokens";
 import StoragePage from "@/pages/admin/storage";
 import UsersPage from "@/pages/admin/users";
-import PaymentAdminPage from "@/pages/admin/payment";
 import UsagePage from "@/pages/admin/usage";
 import AuditsPage from "@/pages/admin/logs";
 import EmailSettingsPage from "@/pages/admin/settings/email-settings";
 import ShowcaseSettingsPage from "@/pages/admin/settings/showcase";
 import AnnouncementsSettingsPage from "@/pages/admin/settings/announcements";
-import PricingSettingsPage from "@/pages/admin/settings/pricing-settings";
 import RegisterSettingsPage from "@/pages/admin/settings/register-settings";
 import VersionSettingsPage from "@/pages/admin/settings/version-settings";
 import Assets from "@/pages/assets";
@@ -36,7 +34,6 @@ import HomeLayout from "@/pages/home/layout";
 import Login from "@/pages/login";
 import MarketingDetail from "@/pages/marketing/detail";
 import MarketingList from "@/pages/marketing";
-import PayReturn from "@/pages/pay/return";
 import TokenPayCallback from "@/pages/wallet/tokenpay-callback";
 import Profile from "@/pages/profile";
 import { useMeStore } from "@/store/me";
@@ -91,11 +88,6 @@ export const router = createBrowserRouter([
       {
         path: "/login",
         element: <Login />,
-      },
-      /** 付款完成后渠道把浏览器跳回这里：不要求登录态已就绪，页面自己处理未登录 */
-      {
-        path: "/pay/return",
-        element: <PayReturn />,
       },
       /** TokenDance 授权完成后回调落地：用 code 换 Key 后跳回发起页；未登录时引导先登录再回来 */
       {
@@ -176,7 +168,6 @@ export const router = createBrowserRouter([
               { path: "agent/runs", element: <AgentRunsPage /> },
               { path: "agent/tokens", element: <AgentTokensPage /> },
               { path: "users", element: <UsersPage /> },
-              { path: "payment", element: <PaymentAdminPage /> },
               { path: "usage", element: <UsagePage /> },
               { path: "logs", element: <Navigate to="audits" replace /> },
               { path: "logs/audits", element: <AuditsPage /> },
@@ -184,7 +175,6 @@ export const router = createBrowserRouter([
               { path: "settings/storage", element: <StoragePage /> },
               { path: "settings/image-processor", element: <ImageProcessorPage /> },
               { path: "settings/register", element: <RegisterSettingsPage /> },
-              { path: "settings/pricing", element: <PricingSettingsPage /> },
               { path: "settings/email", element: <EmailSettingsPage /> },
               { path: "settings/announcements", element: <AnnouncementsSettingsPage /> },
               { path: "settings/showcase", element: <ShowcaseSettingsPage /> },

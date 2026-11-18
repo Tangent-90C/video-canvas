@@ -50,18 +50,18 @@ const TEXT_BUTTON_CLASS =
 /** 占位功能点了之后的提示：不报错，不改节点数据 */
 const comingSoon = (label: string) => toast(`「${label}」敬请期待`);
 
-/** 名字后的积分星：这个功能会消耗积分 */
+/** 名字后的计费星：这个功能会产生 TokenDance 费用 */
 function PaidMark() {
   return (
     <Sparkle
       role="img"
-      aria-label="消耗积分"
+      aria-label="产生 TokenDance 费用"
       className="text-credit size-3! fill-current stroke-0 max-md:hidden"
     />
   );
 }
 
-/** 一个功能按钮的内容：图标、文字（窄屏收起）、积分星、下拉箭头 */
+/** 一个功能按钮的内容：图标、文字（窄屏收起）、计费星、下拉箭头 */
 function ActionBody({ action }: { action: ToolbarAction }) {
   return (
     <>

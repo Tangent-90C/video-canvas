@@ -120,20 +120,16 @@ func saveDramaOutline(ctx context.Context, tx repository.DramaTx, p *model.Drama
 	return ready, nil
 }
 
-// finishTx 任务终态与积分结算同事务，失败释放冻结额且不扣费。
-func (s *DramaService) finishTx(ctx context.Context, tx repository.DramaTx, j *model.DramaJob, status string, code int, message string, cost int, output any) error {
+// finishTx 落任务终态；平台不结算或退还积分，费用以 TokenDance 账单为准。
+func (s *DramaService) finishTx(ctx context.Context, tx repository.DramaTx, j *model.DramaJob, status string, code int, message string, _ int, output any) error {
 	if !dramaActive(j.Status) {
 		return nil
 	}
-	cost = min(max(cost, 0), j.FrozenCredits) // 失败或取消时 cost 是已写入画布部分的费用，没有就是 0
 	if e := finishStoryboardStatus(ctx, tx, j, status); e != nil {
 		return e
 	}
-	if e := settleDramaCredit(ctx, tx, j, status, cost); e != nil {
-		return e
-	}
 	now := time.Now()
-	fields := map[string]any{"status": status, "credits": cost, "error_code": code, "error_message": message, "finished_at": now}
+	fields := map[string]any{"status": status, "credits": 0, "error_code": code, "error_message": message, "finished_at": now}
 	if status == "succeeded" {
 		fields["progress"] = 100
 		j.Progress = 100
@@ -150,43 +146,14 @@ func (s *DramaService) finishTx(ctx context.Context, tx repository.DramaTx, j *m
 		return e
 	}
 	j.Status = status
-	j.Credits = cost
+	j.Credits = 0
 	j.ErrorCode = code
 	j.ErrorMessage = message
 	j.FinishedAt = &now
 	return nil
 }
 
-// settleDramaCredit 保持freeze = settle + refund，和现有积分对账语义一致。
-func settleDramaCredit(ctx context.Context, tx repository.DramaTx, j *model.DramaJob, status string, cost int) error {
-	if j.Step == "compose" {
-		return nil
-	}
-	if _, e := tx.LockCredit(ctx, j.UserID); e != nil {
-		return e
-	}
-	// 成功，或失败 / 取消前已有部分写入画布：结算这部分、退回其余；否则全额退回
-	settle := status == "succeeded" || cost > 0
-	kind, amount := model.LedgerRefund, j.FrozenCredits
-	if settle {
-		kind, amount = model.LedgerSettle, cost
-	}
-	inserted, e := tx.InsertLedger(ctx, &model.CreditLedger{UserID: j.UserID, DramaJobID: &j.ID, Type: kind, Amount: amount})
-	if e != nil {
-		return e
-	}
-	if settle && j.FrozenCredits > cost {
-		if _, e := tx.InsertLedger(ctx, &model.CreditLedger{UserID: j.UserID, DramaJobID: &j.ID, Type: model.LedgerRefund, Amount: j.FrozenCredits - cost}); e != nil {
-			return e
-		}
-	}
-	if !inserted {
-		return nil
-	}
-	return tx.AddCredit(ctx, j.UserID, -cost, -j.FrozenCredits)
-}
-
-// failDrama 业务失败原子结算：已写入画布的部分按检查点费用扣除，其余退回。
+// failDrama 业务失败原子落状态；平台不退积分，费用以 TokenDance 账单为准。
 func (s *DramaService) failDrama(ctx context.Context, j *model.DramaJob, cause error) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
@@ -229,7 +196,7 @@ func (s *DramaService) failDrama(ctx context.Context, j *model.DramaJob, cause e
 		// 失败只在这里记一次（E7）：给用户的文案、完整原因、分类；提示词和模型回复在 payload.log，按 last_call_id 找
 		_, run := dramaJobRun(ctx, j)
 		run.End(logger.StatusFailed, zap.Int("error_code", code), zap.String("error_message", message), zap.String("error_type", dramaErrorType(cause)),
-			zap.String("error", cause.Error()), zap.Int("credits", j.Credits), zap.Int("refunded", j.FrozenCredits-j.Credits), zap.Bool("paused", paused),
+			zap.String("error", cause.Error()), zap.Bool("paused", paused),
 			zap.Bool(logger.FieldNeedsAttention, strings.HasPrefix(dramaErrorType(cause), "compose_")))
 	}
 	return nil

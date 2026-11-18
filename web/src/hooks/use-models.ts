@@ -4,7 +4,7 @@ import type { ModelInfo } from "@/api/model/type";
 import { useModelsStore, type ModelsEntry } from "@/store/models";
 import { useWalletStore } from "@/store/wallet";
 import type { ModelOption } from "@/types";
-import { lowestUnit, priceLabel } from "@/utils/pricing/quote";
+import { modelPriceLabel } from "@/utils/pricing/model-price";
 
 const EMPTY_ENTRY: ModelsEntry = { status: "idle", models: [], loadedAt: 0 };
 
@@ -12,21 +12,23 @@ const EMPTY_ENTRY: ModelsEntry = { status: "idle", models: [], loadedAt: 0 };
 export const toModelOption = (info: ModelInfo): ModelOption => ({
   id: info.key,
   label: info.label,
-  // 钱包模型不扣平台积分：不算积分价（算了也没处显示，只会误导），只带上游模型名供匹配真实花费
-  credits: info.wallet ? 0 : lowestUnit(info.pricing),
-  priceLabel: info.wallet ? undefined : priceLabel(info.pricing),
+  // 价格文案只来自 TokenDance 公开实时价目。
+  priceLabel: modelPriceLabel(info),
   hint: info.hint,
   vendor: info.vendor,
   tags: info.tags,
   wallet: info.wallet,
   upstream_model: info.upstream_model,
+  capabilities: info.capabilities,
+  kind: info.kind,
+  upstream_pricing: info.upstream_pricing,
 });
 
 /**
  * 读某种类的服务端模型清单（带缓存）。
  * status 让调用方分清「还在加载」「加载失败」和「加载成功但没有这个模型」——
  * 只有最后一种才该判定模型已下线。
- * 钱包渠道的模型只有连接了 TokenPay 钱包的用户可见：没连接时直接从清单里滤掉，也就不会被设成默认模型。
+ * 钱包渠道模型始终返回，未连接时由各入口展示「连接 TokenPay 钱包」引导。
  */
 export function useRemoteModels(kind: string, enabled = true) {
   const entry = useModelsStore((state) => state.byKind[kind]) ?? EMPTY_ENTRY;
@@ -48,15 +50,18 @@ export function useRemoteModels(kind: string, enabled = true) {
   }, [enabled, kind, load, fetchWallet, fetchBalance, fetchUsage, walletConnected]);
 
   const reload = useCallback(() => load(kind, true), [kind, load]);
-  const options = useMemo(
-    () => entry.models.filter((model) => !model.wallet || walletConnected).map(toModelOption),
-    [entry.models, walletConnected],
+  // 只向用户端暴露 TokenPay 钱包模型；未连接时保留清单，让用户可以点模型触发连接引导。
+  const visibleModels = useMemo(
+    () => entry.models.filter((model) => !!model.wallet),
+    [entry.models],
   );
+  const options = useMemo(() => visibleModels.map(toModelOption), [visibleModels]);
 
   return {
     status: entry.status,
-    models: entry.models,
+    models: visibleModels,
     options,
+    walletConnected,
     reload,
   };
 }

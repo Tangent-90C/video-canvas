@@ -1,18 +1,12 @@
 import type { ConfigIssue } from "@/api/admin/ai/type.d";
-import type { Billing, Capabilities, PriceTier } from "@/api/model/type.d";
-import {
-  checkDeadline,
-  readModelChannel,
-  readModelPricing,
-  readModelString,
-} from "@/utils/admin/model-body";
+import type { Capabilities } from "@/api/model/type.d";
+import { checkDeadline, readModelChannel, readModelString } from "@/utils/admin/model-body";
 import type { ModelChannelInfo } from "@/utils/admin/model-channel";
 
 import { LIMITS } from "./capability-editors";
-import { billingBlocked, staleCondition, tierDimensions } from "./price-editors";
 
-/** 编辑弹窗的三个页签 */
-export type ModelTabId = "basic" | "params" | "price";
+/** 编辑弹窗的两个页签 */
+export type ModelTabId = "basic" | "params";
 
 /** 正文顶层字段 → 所在页签与表单控件 id（点击待办项 / 校验问题时定位用） */
 const FIELD_OF: Record<string, { tab: ModelTabId; id: string }> = {
@@ -26,7 +20,6 @@ const FIELD_OF: Record<string, { tab: ModelTabId; id: string }> = {
   channels: { tab: "basic", id: "model-channel" },
   deadline: { tab: "params", id: "model-deadline" },
   capabilities: { tab: "params", id: "model-capabilities-params" },
-  pricing: { tab: "price", id: "model-pricing" },
 };
 
 /**
@@ -71,10 +64,10 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 /**
- * 正文内部自相矛盾、保存下来就会让模型用不了的问题：计费方式与能力不匹配、
- * 规格价格引用了已删掉的规格、提示词字数上限与超时时限不合法。和后端校验一致的部分只是提前拦截。
+ * 正文内部自相矛盾、保存下来就会让模型用不了的问题：提示词字数上限与超时时限不合法。
+ * 平台积分定价字段只保留旧正文兼容，不参与校验或待办。
  */
-function blockingChecks(body: Record<string, unknown>, kind: string): ModelCheck[] {
+function blockingChecks(body: Record<string, unknown>): ModelCheck[] {
   const out: ModelCheck[] = [];
   const error = (tab: ModelTabId, path: string, text: string) =>
     out.push({ tab, path, text, level: "error" });
@@ -93,18 +86,6 @@ function blockingChecks(body: Record<string, unknown>, kind: string): ModelCheck
       error("params", "capabilities.prompt", `提示词字数上限需要在 ${min} – ${top} 之间`);
   }
 
-  const pricing = readModelPricing(body);
-  if (!pricing || !kind) return out;
-  const billingReason = billingBlocked(pricing.billing as Billing, kind, caps);
-  if (billingReason) error("price", "pricing.billing", billingReason);
-  if (pricing.billing !== "token") {
-    const dims = tierDimensions(caps);
-    (pricing.tiers ?? []).forEach((tier: PriceTier, index) => {
-      const path = `pricing.tiers[${index}].when`;
-      const stale = staleCondition(tier, dims);
-      if (stale) error("price", path, `第 ${index + 1} 条规格价格：${stale}，请调整或删除`);
-    });
-  }
   return out;
 }
 
@@ -130,7 +111,7 @@ export function modelChecks(
   ready = true,
 ): ModelCheck[] {
   if (!body) return [];
-  const out: ModelCheck[] = blockingChecks(body, info.kind);
+  const out: ModelCheck[] = blockingChecks(body);
   const warn = (tab: ModelTabId, text: string, path?: string) =>
     out.push({ tab, text, path, level: "warning" });
   const fail = (tab: ModelTabId, text: string, path: string) =>
@@ -141,6 +122,12 @@ export function modelChecks(
   if (!channel) fail("basic", "选择所属渠道", "channels[0].channel");
   else if (ready && info.channel && !info.channel.enabled)
     warn("basic", `渠道「${info.channel.name}」已停用`, "channels[0].channel");
+  else if (ready && info.channel && !info.channel.wallet_enabled)
+    warn(
+      "basic",
+      `渠道「${info.channel.name}」不是 TokenPay 钱包渠道，不能启用`,
+      "channels[0].channel",
+    );
   else if (ready && !info.channel) warn("basic", `渠道 ${channel} 不存在`, "channels[0].channel");
   if (ready && info.kind && info.protocolProblem)
     fail("basic", info.protocolProblem, "channels[0].protocol");
@@ -149,15 +136,10 @@ export function modelChecks(
   if (!upstreamModel) fail("basic", "填写上游模型 ID", "channels[0].upstream_model");
   if (info.kind !== "agent" && !readModelString(body, "deadline"))
     warn("params", "没有设置任务超时，将使用系统默认值", "deadline");
-  const price = readModelPricing(body);
-  const unpriced =
-    !price ||
-    (price.billing === "token"
-      ? !price.token?.in && !price.token?.out
-      : !(price.billing === "per_second" ? price.per_second : price.unit));
-  if (unpriced) warn("price", "还没有设置默认积分价格", "pricing");
   const blocked = out.filter((check) => check.level === "error");
   for (const issue of issues) {
+    // 历史 pricing / cost 字段仍可能出现在旧配置的后端校验结果里，但平台积分已停用，不再展示。
+    if (issue.path === "pricing" || issue.path.startsWith("pricing.")) continue;
     if (blocked.some((check) => check.path && samePlace(check.path, issue.path))) continue;
     const field = fieldOfPath(issue.path);
     warn(field?.tab ?? "params", issue.message, issue.path);

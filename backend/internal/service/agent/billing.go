@@ -8,7 +8,6 @@ import (
 
 	"video-canvas/internal/llmgateway"
 	"video-canvas/internal/model"
-	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/provider/modelcfg"
 	"video-canvas/internal/repository"
 )
@@ -18,8 +17,6 @@ const maxCallErrorRunes = 250
 
 // AgentBillingRepo 是 Agent 对话计费所需的数据访问。
 type AgentBillingRepo interface {
-	// AvailableCredits 返回用户的可用积分（余额减冻结），没有账户返回 repository.ErrNotFound。
-	AvailableCredits(ctx context.Context, userID uint64) (int, error)
 	// CreateModelCall 创建一条待结算的调用记录。
 	CreateModelCall(ctx context.Context, c *model.AgentModelCall) error
 	// SettleModelCall 按实际用量结算一次调用：幂等，实扣额封顶在可用积分以内。
@@ -67,27 +64,10 @@ type SettleResult struct {
 	InputTokens int // 这次调用送进模型的输入 Token 数（上游没给用量时是按字数估的），一个字都没收到时为 0
 }
 
-// Preflight 在发起调用前预检：本轮预算和用户可用积分，都要够付这次调用「最坏情况」的费用
-// （输入按字数保守估，输出按模型的最大输出打满）。预检不加锁，只是尽早拦住明显不够的情况。
+// Preflight 保留为模型调用前的兼容入口。费用由用户自己的 TokenPay Key 在上游直接扣除，
+// 平台不再预检、冻结或扣减任何积分预算。
 func (b *AgentBilling) Preflight(ctx context.Context, run *model.AgentRun, p modelcfg.Pricing, caps modelcfg.Capabilities, inputChars int) error {
-	// 1. Agent 模型只能按 Token 计费，别的计费方式说明配置有问题，按模型不可用处理
-	if p.Billing != modelcfg.BillingToken || p.Token == nil {
-		return errcode.ErrAgentModelNA
-	}
-	if run.Mode == model.AgentModeAdmin {
-		return nil
-	}
-	upper := modelcfg.Quote(p, caps, modelcfg.Spec{PromptChars: inputChars})
-	// 2. 本轮预算：已花加上最坏情况不能超过预算；预算为 0 表示不限制，只看下面的账户积分
-	if run.BudgetCredits > 0 && upper > run.BudgetCredits-run.SpentCredits {
-		return errcode.ErrAgentOverBudget
-	}
-	// 3. 用户可用积分：没有账户和不够一样处理
-	avail, err := b.repo.AvailableCredits(ctx, run.UserID)
-	if errors.Is(err, repository.ErrNotFound) || (err == nil && avail < upper) {
-		return errcode.ErrInsufficientCredits
-	}
-	return err
+	return nil
 }
 
 // Begin 为即将发起的调用创建一条待结算记录，返回的记录用于后面的 Settle。
@@ -131,10 +111,8 @@ func (b *AgentBilling) SettleExternal(ctx context.Context, call *model.AgentMode
 		} else {
 			in.InputTokens, in.OutputTokens, in.CachedTokens = r.Usage.InputTokens, r.Usage.OutputTokens, r.Usage.CachedTokens
 		}
-		in.Credits = modelcfg.TokenCost(p, in.InputTokens, in.OutputTokens)
-		if out.Meta.Mode == model.AgentModeAdmin {
-			in.Credits = 0
-		}
+		// 钱包计费发生在 TokenDance 上游，平台只保留 Token 用量用于观测。
+		in.Credits = 0
 	}
 	settled, err := b.repo.SettleModelCall(ctx, in)
 	if err != nil {

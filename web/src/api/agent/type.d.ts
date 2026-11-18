@@ -1,3 +1,4 @@
+import type { Pricing } from "@/api/model/type";
 import type { GraphChange } from "@/utils/canvas/graph-changes";
 
 /**
@@ -49,6 +50,10 @@ export interface AgentModelDto {
   video?: boolean;
   /** 上下文窗口（Token），没配置是 0 */
   context_window: number;
+  /** 上游模型 slug，用于匹配 TokenDance 公开价目 */
+  upstream_model?: string;
+  /** TokenDance 公开实时价目摘要；未拿到时为空 */
+  price_label?: string;
 }
 
 /** 会话 */
@@ -461,7 +466,7 @@ export interface AdminSecretResult {
   configured: boolean;
 }
 
-/** 真实试跑的审批内容，预估费用仅作示意 */
+/** 真实试跑的审批内容；estimate 只为旧审批载荷兼容，当前界面不展示 */
 export interface AdminTestRunPayload {
   /** 模型 key */
   model_key: string;
@@ -469,8 +474,8 @@ export interface AdminTestRunPayload {
   model_label: string;
   /** 输入的一行摘要 */
   input_summary: string;
-  /** 按上游成本估算的费用 */
-  estimate: {
+  /** 历史平台积分预估；旧审批载荷可能带有，当前不再展示或使用 */
+  estimate?: {
     /** 成本积分，未配 cost 为 null */
     credits: number | null;
     /** 人民币金额，无法换算为 null */

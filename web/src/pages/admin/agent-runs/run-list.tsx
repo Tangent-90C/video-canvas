@@ -109,7 +109,6 @@ function RunRow({
         </Tag>
       </TableCell>
       <TableCell className="text-right text-sm tabular-nums">{run.steps}</TableCell>
-      <TableCell className="text-right text-sm tabular-nums">{run.spent_credits}</TableCell>
       <TableCell>
         <FeedbackCell feedback={run.feedback} />
       </TableCell>
@@ -133,7 +132,7 @@ function RunRow({
 }
 
 /**
- * 运行列表：时间、用户、请求首句（旁边是工具报错 / 插话 / 审批被拒的小徽标）、状态、步数、积分、反馈、撤销、版本。
+ * 运行列表：时间、用户、请求首句（旁边是工具报错 / 插话 / 审批被拒的小徽标）、状态、步数、反馈、撤销、版本。
  * 加载中给骨架行（表头照常显示）；失败给 Notice 加重试；没有符合条件的运行给空状态，有筛选时带「重置筛选」。
  * @param state 加载状态
  * @param items 当前页的运行
@@ -203,7 +202,6 @@ export function RunList({
             <TableHead>请求首句</TableHead>
             <TableHead>状态</TableHead>
             <TableHead className="text-right">步数</TableHead>
-            <TableHead className="text-right">积分</TableHead>
             <TableHead>反馈</TableHead>
             <TableHead>撤销</TableHead>
             <TableHead className="pr-4">版本</TableHead>
@@ -211,7 +209,7 @@ export function RunList({
         </TableHeader>
         <TableBody>
           {state === "loading" ? (
-            <TableSkeletonRows columns={9} rows={8} />
+            <TableSkeletonRows columns={8} rows={8} />
           ) : (
             items.map((run) => (
               <RunRow

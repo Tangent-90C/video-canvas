@@ -103,7 +103,6 @@ export default function UsersPage() {
   // ---------------------------------------------------------------- 勾选（只在当前页，换页 / 筛选后清空）
   const [selected, setSelected] = useState<Set<number>>(() => new Set());
   const lastChecked = useRef<number | null>(null);
-  const [bulkCreditOpen, setBulkCreditOpen] = useState(false);
   useEffect(() => {
     setSelected(new Set());
     lastChecked.current = null;
@@ -368,14 +367,7 @@ export default function UsersPage() {
         onRetry={reloadDetail}
       />
 
-      <BulkBar
-        users={selectedUsers}
-        actor={actor}
-        actions={actions}
-        creditOpen={bulkCreditOpen}
-        onCreditOpenChange={setBulkCreditOpen}
-        onClear={clearSelection}
-      />
+      <BulkBar users={selectedUsers} actions={actions} onClear={clearSelection} />
     </MotionConfig>
   );
 }

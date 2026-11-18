@@ -10,6 +10,7 @@ import (
 )
 
 func TestAdminQuotePreviewOptionalPrompt(t *testing.T) {
+	t.Skip("平台积分算价工具已移除")
 	for _, tc := range []struct {
 		name, args, wantPrompt string
 		wantError              bool
@@ -58,6 +59,7 @@ func TestAdminQuotePreviewOptionalPrompt(t *testing.T) {
 }
 
 func TestAdminQuotePreviewDescription(t *testing.T) {
+	t.Skip("平台积分算价工具已移除")
 	for _, decl := range AgentToolDecls("admin", false, false) {
 		if decl.Name == "admin_quote_preview" {
 			if !strings.Contains(decl.Description, "input 只需给影响价格的参数（规格、时长、数量），提示词和素材可省略") {
@@ -70,6 +72,7 @@ func TestAdminQuotePreviewDescription(t *testing.T) {
 }
 
 func TestAdminQuotePreviewPriceParameters(t *testing.T) {
+	t.Skip("平台积分算价工具已移除")
 	for _, tc := range []struct {
 		name, input    string
 		perTask, count int
@@ -115,5 +118,31 @@ func TestAdminQuotePreviewPriceParameters(t *testing.T) {
 				t.Fatalf("规格时长数量未正确计价：%+v", quote)
 			}
 		})
+	}
+}
+
+func TestAdminPointPricingToolsRemoved(t *testing.T) {
+	_, bridge, rc := adminEnv(newAdminFake())
+	for _, name := range []string{"admin_get_pricing_settings", "admin_quote_preview"} {
+		result, err := bridge.ExecutePlatformTool(context.Background(), rc, "tool", name, json.RawMessage(`{}`))
+		if err != nil || result == nil || !result.IsError {
+			t.Fatalf("%s 不应再注册", name)
+		}
+	}
+}
+
+func TestAdminListModelsDoesNotExposePlatformPricing(t *testing.T) {
+	_, bridge, rc := adminEnv(newAdminFake())
+	result, err := bridge.ExecutePlatformTool(context.Background(), rc, "tool", "admin_list_models", json.RawMessage(`{}`))
+	if err != nil || result == nil || result.IsError {
+		t.Fatalf("admin_list_models 调用失败：result=%+v err=%v", result, err)
+	}
+	for _, bad := range []string{`"pricing"`, `"billing"`, `"cost_configured"`} {
+		if strings.Contains(result.Content, bad) {
+			t.Fatalf("模型摘要不应再暴露平台积分字段 %s：%s", bad, result.Content)
+		}
+	}
+	if !strings.Contains(result.Content, `"key":"a"`) {
+		t.Fatalf("模型摘要应保留模型标识：%s", result.Content)
 	}
 }

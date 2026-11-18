@@ -1,9 +1,8 @@
-import { Ban, CircleCheck, Diff, Gauge, Loader2, RotateCw, SearchX } from "lucide-react";
+import { Ban, CircleCheck, Gauge, Loader2, RotateCw, SearchX } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
 import type { UserListItem } from "@/api/admin/users/type.d";
-import { AnimatedNumber } from "@/components/admin-ui/animated-number";
 import {
   EmptyState,
   EmptyStateActions,
@@ -11,7 +10,6 @@ import {
   EmptyStateTitle,
 } from "@/components/admin-ui/empty-state";
 import { InitialAvatar } from "@/components/admin-ui/initial-avatar";
-import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
 import { RowHint } from "@/components/admin-ui/row-icon-action";
 import { StatusLabel } from "@/components/admin-ui/status-dot";
 import { Tag } from "@/components/admin-ui/tag";
@@ -26,7 +24,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { DURATION, EASE_OUT, SKELETON_DELAY, SPRING, TAP } from "@/lib/motion";
+import { DURATION, EASE_OUT, SKELETON_DELAY, SPRING } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import {
   concurrencyView,
@@ -39,7 +37,6 @@ import {
   type Actor,
 } from "@/utils/admin/user-rules";
 
-import { CreditPopover } from "./credit-popover";
 import { LimitPopover } from "./limit-popover";
 import type { ListState } from "./use-users";
 import type { UserActions } from "./use-user-actions";
@@ -76,7 +73,7 @@ export type UserSelection = {
 };
 
 /**
- * 用户表格：勾选、用户、角色、状态、可用积分（整格是按钮）、并发、最近活跃、操作。
+ * 用户表格：勾选、用户、角色、状态、并发、最近活跃、操作。
  * 首屏等 SKELETON_DELAY 还没返回才出 8 行骨架；翻页 / 筛选保留旧数据并半透明。
  */
 function UserTable({
@@ -173,9 +170,6 @@ function UserTable({
             <TableHead className="bg-muted/40 text-muted-foreground w-[88px] text-xs">
               状态
             </TableHead>
-            <TableHead className="bg-muted/40 text-muted-foreground w-[120px] text-right text-xs">
-              可用积分
-            </TableHead>
             <TableHead className={cn("bg-muted/40 text-muted-foreground w-28 text-xs", WIDE_ONLY)}>
               并发
             </TableHead>
@@ -237,9 +231,6 @@ function SkeletonRows() {
       <TableCell>
         <Skeleton className="h-4 w-12" />
       </TableCell>
-      <TableCell>
-        <Skeleton className="ml-auto h-4 w-10" />
-      </TableCell>
       <TableCell className={WIDE_ONLY}>
         <Skeleton className="h-4 w-14" />
       </TableCell>
@@ -266,13 +257,11 @@ function UserRow({
   selection: UserSelection;
   onOpen: (id: number) => void;
 }) {
-  const [creditOpen, setCreditOpen] = useState(false);
   const [limitOpen, setLimitOpen] = useState(false);
   /** 记录按下勾选框那一刻 Shift 有没有按着：onCheckedChange 里拿不到修饰键 */
   const shiftRef = useRef(false);
   const disabled = user.status === "disabled";
   const checked = selection.selected.has(user.id);
-  const creditDeny = denyReason(actor, user, "credit");
   const limitDeny = denyReason(actor, user, "limit");
   const banDeny = denyReason(actor, user, "ban");
   const statusBusy = actions.isBusy(user.id, "status");
@@ -283,7 +272,7 @@ function UserRow({
     if (event.key === "Enter" && event.target === event.currentTarget) onOpen(user.id);
   };
 
-  /** 积分格、勾选框、操作列里的点击不该打开弹窗；浮层 portal 出去的事件也会沿 React 树冒泡到这里 */
+  /** 勾选框、操作列里的点击不该打开弹窗；浮层 portal 出去的事件也会沿 React 树冒泡到这里 */
   const stop = {
     onClick: (event: React.MouseEvent) => event.stopPropagation(),
   };
@@ -347,15 +336,6 @@ function UserRow({
       </TableCell>
       <TableCell>
         <StatusCell disabled={disabled} />
-      </TableCell>
-      <TableCell className="text-right" {...stop}>
-        <CreditCell
-          user={user}
-          actions={actions}
-          deny={creditDeny}
-          open={creditOpen}
-          onOpenChange={setCreditOpen}
-        />
       </TableCell>
       <TableCell className={WIDE_ONLY}>
         <div className="flex items-center gap-2">
@@ -449,70 +429,6 @@ function StatusCell({ disabled }: { disabled: boolean }) {
         )}
       </motion.span>
     </AnimatePresence>
-  );
-}
-
-/** 积分格内容：主数字 + 有冻结时下方「冻结 N」，两个数字都会滚动 */
-function CreditValue({ user }: { user: UserListItem }) {
-  return (
-    <>
-      <AnimatedNumber value={user.available} className="font-mono font-medium" />
-      {user.frozen > 0 && (
-        <span className="text-muted-foreground text-xs tabular-nums">
-          冻结 <AnimatedNumber value={user.frozen} />
-        </span>
-      )}
-    </>
-  );
-}
-
-const CREDIT_CELL =
-  "group/credit relative -mr-2 inline-flex flex-col items-end rounded-lg border border-dashed border-transparent px-2 py-1 text-right outline-none transition-colors hover:border-foreground/30 hover:bg-background focus-visible:ring-3 focus-visible:ring-ring/50 data-popup-open:border-foreground data-popup-open:bg-background";
-
-/** 整格是按钮：hover 出现虚线描边与 ± 图标，点击弹出积分浮层；无权限时禁用并说明原因 */
-function CreditCell({
-  user,
-  actions,
-  deny,
-  open,
-  onOpenChange,
-}: {
-  user: UserListItem;
-  actions: UserActions;
-  deny: string | null;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
-  if (deny) {
-    return (
-      <ReasonTooltip reason={deny}>
-        <button type="button" disabled className={cn(CREDIT_CELL, "cursor-default")}>
-          <CreditValue user={user} />
-        </button>
-      </ReasonTooltip>
-    );
-  }
-  return (
-    <CreditPopover
-      user={user}
-      actions={actions}
-      open={open}
-      onOpenChange={onOpenChange}
-      render={
-        <motion.button
-          type="button"
-          whileTap={TAP}
-          className={CREDIT_CELL}
-          aria-label={`调整 ${user.username} 的积分`}
-        />
-      }
-    >
-      <Diff
-        className="text-muted-foreground pointer-events-none absolute top-1/2 left-0 size-3.5 -translate-x-full -translate-y-1/2 opacity-0 transition-opacity group-hover/credit:opacity-100 group-data-popup-open/credit:opacity-100"
-        aria-hidden
-      />
-      <CreditValue user={user} />
-    </CreditPopover>
   );
 }
 

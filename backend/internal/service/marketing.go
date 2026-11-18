@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"video-canvas/internal/model"
+	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/pkg/videoframe"
 	"video-canvas/internal/pkg/ws"
@@ -99,7 +100,7 @@ type MarketingDeps struct {
 	Tasks       MarketingTaskCreator // 出片任务
 	Canvases    MarketingCanvasCreator
 	Frames      MarketingFrames  // 截帧与镜头切点；可为 nil
-	Credits     StepCreditPolicy // 新账户初始积分
+	Wallets     WalletChecker    // 用户 TokenPay 钱包连接状态
 	Broadcaster ws.Broadcaster   // 为 nil 时不推送
 	Now         func() time.Time // 时钟，默认 time.Now
 }
@@ -116,7 +117,7 @@ type MarketingService struct {
 	tasks    MarketingTaskCreator
 	canvases MarketingCanvasCreator
 	frames   MarketingFrames
-	credits  StepCreditPolicy
+	wallets  WalletChecker
 	bc       ws.Broadcaster
 	now      func() time.Time
 	adapting sync.Map // 进行中的转写：脚本 id + 格式，同一份同时只转一次
@@ -125,7 +126,7 @@ type MarketingService struct {
 // NewMarketingService 创建营销服务；Broadcaster 为 nil 时换成空实现。
 func NewMarketingService(d MarketingDeps) *MarketingService {
 	s := &MarketingService{repo: d.Repo, steps: d.Steps, resolver: d.Resolver, runner: stepkit.NewRunner(d.Caller), caller: d.Caller, models: d.Models,
-		assets: d.Assets, tasks: d.Tasks, canvases: d.Canvases, frames: d.Frames, credits: d.Credits, bc: d.Broadcaster, now: d.Now}
+		assets: d.Assets, tasks: d.Tasks, canvases: d.Canvases, frames: d.Frames, wallets: d.Wallets, bc: d.Broadcaster, now: d.Now}
 	if s.bc == nil {
 		s.bc = ws.NopBroadcaster{}
 	}
@@ -133,6 +134,21 @@ func NewMarketingService(d MarketingDeps) *MarketingService {
 		s.now = time.Now
 	}
 	return s
+}
+
+// ensureWallet 要求营销用户已连接 TokenPay 钱包；平台积分不再作为兜底路径。
+func (s *MarketingService) ensureWallet(ctx context.Context, userID uint64) error {
+	if s.wallets == nil {
+		return errcode.ErrWalletNotConnected
+	}
+	connected, err := s.wallets.Connected(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if !connected {
+		return errcode.ErrWalletNotConnected
+	}
+	return nil
 }
 
 // MarketingStats 把营销环节运行记录接成环节后台的失败率统计（StepAdminDeps.Stats）。

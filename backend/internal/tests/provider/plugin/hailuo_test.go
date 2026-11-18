@@ -58,7 +58,7 @@ var hailuoCaps = modelcfg.Capabilities{
 func (e *hailuoEnv) snapshot(baseURL, upstreamModel string) *provider.Snapshot {
 	return &provider.Snapshot{
 		Model: provider.ModelSnapshot{Key: "m", Kind: "video", UpstreamModel: upstreamModel, Capabilities: hailuoCaps},
-		Channel: provider.ChannelSnapshot{
+		Channel: provider.ChannelSnapshot{Wallet: true,
 			Key: "hailuo-main", PluginKey: "hailuo", PluginVersionID: 1, BaseURL: baseURL,
 		},
 		Plugin:          provider.PluginSnapshot{Key: "hailuo", Version: e.meta.Version, SHA256: e.sha, Meta: *e.meta},

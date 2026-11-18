@@ -64,12 +64,12 @@ func (r *AdminUsageRepository) usageQuery(ctx context.Context, f UsageFilter) *g
 
 // List 返回使用记录，id 倒序（id 与创建时间同向），联用户名；Offset / Limit 做分页。
 // model_name 取任务快照 config_snapshot.model.label，没有或为空回落 model_id；
-// duration_ms = finished_at - created_at（毫秒，最小 0），未完成为 NULL；charged_credits 未结算为 NULL。
+// duration_ms = finished_at - created_at（毫秒，最小 0），未完成为 NULL；历史积分字段不再读取。
 func (r *AdminUsageRepository) List(ctx context.Context, f UsageFilter) ([]model.UsageRow, error) {
 	q := r.usageQuery(ctx, f).
 		Select(`t.id, t.task_ref, t.user_id, COALESCE(u.username, '') AS username, t.kind, t.model_id AS model_key,
 			COALESCE(NULLIF(t.config_snapshot->'model'->>'label', ''), t.model_id) AS model_name,
-			t.status, t.credits, t.charged_credits, t.error_code, t.error_message,
+			t.status, t.error_code, t.error_message,
 			CASE WHEN t.finished_at IS NULL THEN NULL
 			     ELSE GREATEST((EXTRACT(EPOCH FROM (t.finished_at - t.created_at)) * 1000)::bigint, 0) END AS duration_ms,
 			t.is_test, t.created_at`).
@@ -86,11 +86,11 @@ func (r *AdminUsageRepository) Count(ctx context.Context, f UsageFilter) (int64,
 	return n, err
 }
 
-// Summary 按状态分组统计任务数与实扣积分，由 service 折成摘要；筛选条件与 List 相同。
+// Summary 按状态分组统计任务数，由 service 折成摘要；筛选条件与 List 相同。
 func (r *AdminUsageRepository) Summary(ctx context.Context, f UsageFilter) ([]model.UsageStatusCount, error) {
 	var rows []model.UsageStatusCount
 	err := r.usageQuery(ctx, f).
-		Select("t.status AS status, COUNT(*) AS count, COALESCE(SUM(t.charged_credits), 0) AS charged").
+		Select("t.status AS status, COUNT(*) AS count").
 		Group("t.status").Scan(&rows).Error
 	return rows, err
 }

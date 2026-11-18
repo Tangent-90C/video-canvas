@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 import type { CreateTaskRequest, TaskView } from "@/api/generation-task/type";
 import { makeTask } from "./fixtures";
@@ -8,7 +8,7 @@ const calls = {
   create: [] as Array<{ data: CreateTaskRequest; key: string }>,
   record: [] as Array<{ target: string; key: string }>,
   cancel: [] as Array<string | number>,
-  credits: 0,
+  balance: 0,
 };
 let createImpl: (data: CreateTaskRequest, key: string) => Promise<unknown>;
 let cancelImpl: (id: string | number) => Promise<unknown>;
@@ -46,17 +46,11 @@ mock.module("@/api/conversation", () => ({
     };
   },
 }));
-mock.module("@/api/credit", () => ({
-  getCredits: async () => {
-    calls.credits += 1;
-    return { balance: 10, frozen: 0, available: 10 };
-  },
-}));
-
 const { acceptTasks, cancelTasks, submitCanvasTasks, submitRecordTasks } =
   await import("@/utils/tasks/gateway");
 const { useTasksStore } = await import("@/store/tasks");
-const { useCreditsStore } = await import("@/store/credits");
+const { useWalletStore } = await import("@/store/wallet");
+let originalFetchBalance = useWalletStore.getState().fetchBalance;
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -64,11 +58,19 @@ beforeEach(() => {
   calls.create.length = 0;
   calls.record.length = 0;
   calls.cancel.length = 0;
-  calls.credits = 0;
+  calls.balance = 0;
   useTasksStore.setState({ tasks: {} });
-  useCreditsStore.setState({ credits: null });
+  originalFetchBalance = useWalletStore.getState().fetchBalance;
+  useWalletStore.setState({
+    fetchBalance: async () => {
+      calls.balance += 1;
+    },
+  });
   createImpl = async () => ({ items: [] });
   cancelImpl = async () => null;
+});
+afterEach(() => {
+  useWalletStore.setState({ fetchBalance: originalFetchBalance });
 });
 
 const request = (over: Partial<CreateTaskRequest> = {}): CreateTaskRequest => ({
@@ -81,18 +83,18 @@ const request = (over: Partial<CreateTaskRequest> = {}): CreateTaskRequest => ({
   ...over,
 });
 
-describe("acceptTasks：任务快照入库并刷新余额", () => {
-  test("快照进任务库，null / undefined 跳过；余额总会刷新", async () => {
+describe("acceptTasks：任务快照入库并刷新 TokenPay 余额", () => {
+  test("快照进任务库，null / undefined 跳过；钱包余额总会刷新", async () => {
     acceptTasks([makeTask({ id: 1 }), null, undefined]);
     await settle();
     expect(Object.keys(useTasksStore.getState().tasks)).toEqual(["1"]);
-    expect(calls.credits).toBe(1);
+    expect(calls.balance).toBe(1);
   });
 
-  test("一批里一个任务都没有也刷新余额（冻结的积分可能已经变了）", async () => {
+  test("一批里一个任务都没有也刷新钱包余额", async () => {
     acceptTasks([null]);
     await settle();
-    expect(calls.credits).toBe(1);
+    expect(calls.balance).toBe(1);
   });
 });
 
@@ -136,7 +138,7 @@ describe("submitCanvasTasks：画布节点的提交", () => {
 });
 
 describe("submitRecordTasks：首页对话的提交", () => {
-  test("记录里已创建的任务入库，提交失败的格子不影响其他；同样刷新余额", async () => {
+  test("记录里已创建的任务入库，提交失败的格子不影响其他；同样刷新钱包余额", async () => {
     const result = await submitRecordTasks("new", {
       kind: "image",
       modelId: "m",
@@ -149,7 +151,7 @@ describe("submitRecordTasks：首页对话的提交", () => {
     expect(Object.keys(useTasksStore.getState().tasks)).toEqual(["11"]);
     expect(calls.record[0].target).toBe("new");
     expect(calls.record[0].key).toHaveLength(36);
-    expect(calls.credits).toBe(1);
+    expect(calls.balance).toBe(1);
   });
 });
 
@@ -179,7 +181,7 @@ describe("cancelTasks：取消", () => {
     expect(failed).toEqual([]);
   });
 
-  test("某个失败不影响其他，返回失败的 id；仍然刷新余额", async () => {
+  test("某个失败不影响其他，返回失败的 id；仍然刷新钱包余额", async () => {
     cancelImpl = async (id) => {
       if (String(id) === "2") throw new Error("已结束");
       return makeTask({ id: 1, status: "canceled", version: 9 });
@@ -189,6 +191,6 @@ describe("cancelTasks：取消", () => {
     expect(failed).toEqual(["2"]);
     expect(calls.cancel).toEqual([1, 2, 3]);
     expect(useTasksStore.getState().tasks["1"].status).toBe("canceled");
-    expect(calls.credits).toBeGreaterThan(0);
+    expect(calls.balance).toBeGreaterThan(0);
   });
 });

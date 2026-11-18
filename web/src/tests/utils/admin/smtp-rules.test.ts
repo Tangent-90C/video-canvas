@@ -74,18 +74,13 @@ describe("能否保存与测试", () => {
 
 describe("注册设置校验", () => {
   const ok = {
-    initial_credits: "100",
     default_max_active_tasks: "3",
     queue_multiplier: "5",
     queue_max_wait_minutes: "60",
   };
 
-  test("初始积分为非负整数，默认并发 1 到 64", () => {
+  test("默认并发 1 到 64，注册设置已不再创建平台积分", () => {
     expect(hasSmtpErrors(validateRegisterSettings(ok))).toBe(false);
-    expect(validateRegisterSettings({ ...ok, initial_credits: "-1" }).initial_credits).toBeTruthy();
-    expect(
-      validateRegisterSettings({ ...ok, initial_credits: "1.5" }).initial_credits,
-    ).toBeTruthy();
     expect(
       validateRegisterSettings({ ...ok, default_max_active_tasks: "0" }).default_max_active_tasks,
     ).toBeTruthy();
@@ -132,7 +127,7 @@ describe("注册设置校验", () => {
     ).toBe(true);
     expect(
       canSaveRegisterSettings({
-        values: { ...initial, initial_credits: "x" },
+        values: { ...initial, default_max_active_tasks: "0" },
         initial,
         canWrite: true,
       }),

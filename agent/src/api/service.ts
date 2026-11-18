@@ -301,7 +301,7 @@ export class AgentApiService {
       modelKey,
       selection,
       attachments,
-      budgetCredits: req.budget_credits ?? 0,
+      budgetCredits: 0,
       pageContext: sess.mode === "admin" ? req.page_context : undefined,
     });
     return runView(this.#o.codec, run);
@@ -433,8 +433,8 @@ export class AgentApiService {
         user_id: run.userId,
         status: run.status,
         mode: run.mode,
-        budget_credits: run.budgetCredits,
-        spent_credits: run.spentCredits,
+        budget_credits: 0,
+        spent_credits: 0,
         context_tokens: run.contextTokens,
         steps: run.steps,
         max_steps: run.maxSteps,

@@ -251,33 +251,25 @@ func TestDramaServiceAdaptSegment(t *testing.T) {
 
 func TestDramaSegmentAdapt_Charges(t *testing.T) {
 	ctx := context.Background()
-	t.Run("成功后成对写冻结和结算流水，扣余额，冻结额不变", func(t *testing.T) {
+	t.Run("成功后不改平台积分账户、不写流水", func(t *testing.T) {
 		s, r, a, v := adaptSetup(t, adaptOrigin)
 		a.Credits = 3
 		r.Credit = &model.UserCredit{UserID: 1, Balance: 100, Frozen: 10}
 		if _, err := s.Adapt(ctx, 1, uint64(v.ID), &model.AdaptDramaSegmentReq{Format: "h3", Revision: v.Revision}); err != nil {
 			t.Fatal(err)
 		}
-		if r.Credit.Balance != 97 || r.Credit.Frozen != 10 {
+		if r.Credit.Balance != 100 || r.Credit.Frozen != 10 || len(r.Ledger) != 0 {
 			t.Fatalf("账户：%+v", r.Credit)
 		}
-		if len(r.Ledger) != 2 || r.Ledger[0].Type != model.LedgerFreeze || r.Ledger[1].Type != model.LedgerSettle {
-			t.Fatalf("流水：%+v", r.Ledger)
-		}
-		for _, l := range r.Ledger {
-			if l.Amount != 3 || l.DramaSegmentID == nil || *l.DramaSegmentID != uint64(v.ID) || l.Note != "片场转写 · 第 1 集片段 01 · H3" {
-				t.Fatalf("流水内容：%+v", l)
-			}
-		}
 	})
-	t.Run("实扣封顶在可用积分", func(t *testing.T) {
+	t.Run("平台余额不足也不拦截钱包转写", func(t *testing.T) {
 		s, r, a, v := adaptSetup(t, adaptOrigin)
 		a.Credits = 30
 		r.Credit = &model.UserCredit{UserID: 1, Balance: 25, Frozen: 20}
 		if _, err := s.Adapt(ctx, 1, uint64(v.ID), &model.AdaptDramaSegmentReq{Format: "generic", Revision: v.Revision}); err != nil {
 			t.Fatal(err)
 		}
-		if r.Credit.Balance != 20 || r.Ledger[1].Amount != 5 || r.Ledger[1].Note != "片场转写 · 第 1 集片段 01 · 通用" {
+		if r.Credit.Balance != 25 || r.Credit.Frozen != 20 || len(r.Ledger) != 0 {
 			t.Fatalf("账户：%+v 流水：%+v", r.Credit, r.Ledger)
 		}
 	})
@@ -291,7 +283,7 @@ func TestDramaSegmentAdapt_Charges(t *testing.T) {
 			t.Fatalf("不应扣费：%+v %+v", r.Credit, r.Ledger)
 		}
 	})
-	t.Run("转写失败不扣费", func(t *testing.T) {
+	t.Run("转写失败不改平台积分", func(t *testing.T) {
 		s, r, a, v := adaptSetup(t, adaptOrigin)
 		a.Credits, a.Err = 3, errcode.ErrDramaAdaptFailed
 		r.Credit = &model.UserCredit{UserID: 1, Balance: 100}
@@ -308,25 +300,23 @@ func TestDramaServiceAdaptSegment_Billing(t *testing.T) {
 	good := `{"prompt":"integrated_multimodal_description: [Shot 1] @[林阳](n_lin) presses the stele.\n\noverall_soundscape: hum.\n\nnon_diegetic_music: No non-diegetic music."}`
 	lostRef := `{"prompt":"integrated_multimodal_description: Lin.\n\noverall_soundscape: hum.\n\nnon_diegetic_music: none."}`
 	in := drama.AdaptInput{Source: source, Seconds: 5}
-	t.Run("按模型定价返回应收积分，只算成功的那次", func(t *testing.T) {
+	t.Run("TokenPay 钱包转写不返回平台积分账单", func(t *testing.T) {
 		r := newDramaMemory()
 		e := &dramaTextStreamer{outputs: []string{lostRef, good}}
 		s, _ := dramaTestService(r, e, nil)
 		_, credits, err := s.AdaptSegment(ctx, &r.project, "h3", in)
-		// 测试模型按次计费 5 积分；不合格的第一次不收
-		if err != nil || credits != 5 {
+		if err != nil || credits != 0 || r.credit.Balance != 1000 || len(r.ledger) != 0 {
 			t.Fatalf("credits=%d err=%v", credits, err)
 		}
 	})
-	t.Run("可用积分不够预估费用时不调模型", func(t *testing.T) {
+	t.Run("平台积分为 0 不影响钱包模型调用", func(t *testing.T) {
 		r := newDramaMemory()
 		r.credit.Balance, r.credit.Frozen = 4, 0
 		e := &dramaTextStreamer{outputs: []string{good}}
 		s, _ := dramaTestService(r, e, nil)
-		_, _, err := s.AdaptSegment(ctx, &r.project, "h3", in)
-		segmentCode(t, err, errcode.ErrInsufficientCredits.Code)
-		if e.calls != 0 {
-			t.Fatal("积分不够不应调用模型")
+		_, credits, err := s.AdaptSegment(ctx, &r.project, "h3", in)
+		if err != nil || credits != 0 || e.calls != 1 || r.credit.Balance != 4 {
+			t.Fatalf("credits=%d calls=%d err=%v account=%+v", credits, e.calls, err, r.credit)
 		}
 	})
 }

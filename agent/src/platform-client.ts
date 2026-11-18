@@ -236,6 +236,10 @@ export interface AgentModel {
   video?: boolean;
   /** 上下文窗口（Token），没配置是 0；画布据此显示上下文用量 */
   context_window: number;
+  /** 上游模型 slug，用于匹配 TokenDance 公开价目 */
+  upstream_model?: string;
+  /** TokenDance 公开实时价目摘要 */
+  price_label?: string;
 }
 
 export interface UndoResult {

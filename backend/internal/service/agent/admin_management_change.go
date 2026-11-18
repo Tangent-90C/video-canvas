@@ -22,7 +22,7 @@ import (
 func managementFields(target, action string) []string {
 	switch target + "/" + action {
 	case "register_settings/update":
-		return []string{"register_enabled", "initial_credits", "default_max_active_tasks", "queue_multiplier", "queue_max_wait_minutes"}
+		return []string{"register_enabled", "default_max_active_tasks", "queue_multiplier", "queue_max_wait_minutes"}
 	case "smtp_settings/update":
 		return []string{"host", "port", "encryption", "username", "from_address", "from_name", "enabled"}
 	case "smtp_settings/test":
@@ -31,8 +31,6 @@ func managementFields(target, action string) []string {
 		return []string{"status", "cancel_active"}
 	case "user/limit":
 		return []string{"max_active_tasks"}
-	case "user/credits":
-		return []string{"mode", "amount", "note"}
 	case "user/role":
 		return []string{"role"}
 	case "storage/update":
@@ -125,8 +123,6 @@ func managementActionLabel(action string) string {
 		return "封禁或启用用户"
 	case "limit":
 		return "设置并发上限"
-	case "credits":
-		return "调整积分"
 	case "role":
 		return "调整角色"
 	case "test":
@@ -203,8 +199,6 @@ func validateManagementInput(target, action string, raw []byte) error {
 		return decodeManagementInput(raw, &model.SetUserStatusReq{})
 	case "user/limit":
 		return decodeManagementInput(raw, &model.SetUserLimitReq{})
-	case "user/credits":
-		return decodeManagementInput(raw, &model.AdjustCreditsReq{})
 	case "user/role":
 		return decodeManagementInput(raw, &model.SetUserRoleReq{})
 	case "storage/update":
@@ -308,7 +302,7 @@ func managementPatch(in AdminChangeInput, action string, fields []string, item *
 			adminItemIssue(item, "invalid", "字段不能为 null："+k)
 		}
 	}
-	for _, required := range map[string][]string{"status": {"status"}, "limit": {"max_active_tasks"}, "role": {"role"}, "credits": {"mode", "amount", "note"}, "test": {"to"}}[action] {
+	for _, required := range map[string][]string{"status": {"status"}, "limit": {"max_active_tasks"}, "role": {"role"}, "test": {"to"}}[action] {
 		if _, ok := values[required]; !ok {
 			adminItemIssue(item, "invalid", "缺少操作字段："+required)
 		}
@@ -333,11 +327,6 @@ func (s *AdminAssistantService) executeManagementUser(ctx context.Context, actor
 		var req model.SetUserLimitReq
 		_ = json.Unmarshal(raw, &req)
 		return d.Users.SetMaxActiveTasks(ctx, actorID, id, req.MaxActiveTasks)
-	case "credits":
-		var req model.AdjustCreditsReq
-		_ = json.Unmarshal(raw, &req)
-		_, err := d.Users.AdjustCredits(ctx, actorID, id, &req)
-		return err
 	case "role":
 		var req model.SetUserRoleReq
 		_ = json.Unmarshal(raw, &req)

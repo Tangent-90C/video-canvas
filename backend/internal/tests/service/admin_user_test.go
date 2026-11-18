@@ -56,7 +56,7 @@ func TestAdminUserService_List(t *testing.T) {
 		{ID: 1, Username: "alice", Role: model.RoleUser, Status: model.UserStatusActive},
 	}
 
-	t.Run("补算可用积分与实际生效的并发上限（单用户覆盖 > 全局设置 > 代码常量）", func(t *testing.T) {
+	t.Run("历史积分字段不参与列表，实际生效并发上限按覆盖 > 全局设置 > 代码常量", func(t *testing.T) {
 		repo := newFakeUserRepo()
 		repo.rows = rows
 		settings := newFakeSettingsRepo()
@@ -65,8 +65,8 @@ func TestAdminUserService_List(t *testing.T) {
 		if err != nil || total != 2 || len(items) != 2 {
 			t.Fatalf("%v %d %d", err, total, len(items))
 		}
-		if items[0].Available != 6 || items[0].EffectiveMaxActiveTasks != 5 {
-			t.Fatalf("carol：可用=10-4，并发取单用户覆盖 5：%+v", items[0])
+		if items[0].Available != 0 || items[0].EffectiveMaxActiveTasks != 5 {
+			t.Fatalf("carol：历史积分不参与，并发取单用户覆盖 5：%+v", items[0])
 		}
 		if items[1].EffectiveMaxActiveTasks != DefaultMaxActiveTasks || items[1].Available != 0 || items[1].HasCreditAccount {
 			t.Fatalf("alice：无覆盖且库里没有设置，取代码常量：%+v", items[1])
@@ -131,8 +131,8 @@ func TestAdminUserService_Get(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if d.Available != 8 || d.EmailVerifiedAt == nil || d.Total != 5 || d.Success != 3 || d.Failed != 1 || d.Last7d != 2 || d.SpentCredits != 12 {
-			t.Fatalf("详情不对：%+v", d)
+		if d.Available != 0 || d.EmailVerifiedAt == nil || d.Total != 5 || d.Success != 3 || d.Failed != 1 || d.Last7d != 2 || d.SpentCredits != 0 {
+			t.Fatalf("详情不对，历史积分应停用：%+v", d)
 		}
 		if len(d.RecentAudits) != 1 || d.RecentAudits[0].ActorName != "root" {
 			t.Fatalf("最近审计不对：%+v", d.RecentAudits)

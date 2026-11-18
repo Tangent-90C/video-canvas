@@ -98,7 +98,7 @@ func adminEnv(f *adminFake) (*AdminAssistantService, *AgentBridge, RunContext) {
 	return svc, bridge, RunContext{RunID: 1, UserID: 1, SessionID: 1, Mode: "admin"}
 }
 func relativeInput(f *adminFake, key string) AdminChangeInput {
-	return AdminChangeInput{Target: "model", Key: key, BaseSHA256: configbody.ModelSHA256(f.bodies[key], f.live[key]), Patch: map[string]any{"pricing": map[string]any{"unit": float64(3)}}, PricingBasis: []PricingBasis{{Path: "pricing.unit", Mode: "relative", From: 2, Pct: 10, Price: 3}}}
+	return AdminChangeInput{Target: "model", Key: key, BaseSHA256: configbody.ModelSHA256(f.bodies[key], f.live[key]), Patch: map[string]any{"label": "测试模型（新）"}}
 }
 func proposeAdmin(t *testing.T, b *AgentBridge, rc RunContext, inputs ...AdminChangeInput) (*ApprovalProposal, AdminChangePayload) {
 	t.Helper()
@@ -114,7 +114,8 @@ func proposeAdmin(t *testing.T, b *AgentBridge, rc RunContext, inputs ...AdminCh
 	return p, body
 }
 
-func TestAdminChangeStatusAndPricing(t *testing.T) {
+func TestAdminChangeHistoricalPricingCases(t *testing.T) {
+	t.Skip("平台积分定价已停用；改价提案由 admin_change_paths_test 验证应被拒绝")
 	for _, tc := range []struct {
 		name, status string
 		change       func(*adminFake, *AdminChangeInput)
@@ -253,7 +254,7 @@ func TestAdminChangeSignatureAndRollback(t *testing.T) {
 	if _, err := b.ExecuteApproval(context.Background(), rc, "admin_change", 9, "tool", *undo); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(f.bodies["a"]), `"unit":2`) {
+	if !strings.Contains(string(f.bodies["a"]), `"label":"测试模型"`) {
 		t.Fatal(string(f.bodies["a"]))
 	}
 }
@@ -274,22 +275,17 @@ func TestAdminReadToolsAndPrepare(t *testing.T) {
 	b := NewAgentBridge(BridgeDeps{Admin: svc, Agent: e.svc, Registry: e.reg, Secrets: fakeSecrets{"channel:ch1": "test-key"}})
 	rc.ModelKey = "claude"
 	setup, err := b.PrepareRun(context.Background(), rc, PrepareRequest{Message: "调整价格", PageContext: json.RawMessage(`{"route":"/admin/ai/channels"}`)})
-	if err != nil || !strings.Contains(setup.FirstMessage, "/admin/ai/channels") || !strings.Contains(setup.FirstMessage, "7.5") || !strings.Contains(setup.SystemPrompt, "小镜") || strings.Contains(setup.FirstMessage, "画布目录") {
+	if err != nil || !strings.Contains(setup.FirstMessage, "/admin/ai/channels") || strings.Contains(setup.FirstMessage, "pricing_settings") || !strings.Contains(setup.SystemPrompt, "小镜") || strings.Contains(setup.FirstMessage, "画布目录") {
 		t.Fatalf("%+v %v", setup, err)
 	}
 	for _, tc := range []struct{ name, args string }{
 		{"admin_list_models", `{"kind":"video","enabled":false,"channel":"main","q":"a"}`},
 		{"admin_get_model", `{"key":"a"}`},
 		{"admin_list_channels", `{}`},
-		{"admin_get_pricing_settings", `{}`},
-		{"admin_quote_preview", `{"key":"a","input":{"prompt":"x","op":"t2v"}}`},
 	} {
 		res, err := b.ExecutePlatformTool(context.Background(), rc, "tool", tc.name, json.RawMessage(tc.args))
 		if err != nil || res.IsError || strings.Contains(res.Content, "SECRET") {
 			t.Fatalf("%s %+v %v", tc.name, res, err)
-		}
-		if tc.name == "admin_quote_preview" && !strings.Contains(res.Content, `"quote_credits":2`) {
-			t.Fatal(res.Content)
 		}
 		if tc.name == "admin_get_model" && !strings.Contains(res.Content, "body_sha256") {
 			t.Fatal(res.Content)

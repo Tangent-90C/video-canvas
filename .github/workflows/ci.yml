@@ -19,7 +19,7 @@ jobs:
     defaults:
       run:
         working-directory: backend
-    # 仓储 / 并发（积分行锁、首个超管、最后超管保护）的集成测试要真实的 Postgres 和 Redis，
+    # 仓储 / 并发（任务名额、首个超管、最后超管保护）的集成测试要真实的 Postgres 和 Redis，
     # 没有这两个服务时它们会 t.Skip，看起来全绿其实没跑
     services:
       postgres:

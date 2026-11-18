@@ -171,7 +171,7 @@ describe("创作台：检查器", () => {
     expect(out).toContain("重试拆解");
   });
 
-  test("脚本：脚本 / 提示词两个标签页、镜头（参考 n）、已修改、方法、配乐音色、出片积分", async () => {
+  test("脚本：脚本 / 提示词两个标签页、镜头（参考 n）、已修改、方法、配乐音色", async () => {
     const r = round();
     const out = await scriptInspector(r, r.scripts[0]);
     expect(out).toContain("提示词");
@@ -180,7 +180,8 @@ describe("创作台：检查器", () => {
     expect(out).toContain("已修改");
     expect(out).toContain("方法：daihuo-fanpai v2");
     expect(out).toContain("轻快鼓点 · 年轻女声");
-    expect(out).toContain("✦120");
+    expect(out).not.toContain("积分");
+    expect(out).not.toContain("✦120");
   });
 
   test("旁白有问题：问题标签、原因、出片禁用", async () => {
@@ -200,7 +201,8 @@ describe("创作台：舞台", () => {
   test("未出片的脚本：标题和出片按钮", async () => {
     const out = await stage(round(), "x1");
     expect(out).toContain("跟拍 · 早上喷的香，中午就散了？");
-    expect(out).toContain("✦120");
+    expect(out).toContain("出片");
+    expect(out).not.toContain("✦120");
   });
 
   test("出片中：按画幅画生成中的画框（扫光），还没拿到进度时进度环转圈", async () => {
@@ -212,7 +214,7 @@ describe("创作台：舞台", () => {
     expect(out).toContain("出片中 0%");
   });
 
-  test("失败的轮次：原因、积分已退回、重试；取消的轮次写已取消", async () => {
+  test("失败的轮次：原因和重试；取消的轮次写已取消", async () => {
     const failed = await stage(
       round({
         status: "failed",
@@ -223,7 +225,7 @@ describe("创作台：舞台", () => {
       null,
     );
     expect(failed).toContain("商品事实卡生成失败");
-    expect(failed).toContain("积分已退回");
+    expect(failed).not.toContain("积分已退回");
     expect(failed).toContain("重试");
     expect(await stage(round({ status: "canceled", scripts: [] }), null)).toContain("已取消");
   });

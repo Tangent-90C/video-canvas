@@ -626,8 +626,7 @@ function EstimateLine({ state }: { state: ReturnType<typeof useSourceEstimate> }
         state.status === "loading" && "opacity-50",
       )}
     >
-      预计约 {episodesLabel(est)} 集 · 研读与规划约{" "}
-      <span className="text-credit">{est.credits.toLocaleString("en-US")}</span> 积分 · 约{" "}
+      预计约 {episodesLabel(est)} 集 · 研读与规划费用按 TokenDance 实际账单 · 约{" "}
       {durationLabel(est.minutes)}
     </span>
   );

@@ -24,7 +24,6 @@ import { SPRING } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useAgentHighlight } from "@/store/agent-highlight";
 import { useAdminStore } from "@/store/admin";
-import { useCreditsStore } from "@/store/credits";
 import {
   adminChangePayload,
   buildApproveDecision,
@@ -50,7 +49,7 @@ type Option = {
   label: string;
   /** 次要说明（选模型时的简介） */
   sub?: string;
-  /** 右侧的积分 */
+  /** 右侧的公开价目或费用说明 */
   meta?: string;
   /** 不能选时，下方给出原因 */
   note?: string;
@@ -165,7 +164,6 @@ export function ApprovalCard({
 }
 
 function DecisionCard({ approval, ctl }: { approval: AgentApprovalDto; ctl: AgentController }) {
-  const credits = useCreditsStore((s) => s.credits);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState("");
@@ -193,8 +191,6 @@ function DecisionCard({ approval, ctl }: { approval: AgentApprovalDto; ctl: Agen
 
   const options: Option[] = [];
   if (gen) {
-    const quote = gen.items.reduce((sum, it, i) => sum + (picks[i] ? it.price * it.count : 0), 0);
-    const short = credits !== null && quote > credits.available;
     const approve = (): DecideAgentApprovalReq => ({
       decision: "approve",
       items: picks.map((on, index) => ({ index, approve: on, count: gen.items[index].count })),
@@ -202,9 +198,8 @@ function DecisionCard({ approval, ctl }: { approval: AgentApprovalDto; ctl: Agen
     options.push({
       key: "approve",
       label: "批准生成",
-      meta: `✦ ${quote}`,
-      disabled: chosen === 0 || short,
-      note: short ? `余额不足（需要 ${quote}，可用 ${credits?.available}）` : undefined,
+      meta: "TokenDance 实际账单",
+      disabled: chosen === 0,
       decide: () => approve(),
     });
     options.push(
@@ -270,16 +265,12 @@ function DecisionCard({ approval, ctl }: { approval: AgentApprovalDto; ctl: Agen
       { key: "reject", label: "不试跑", decide: () => ({ decision: "reject" }) },
     );
   } else if (edit) {
-    // 短剧助手的修改：批准后才写入；提交任务带积分估价，余额不足时不能批准
-    const quote = approval.quote_credits;
-    const short = quote > 0 && credits !== null && quote > credits.available;
+    // 短剧助手的修改：批准后才写入；费用由 TokenPay 钱包按实际账单结算。
     options.push(
       {
         key: "approve",
         label: "批准修改",
-        meta: quote > 0 ? `✦ ${quote}` : undefined,
-        disabled: short,
-        note: short ? `余额不足（需要 ${quote}，可用 ${credits?.available}）` : undefined,
+        disabled: false,
         decide: () => ({ decision: "approve" }),
       },
       { key: "reject", label: "不用了", decide: () => ({ decision: "reject" }) },
@@ -404,7 +395,7 @@ function DecisionCard({ approval, ctl }: { approval: AgentApprovalDto; ctl: Agen
         <Icon className="size-4 shrink-0 text-(--tone)" />
         <span className="min-w-0 flex-1 wrap-anywhere">{approvalTitle(approval)}</span>
         {(gen || edit) && options[0]?.meta && (
-          <span className="text-credit shrink-0 font-medium tabular-nums">{options[0].meta}</span>
+          <span className="text-muted-foreground shrink-0 font-medium">{options[0].meta}</span>
         )}
       </div>
       {reason && <p className="text-muted-foreground -mt-1 text-[12.5px]">{reason}</p>}
@@ -456,9 +447,7 @@ function DecisionCard({ approval, ctl }: { approval: AgentApprovalDto; ctl: Agen
                         {gen.items[i].model_name}
                         {gen.items[i].count > 1 && ` × ${gen.items[i].count}`}
                       </span>
-                      <span className="text-credit shrink-0 tabular-nums">
-                        ✦ {gen.items[i].price * gen.items[i].count}
-                      </span>
+                      <span className="text-muted-foreground shrink-0">按 TokenDance 实际账单</span>
                     </>
                   )}
                   {del?.outputs[i] && <span className="text-destructive shrink-0">含产物</span>}

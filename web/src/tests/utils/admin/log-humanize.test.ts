@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 
 import {
   agoText,
-  creditCell,
   durationCell,
   kindTagView,
   statusDetail,
@@ -11,8 +10,6 @@ import {
   auditSourceTable,
   formatFullTime,
   auditCategory,
-  creditPlain,
-  creditSentence,
   drawerSections,
   failureAdvice,
   humanDuration,
@@ -31,8 +28,6 @@ const NOW = Date.parse("2026-10-18T06:30:00.000Z");
 const base = {
   kind: "video" as const,
   status: "succeeded",
-  credits: 8,
-  charged_credits: 8 as number | null,
   is_test: false,
   error_message: "",
   model_key: "kling-v2",
@@ -68,81 +63,32 @@ describe("任务一句话", () => {
   });
 });
 
-describe("积分一句话", () => {
-  test("成功、失败类、进行中、试跑", () => {
-    expect(creditSentence(base)).toBe("用了 8 积分");
-    expect(creditSentence({ ...base, charged_credits: null })).toBe("用了 8 积分");
-    expect(creditSentence({ ...base, status: "failed", charged_credits: 0 })).toBe("积分已退回");
-    expect(creditSentence({ ...base, status: "expired" })).toBe("积分已退回");
-    expect(creditSentence({ ...base, status: "canceled" })).toBe("积分已退回");
-    expect(creditSentence({ ...base, status: "running", charged_credits: null })).toBe(
-      "已冻结 8 积分",
-    );
-    expect(creditSentence({ ...base, is_test: true })).toBe("不扣积分");
-  });
-
-  test("抽屉里的完整说明", () => {
-    expect(creditPlain(base)).toBe("冻结了 8，最后扣了 8。");
-    expect(creditPlain({ ...base, charged_credits: 6 })).toBe(
-      "冻结了 8，最后扣了 6，多的 2 已退回。",
-    );
-    expect(creditPlain({ ...base, status: "failed", charged_credits: 0 })).toBe(
-      "冻结了 8，已全部退回，没有扣费。",
-    );
-    expect(creditPlain({ ...base, status: "running", charged_credits: null })).toBe(
-      "已冻结 8 积分，完成后按实际扣。",
-    );
-    expect(creditPlain({ ...base, is_test: true })).toBe("试跑任务不扣积分。");
-  });
-});
-
 describe("任务第二行", () => {
-  test("成功：模型 · 积分 · 用时", () => {
-    expect(taskSubline(base, NOW)).toBe("可灵 v2 · 用了 8 积分 · 用时 42 秒");
+  test("成功：模型 · 用时", () => {
+    expect(taskSubline(base, NOW)).toBe("可灵 v2 · 用时 42 秒");
   });
   test("模型展示名缺失回落 key", () => {
     expect(taskSubline({ ...base, model_name: "" }, NOW)).toContain("kling-v2");
   });
-  test("失败：用户文案 · 积分已退回；没有文案只写积分", () => {
-    expect(
-      taskSubline(
-        { ...base, status: "failed", charged_credits: 0, error_message: "平台暂时繁忙" },
-        NOW,
-      ),
-    ).toBe("可灵 v2 · 平台暂时繁忙 · 积分已退回");
-    expect(taskSubline({ ...base, status: "failed", charged_credits: 0 }, NOW)).toBe(
-      "可灵 v2 · 积分已退回",
+  test("失败：有用户文案就写原因，没有文案只写模型", () => {
+    expect(taskSubline({ ...base, status: "failed", error_message: "平台暂时繁忙" }, NOW)).toBe(
+      "可灵 v2 · 平台暂时繁忙",
     );
-    // 文案里已经说了退回，不重复
-    expect(
-      taskSubline(
-        {
-          ...base,
-          status: "failed",
-          charged_credits: 0,
-          error_message: "内容未通过审核，积分已退回。",
-        },
-        NOW,
-      ),
-    ).toBe("可灵 v2 · 内容未通过审核，积分已退回。");
+    expect(taskSubline({ ...base, status: "failed" }, NOW)).toBe("可灵 v2");
   });
   test("超时与取消", () => {
-    expect(taskSubline({ ...base, status: "expired", charged_credits: 0 }, NOW)).toBe(
-      "可灵 v2 · 等太久没出结果 · 积分已退回",
-    );
-    expect(taskSubline({ ...base, status: "canceled", charged_credits: 0 }, NOW)).toBe(
-      "可灵 v2 · 积分已退回",
-    );
+    expect(taskSubline({ ...base, status: "expired" }, NOW)).toBe("可灵 v2 · 等太久没出结果");
+    expect(taskSubline({ ...base, status: "canceled" }, NOW)).toBe("可灵 v2");
   });
   test("进行中：排队中 / 生成中 + 已等多久，用传入的当前时间算", () => {
-    const active = { ...base, charged_credits: null, duration_ms: null };
+    const active = { ...base, duration_ms: null };
     expect(taskSubline({ ...active, status: "pending" }, NOW)).toBe(
       "可灵 v2 · 排队中 · 已等 1 分钟",
     );
     expect(taskSubline({ ...active, status: "running" }, NOW)).toBe("可灵 v2 · 生成中 · 已 1 分钟");
   });
-  test("试跑：不扣积分", () => {
-    expect(taskSubline({ ...base, is_test: true }, NOW)).toBe("可灵 v2 · 不扣积分 · 用时 42 秒");
+  test("试跑：任务展示不涉及平台积分", () => {
+    expect(taskSubline({ ...base, is_test: true }, NOW)).toBe("可灵 v2 · 用时 42 秒");
   });
 });
 
@@ -151,17 +97,17 @@ describe("结论卡", () => {
     expect(taskVerdict(base, NOW)).toEqual({
       tone: "success",
       title: "生成成功",
-      sub: "用时 42 秒 · 用了 8 积分",
+      sub: "用时 42 秒",
       pulse: false,
     });
   });
-  test("失败带用户文案；没有文案写积分已退回", () => {
+  test("失败带用户文案；没有文案写生成失败", () => {
     expect(taskVerdict({ ...base, status: "failed", error_message: "繁忙" }, NOW)).toMatchObject({
       tone: "danger",
       title: "生成失败",
       sub: "繁忙",
     });
-    expect(taskVerdict({ ...base, status: "failed" }, NOW).sub).toBe("积分已退回");
+    expect(taskVerdict({ ...base, status: "failed" }, NOW).sub).toBe("生成失败");
   });
   test("超时、取消、进行中", () => {
     expect(taskVerdict({ ...base, status: "expired" }, NOW)).toMatchObject({
@@ -172,12 +118,10 @@ describe("结论卡", () => {
       tone: "neutral",
       title: "已取消",
     });
-    const running = taskVerdict({ ...base, status: "running", charged_credits: null }, NOW);
+    const running = taskVerdict({ ...base, status: "running" }, NOW);
     expect(running).toMatchObject({ tone: "info", title: "正在生成", pulse: true });
-    expect(running.sub).toBe("已 1 分钟 · 已冻结 8 积分");
-    expect(taskVerdict({ ...base, status: "queued", charged_credits: null }, NOW).title).toBe(
-      "排队中",
-    );
+    expect(running.sub).toBe("已 1 分钟");
+    expect(taskVerdict({ ...base, status: "queued" }, NOW).title).toBe("排队中");
   });
 });
 
@@ -239,7 +183,6 @@ describe("概览卡", () => {
     canceled: 1,
     expired: 2,
     active: 5,
-    charged_credits: 900,
   };
   test("需要关注 = 失败 + 超时 + 取消；成功率 = 成功 ÷ (全部 − 进行中)", () => {
     const o = overviewCards(summary);
@@ -350,31 +293,6 @@ describe("使用记录表格单元格", () => {
     expect(statusDetail({ status: "canceled", error_message: "" })).toBe("");
     expect(statusDetail({ status: "succeeded", error_message: "" })).toBe("");
     expect(statusDetail({ status: "running", error_message: "" })).toBe("");
-  });
-
-  const credit = {
-    status: "succeeded",
-    credits: 8,
-    charged_credits: 6 as number | null,
-    is_test: false,
-  };
-  test("积分格：成功是绿色数字，失败类已退回，进行中已冻结，试跑不扣积分", () => {
-    expect(creditCell(credit)).toEqual({ text: "6", tone: "success" });
-    expect(creditCell({ ...credit, charged_credits: null })).toEqual({
-      text: "8",
-      tone: "success",
-    });
-    expect(creditCell({ ...credit, status: "failed", charged_credits: 0 })).toEqual({
-      text: "已退回",
-      tone: "muted",
-    });
-    expect(creditCell({ ...credit, status: "expired" }).text).toBe("已退回");
-    expect(creditCell({ ...credit, status: "canceled" }).text).toBe("已退回");
-    expect(creditCell({ ...credit, status: "running", charged_credits: null })).toEqual({
-      text: "已冻结 8",
-      tone: "plain",
-    });
-    expect(creditCell({ ...credit, is_test: true })).toEqual({ text: "不扣积分", tone: "muted" });
   });
 
   test("耗时格：完成的写时长，进行中写已多久，没有写破折号", () => {

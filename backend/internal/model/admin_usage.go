@@ -54,19 +54,19 @@ type UsageUser struct {
 // UsageItem 是 GET /admin/usage 的一行。
 type UsageItem struct {
 	ID             uint64    `json:"id"`
-	TaskRef        string    `json:"task_ref"`        // 任务编号：界面展示、日志 task_id 都是它
-	User           UsageUser `json:"user"`            // 所属用户
-	Kind           string    `json:"kind"`            // video / image / audio / text
-	ModelKey       string    `json:"model_key"`       // 模型 key
-	ModelName      string    `json:"model_name"`      // 任务快照里的模型展示名，没有则回落 model_key
-	Status         string    `json:"status"`          // 任务状态
-	Credits        int       `json:"credits"`         // 冻结的积分
-	ChargedCredits *int      `json:"charged_credits"` // 实际扣的积分，未结算为 null
-	ErrorCode      string    `json:"error_code"`      // 统一错误码
-	ErrorMessage   string    `json:"error_message"`   // 给用户看的文案
-	DurationMs     *int64    `json:"duration_ms"`     // 完成时间 - 创建时间（毫秒），进行中为 null
-	IsTest         bool      `json:"is_test"`         // 运营试跑
-	CreatedAt      time.Time `json:"created_at"`      // 创建时间
+	TaskRef        string    `json:"task_ref"`      // 任务编号：界面展示、日志 task_id 都是它
+	User           UsageUser `json:"user"`          // 所属用户
+	Kind           string    `json:"kind"`          // video / image / audio / text
+	ModelKey       string    `json:"model_key"`     // 模型 key
+	ModelName      string    `json:"model_name"`    // 任务快照里的模型展示名，没有则回落 model_key
+	Status         string    `json:"status"`        // 任务状态
+	Credits        int       `json:"-"`             // 历史平台积分字段，不再对外返回
+	ChargedCredits *int      `json:"-"`             // 历史平台积分字段，不再对外返回
+	ErrorCode      string    `json:"error_code"`    // 统一错误码
+	ErrorMessage   string    `json:"error_message"` // 给用户看的文案
+	DurationMs     *int64    `json:"duration_ms"`   // 完成时间 - 创建时间（毫秒），进行中为 null
+	IsTest         bool      `json:"is_test"`       // 运营试跑
+	CreatedAt      time.Time `json:"created_at"`    // 创建时间
 }
 
 // UsageStatusCount 是摘要查询的一行：某状态的任务数与实扣积分。
@@ -83,8 +83,8 @@ type UsageSummary struct {
 	Failed         int   `json:"failed"` // 只含 failed
 	Canceled       int   `json:"canceled"`
 	Expired        int   `json:"expired"`
-	Active         int   `json:"active"`          // pending / queued / running / finalizing
-	ChargedCredits int64 `json:"charged_credits"` // 实扣积分合计
+	Active         int   `json:"active"` // pending / queued / running / finalizing
+	ChargedCredits int64 `json:"-"`      // 历史平台积分字段，不再对外返回
 }
 
 // UsageTask 是详情里的任务基础信息。
@@ -100,8 +100,8 @@ type UsageTask struct {
 	NodeID         string     `json:"node_id"`
 	Status         string     `json:"status"`
 	Progress       *int       `json:"progress"`
-	Credits        int        `json:"credits"`
-	ChargedCredits *int       `json:"charged_credits"`
+	Credits        int        `json:"-"` // 历史平台积分字段，不再对外返回
+	ChargedCredits *int       `json:"-"` // 历史平台积分字段，不再对外返回
 	ErrorCode      string     `json:"error_code"`
 	ErrorMessage   string     `json:"error_message"`
 	IsTest         bool       `json:"is_test"`
@@ -151,6 +151,6 @@ type UsageDetail struct {
 	Outputs []TaskOutput    `json:"outputs"` // 已转存的产物
 	Error   UsageError      `json:"error"`
 	Events  []UsageEvent    `json:"events"` // 状态时间线；上线前的老任务为空数组
-	Ledger  []UsageLedger   `json:"ledger"`
-	Trace   json.RawMessage `json:"trace"` // 仅试跑任务：插件钩子与 HTTP 追踪（已由宿主脱敏），其余为 null
+	Ledger  []UsageLedger   `json:"-"`      // 历史平台积分流水，不再对外返回
+	Trace   json.RawMessage `json:"trace"`  // 仅试跑任务：插件钩子与 HTTP 追踪（已由宿主脱敏），其余为 null
 }

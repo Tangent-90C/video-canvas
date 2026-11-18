@@ -263,7 +263,7 @@ func TestStepServiceConcurrentTrialsRejectedWith68017(t *testing.T) {
 		t.Fatal(err)
 	}
 	svc := service.NewStepAdminService(service.StepAdminDeps{
-		Registry: reg, Repo: repo, Skills: stepfake.NewLibrary(), Models: stepfake.NewModels(), Credits: stepfake.Policy{Initial: 50},
+		Registry: reg, Repo: repo, Skills: stepfake.NewLibrary(), Models: stepfake.NewModels(),
 		Caller: &stepfake.Caller{},
 	})
 	req := &model.CreateStepTrialReq{Candidate: model.StepCandidateReq{Source: "builtin"}, SampleKey: "s1", TextModel: "text-a"}

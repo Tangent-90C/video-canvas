@@ -77,7 +77,7 @@ import {
 import { DuplicateError, NotFoundError, StateConflictError } from "../store/errors.ts";
 import type { AgentStore } from "../store/store.ts";
 import type { Approval, Run, Session } from "../store/types.ts";
-import { AgentError, Err, OVER_BUDGET_CODE } from "./errors.ts";
+import { AgentError, Err } from "./errors.ts";
 import { ACTIVE_STATUSES, isActive, statusEvent } from "./status.ts";
 import {
   Watches,
@@ -106,7 +106,6 @@ const MAX_ERROR_CHARS = 200;
 const SETTLE_POLL_MS = 25;
 const SETTLE_POLL_MAX = 80;
 /** 审批已决定、占用了额度的状态：本轮已花积分里要算上它们的预估 */
-const SPENDING_APPROVAL = ["approved", "partially_approved", "executed", "failed"];
 const WAITING = ["waiting_approval", "waiting_input"];
 /** 可以点「继续」的状态 */
 const RESUMABLE = ["interrupted", "budget_exhausted", "step_limit"];
@@ -797,7 +796,7 @@ export class AgentEngine {
         userId: req.userId,
         status: "queued",
         mode,
-        budgetCredits: req.budgetCredits ?? 0,
+        budgetCredits: 0,
         maxSteps,
       });
     } catch (e) {
@@ -1023,9 +1022,8 @@ export class AgentEngine {
     void a.drive.finally(() => this.#drives.delete(a.drive!));
   }
 
-  /** 运行上下文：身份、模式、模型、选中的节点、本轮预算和已批准的生成占用的积分 */
+  /** 运行上下文：身份、模式、模型、选中的节点。计费由用户在 TokenPay 上游直接完成。 */
   #rc(run: Run, sess: Session, selection: string[]): RunContext {
-    const extras = this.#extras(run.id);
     return {
       run_id: run.id,
       user_id: run.userId,
@@ -1034,8 +1032,6 @@ export class AgentEngine {
       mode: run.mode,
       model_key: sess.modelKey,
       selection,
-      ...(run.budgetCredits ? { budget_credits: run.budgetCredits } : {}),
-      ...(extras ? { spent_extra: extras } : {}),
     };
   }
 
@@ -1162,10 +1158,7 @@ export class AgentEngine {
     if (cur.status !== "running") return;
     let fields: Parameters<AgentStore["updateRunIf"]>[2];
     let extra: Record<string, unknown> = { error: "" };
-    if (a.modelError?.code === OVER_BUDGET_CODE) {
-      fields = { status: "budget_exhausted", endedAt: this.#now() };
-      extra = {};
-    } else if (a.modelError || fallbackError) {
+    if (a.modelError || fallbackError) {
       const msg = truncate(
         a.modelError?.message || fallbackError || "模型调用失败",
         MAX_ERROR_CHARS,
@@ -1279,11 +1272,10 @@ export class AgentEngine {
       if (e instanceof StateConflictError) throw Err.approvalGone();
       throw e;
     }
-    // 运行回到 running（追加的预算一并生效）
+    // 运行回到 running；历史客户端即使仍传 add_budget，也不再改变任何积分状态。
     try {
       store.updateRunIf(run.id, WAITING, {
         status: "running",
-        ...(req.add_budget && !rejected && { budgetCredits: run.budgetCredits + req.add_budget }),
       });
     } catch (e) {
       if (e instanceof StateConflictError) throw Err.approvalGone();
@@ -1292,16 +1284,6 @@ export class AgentEngine {
     const ev = { id: run.id, userId, sessionId: run.sessionId, canvasId: run.canvasId };
     // 只靠 run.status 事件驱动的客户端，决定之后要靠它才知道运行不再等待了
     this.#emit(ev, "run.status", statusEvent("running"));
-    // 被批准的生成先记入已花积分，防止同一轮反复批准超预算
-    if (outcome.quote_credits > 0 && !rejected) {
-      store.addRunUsage(run.id, 0, outcome.quote_credits);
-      const cur = store.getRun(userId, run.id);
-      this.#emit(ev, "run.usage", {
-        spent_credits: cur.spentCredits,
-        context_tokens: cur.contextTokens,
-      });
-    }
-
     // 执行批准的内容；失败不让这次请求失败（决定已生效），模型会从结果里知道
     const fresh = store.getRun(userId, run.id);
     if (approval.kind === "admin_test_run" && !rejected) {
@@ -1457,14 +1439,12 @@ export class AgentEngine {
 
   // ---- 继续 ----
 
-  /** 让被中断、额度用完或步数用尽的运行继续，可以追加预算 */
+  /** 让被中断或步数用尽的运行继续；历史 addBudget 参数仅为旧客户端兼容，不再生效。 */
   async resume(userId: string, runId: string, addBudget = 0): Promise<Run> {
     const store = this.#o.store;
     const run = this.#run(userId, runId);
     if (!RESUMABLE.includes(run.status)) throw Err.state();
-    // 额度用完时必须追加，否则一继续又会立刻用尽
-    if (run.status === "budget_exhausted" && addBudget <= 0)
-      throw Err.invalidParams("预算已用尽，请追加预算");
+    void addBudget;
     const sess = this.#session(userId, run.sessionId);
     if (!sess.conversationId) throw Err.state();
     // 回到 queued 重新占用画布；步数用尽时上限也放宽一轮，否则继续后马上又到上限
@@ -1475,7 +1455,6 @@ export class AgentEngine {
         errorCode: "",
         errorMessage: "",
         endedAt: null,
-        ...(addBudget > 0 && { budgetCredits: run.budgetCredits + addBudget }),
         ...(run.status === "step_limit" && {
           maxSteps: run.maxSteps + (this.#o.defaultMaxSteps ?? DEFAULT_MAX_STEPS),
         }),
@@ -2191,12 +2170,12 @@ export class AgentEngine {
     });
   }
 
-  /** 摘要调用也要计费：结算出来有扣费就推一条 run.usage（上下文大小只看对话调用，摘要不改它） */
+  /** 摘要调用只更新上下文用量；平台积分字段保持兼容值 0。 */
   async #settleSummaries(a: Active): Promise<void> {
     for (const callId of a.summaryCallIds.splice(0)) {
       const u = await this.#settled(a, callId);
-      if (!u?.call || u.call.charged <= 0) continue;
-      const spent = u.spent_credits + this.#extras(a.run.id);
+      if (!u?.call) continue;
+      const spent = 0;
       this.#o.store.setRunUsage(a.run.id, { spentCredits: spent });
       this.#emit(this.#ev(a), "run.usage", {
         spent_credits: spent,
@@ -2212,17 +2191,17 @@ export class AgentEngine {
     this.#answered.set(convId, (this.#answered.get(convId) ?? 0) + 1);
     this.#dropDeltas.get(convId)?.();
     const callId = a.callIds.shift();
-    let credits: { charged: number; estimated: boolean } | undefined;
+    let settled = false;
     if (callId) {
       const u = await this.#settled(a, callId);
       if (u?.call) {
-        credits = { charged: u.call.charged, estimated: u.call.estimated };
+        settled = true;
         this.#o.store.setRunUsage(a.run.id, {
-          spentCredits: u.spent_credits + this.#extras(a.run.id),
+          spentCredits: 0,
           contextTokens: u.context_tokens,
         });
         this.#emit(this.#ev(a), "run.usage", {
-          spent_credits: u.spent_credits + this.#extras(a.run.id),
+          spent_credits: 0,
           context_tokens: u.context_tokens,
         });
       }
@@ -2249,7 +2228,7 @@ export class AgentEngine {
       partial:
         msg.stopReason === "aborted" || msg.stopReason === "error" || msg.stopReason === "length",
       ...(thinking && { thinking }),
-      ...(credits && { credits: credits.charged, estimated: credits.estimated }),
+      ...(settled && { credits: 0, estimated: false }),
     });
   }
 
@@ -2266,14 +2245,6 @@ export class AgentEngine {
       await sleep(SETTLE_POLL_MS);
     }
     return undefined;
-  }
-
-  /** 已批准的生成占用的积分（模型调用的部分由 Go 按调用记录累加，不在这里） */
-  #extras(runId: string): number {
-    return this.#o.store
-      .listApprovals(runId)
-      .filter((x) => SPENDING_APPROVAL.includes(x.status))
-      .reduce((n, x) => n + x.quoteCredits, 0);
   }
 
   // ---- 文字增量 ----

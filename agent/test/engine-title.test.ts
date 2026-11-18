@@ -142,7 +142,7 @@ test("命名失败后同一个进程里不会每轮都再试一次（每次都�
     WITH_TITLE,
   ));
 
-test("命名调用照常计费：积分算进本轮，并推 run.usage", () =>
+test("命名调用仍可观测，但平台积分字段保持 0", () =>
   withEngine(
     { turns: [{ text: "好" }], title: "标题", creditsPerCall: 2 },
     async (e) => {
@@ -152,7 +152,7 @@ test("命名调用照常计费：积分算进本轮，并推 run.usage", () =>
         e.go.callLog.map((c) => c.purpose),
         ["main", "title"],
       );
-      assert.equal(e.run(run.id).spentCredits, 4, "对话 2 + 命名 2");
+      assert.equal(e.run(run.id).spentCredits, 0);
       assert.ok(
         e.persisted("run.usage").length + e.events.filter((x) => x.type === "run.usage").length > 0,
       );

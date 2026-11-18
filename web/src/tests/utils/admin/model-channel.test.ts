@@ -69,6 +69,7 @@ const channel = (over: Partial<ChannelView> = {}): ChannelView => ({
   rate_limit: null,
   sort: 10,
   enabled: true,
+  wallet_enabled: true,
   secret_set: true,
   secret_key_set: false,
   updated_by: 0,
@@ -110,13 +111,13 @@ describe("resolveModelChannel", () => {
     expect(info.authLabel).toContain("自行签名");
   });
 
-  test("协议版本需要鉴权（非 none）而渠道没设 Key：keyMissing 为 true", () => {
+  test("钱包渠道的产品方 Key 只用于同步目录，模型运行不要求它", () => {
     const info = resolveModelChannel(
       body("main", "video", kling),
       [channel({ secret_set: false })],
       plugins,
     );
-    expect(info.keyMissing).toBe(true);
+    expect(info.keyMissing).toBe(false);
   });
 
   test("鉴权为 none 的协议不需要 Key", () => {
@@ -129,13 +130,13 @@ describe("resolveModelChannel", () => {
     expect(info.keyMissing).toBe(false);
   });
 
-  test("Agent 模型只看渠道 Key，不需要协议", () => {
+  test("Agent 钱包模型不需要协议，也不要求产品方渠道 Key", () => {
     const missing = resolveModelChannel(
       body("main", "agent"),
       [channel({ secret_set: false })],
       plugins,
     );
-    expect(missing.keyMissing).toBe(true);
+    expect(missing.keyMissing).toBe(false);
     expect(missing.protocolProblem).toBeNull();
     expect(missing.authType).toBeNull();
     expect(resolveModelChannel(body("main", "agent"), [channel()], plugins).keyMissing).toBe(false);
@@ -177,7 +178,7 @@ describe("publishBlockReason（镜像后端的启用检查链）", () => {
   const info = (b: unknown, channels: ChannelView[] = [channel()]) =>
     resolveModelChannel(b, channels, plugins);
 
-  test("一切正常返回 null；Agent 渠道有 Key 也正常", () => {
+  test("一切正常返回 null；Agent 钱包模型也正常", () => {
     expect(publishBlockReason(info(body("main", "video", kling)), true)).toBeNull();
     expect(publishBlockReason(info(body("main", "agent")), true)).toBeNull();
   });
@@ -195,13 +196,12 @@ describe("publishBlockReason（镜像后端的启用检查链）", () => {
     expect(publishBlockReason(info(body("main", "agent", kling)), true)).toContain("Agent");
   });
 
-  test("Agent 模型渠道没有 Key：写明渠道名与去处", () => {
+  test("非 TokenPay 钱包渠道不能启用", () => {
     const reason = publishBlockReason(
-      info(body("main", "agent"), [channel({ secret_set: false })]),
+      info(body("main", "video", kling), [channel({ wallet_enabled: false })]),
       true,
     );
-    expect(reason).toContain("主渠道");
-    expect(reason).toContain("Key");
+    expect(reason).toContain("TokenPay");
   });
 
   test("协议层面的问题原样给出，并排在 Key 之前", () => {
@@ -215,15 +215,6 @@ describe("publishBlockReason（镜像后端的启用检查链）", () => {
         true,
       ),
     ).toContain("协议设置不合法");
-  });
-
-  test("协议需要鉴权而渠道没设 Key：带渠道名", () => {
-    const reason = publishBlockReason(
-      info(body("main", "video", kling), [channel({ secret_set: false })]),
-      true,
-    );
-    expect(reason).toContain("Key");
-    expect(reason).toContain("主渠道");
   });
 
   test("清单还没加载好时不下结论", () => {

@@ -188,7 +188,7 @@ const STATUS_VIEW: Record<string, RunStatusView> = {
   timeout: { label: "超时", tone: "danger" },
   interrupted: { label: "已中断", tone: "danger" },
   step_limit: { label: "步数用尽", tone: "warning" },
-  budget_exhausted: { label: "预算用尽", tone: "warning" },
+  budget_exhausted: { label: "历史额度状态", tone: "warning" },
   canceled: { label: "已停止", tone: "neutral" },
   waiting_approval: { label: "等待审批", tone: "info" },
   waiting_input: { label: "等待回答", tone: "info" },
@@ -355,14 +355,6 @@ export function buildVersionCards(groups: AgentStatsGroup[]): VersionCardView[] 
  */
 export function formatRate(rate: number): string {
   return `${(rate * 100).toFixed(1)}%`;
-}
-
-/**
- * 平均积分显示成一位小数
- * @param credits 平均积分
- */
-export function formatCredits(credits: number): string {
-  return credits.toFixed(1);
 }
 
 // ---------------------------------------------------------------- 列表行徽标

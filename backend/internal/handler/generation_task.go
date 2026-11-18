@@ -8,7 +8,7 @@ import (
 	"video-canvas/internal/service"
 )
 
-// GenerationTaskHandler 生成任务与积分的 HTTP 接口。
+// GenerationTaskHandler 生成任务的 HTTP 接口。
 type GenerationTaskHandler struct {
 	svc *service.GenerationTaskService
 }
@@ -59,7 +59,7 @@ func (h *GenerationTaskHandler) List(c *gin.Context) {
 	response.OK(c, views)
 }
 
-// 软取消任务：非终态才能取消，取消后退回冻结的积分
+// Cancel 软取消任务：非终态才能取消；费用以 TokenDance 实际账单为准。
 func (h *GenerationTaskHandler) Cancel(c *gin.Context) {
 	id, ok := pathID(c)
 	if !ok {
@@ -71,14 +71,4 @@ func (h *GenerationTaskHandler) Cancel(c *gin.Context) {
 		return
 	}
 	response.OK(c, view)
-}
-
-// 当前用户的积分：{balance, frozen, available}
-func (h *GenerationTaskHandler) Credits(c *gin.Context) {
-	credits, err := h.svc.GetCredits(c.Request.Context(), currentUserID(c))
-	if err != nil {
-		response.Fail(c, err)
-		return
-	}
-	response.OK(c, credits)
 }

@@ -238,7 +238,7 @@ func TestDramaContextGate(t *testing.T) {
 	dramaCheckCode(t, err, 67022)
 }
 
-func TestDramaPlanningPauseRangeAndCredits(t *testing.T) {
+func TestDramaPlanningRangeIgnoresPlatformCredits(t *testing.T) {
 	r := newDramaMemory()
 	r.project.Phase = "done"
 	r.project.UnitsTotal = 2
@@ -248,12 +248,10 @@ func TestDramaPlanningPauseRangeAndCredits(t *testing.T) {
 	r.credit.Balance = 0
 	s, _ := dramaTestService(r, &dramaTextStreamer{}, nil)
 	v, err := s.Planning(context.Background(), 7, 1, "range", &model.DramaPlanningReq{RangeEnd: 2})
-	if err != nil || v.Phase != "paused" || v.PauseCode != "credits" || v.RangeEnd != 2 {
+	if err != nil || v.Phase != "running" || v.PauseCode != "" || v.RangeEnd != 2 {
 		t.Fatalf("%+v %v", v, err)
 	}
-	r.credit.Balance = 100
-	v, err = s.Planning(context.Background(), 7, 1, "resume", &model.DramaPlanningReq{})
-	if err != nil || v.Phase != "running" || len(r.jobs) != 1 {
+	if len(r.jobs) != 1 {
 		t.Fatalf("%+v %v", v, err)
 	}
 	v, err = s.Planning(context.Background(), 7, 1, "pause", &model.DramaPlanningReq{})

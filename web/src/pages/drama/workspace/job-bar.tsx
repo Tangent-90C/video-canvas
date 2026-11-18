@@ -278,7 +278,7 @@ function FailedRow({ job }: { job: DramaJob }) {
         </Button>
       </div>
       <div className="text-destructive flex flex-wrap items-center gap-2 pr-2.5 pb-2 pl-9 text-xs">
-        <span className="min-w-0 flex-1">{jobFailureMessage(job)} · 失败不扣积分</span>
+        <span className="min-w-0 flex-1">{jobFailureMessage(job)}</span>
         <Button variant="outline" size="xs" disabled={busy} onClick={() => void retry()}>
           <RotateCw />
           重试

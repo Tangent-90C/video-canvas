@@ -12,7 +12,6 @@ import { useDramaSegmentsStore } from "@/store/drama-segments";
 import { storyboardStart } from "@/utils/drama/episode-cards";
 
 import { useWorkspace } from "./context";
-import { useEstimate } from "./use-estimate";
 
 /**
  * 生成 / 重新生成一集的分镜脚本：
@@ -78,44 +77,28 @@ export function useStoryboardStart(maxSeconds: number) {
   return { start, pending };
 }
 
-/** 「生成脚本 · n 积分」主按钮：估价随所选视频模型的时长上限变化 */
+/** 「生成脚本」主按钮；费用由用户 TokenPay 钱包按实际调用结算 */
 export function StoryboardButton({
-  episode,
   label,
   disabledReason,
-  maxSeconds,
   busy,
   onStart,
 }: {
-  episode: EpisodeSummary;
   label: string;
   disabledReason: string | null;
-  maxSeconds: number;
   busy: boolean;
   onStart: () => void;
 }) {
-  const { drama } = useWorkspace();
-  const estimate = useEstimate(drama.id, {
-    step: "storyboard",
-    episodes: [episode.no],
-    maxSeconds,
-  });
   return (
     <Button
       variant="outline"
       size="sm"
       disabled={!!disabledReason || busy}
-      title={disabledReason ?? (estimate.status === "error" ? estimate.message : undefined)}
+      title={disabledReason ?? "费用按 TokenDance 实际账单"}
       onClick={onStart}
     >
       {busy && <Loader2 className="animate-spin" />}
       {label}
-      {estimate.status === "ready" && (
-        <>
-          <span aria-hidden>·</span>
-          <span className="text-credit tabular-nums">{estimate.credits}</span>
-        </>
-      )}
     </Button>
   );
 }

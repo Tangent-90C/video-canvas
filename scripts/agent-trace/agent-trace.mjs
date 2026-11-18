@@ -541,13 +541,13 @@ async function cmdCompare(ctx, flags) {
   })
   const verdictCol = conclude(rows)
 
-  const header = ['分组', '运行数', '反馈率', '点踩率', '撤销率', '失败结束率', '中位耗时(s)', '中位步数', '平均积分', '已判定数', 'AI 判定失败率', '结论']
+  const header = ['分组', '运行数', '反馈率', '点踩率', '撤销率', '失败结束率', '中位耗时(s)', '中位步数', '已判定数', 'AI 判定失败率', '结论']
   const lines = [`| ${header.join(' | ')} |`, `|${header.map(() => ' --- ').join('|')}|`]
   rows.forEach((r, i) => {
     lines.push(
       `| ${[
         r.key, r.n, pct(r.feedback_rate), pct(r.down_rate), pct(r.undo_rate), pct(r.fail_end_rate),
-        num(r.median_duration_ms / 1000), num(r.median_steps), num(r.avg_credits, 2),
+        num(r.median_duration_ms / 1000), num(r.median_steps),
         r.judged, pct(r.ai_fail_rate), verdictCol[i],
       ].join(' | ')} |`,
     )

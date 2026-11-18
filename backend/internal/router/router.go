@@ -14,7 +14,7 @@ import (
 type Handlers struct {
 	Health         *handler.HealthHandler
 	User           *handler.UserHandler
-	Me             *handler.MeHandler     // 个人中心：资料、头像、改密码、统计、热力图、积分流水
+	Me             *handler.MeHandler     // 个人中心：资料、头像、改密码、统计、热力图
 	Wallet         *handler.WalletHandler // 用户 TokenPay 钱包：发起授权、授权码交换、连接状态、断开
 	CanvasProject  *handler.CanvasProjectHandler
 	CanvasTransfer *handler.CanvasTransferHandler // 画布导出为文档、从文档导入为新画布
@@ -22,16 +22,15 @@ type Handlers struct {
 	Conversation   *handler.ConversationHandler   // 首页生成：对话与生成记录
 	// AgentProxy：画布 Agent 的会话、运行、审批、评价由独立的 Agent 服务负责，这些接口只校验登录态后反向代理过去
 	// （路径、方法、信封不变）；技能目录等仍由 Go 自己处理。为 nil 表示没有启用 Agent，这些接口统一返回「Agent 暂不可用」。
-	AgentProxy      *agenthandler.AgentProxyHandler
-	PricingSettings *handler.PricingSettingsHandler
-	AgentSkill      *agenthandler.SkillHandler // Agent 技能：用户端目录 + 管理端导入 / 版本 / 启停
+	AgentProxy *agenthandler.AgentProxyHandler
+	AgentSkill *agenthandler.SkillHandler // Agent 技能：用户端目录 + 管理端导入 / 版本 / 启停
 
 	// Agent 运行观测：后台只读查看与导出、分析令牌
 	AgentObserve  *agenthandler.AgentObserveHandler // 后台运行记录（只读）和分析令牌管理
 	AnalysisToken middleware.TokenAuthenticator     // 校验分析令牌，本地 agent-trace 用它只读拉取运行记录
 
 	// 长任务生成相关
-	GenerationTask *handler.GenerationTaskHandler      // 任务提交 / 对账 / 取消 / 积分 / webhook
+	GenerationTask *handler.GenerationTaskHandler      // 任务提交 / 对账 / 取消
 	WS             *handler.WSHandler                  // 用户级 WebSocket 推送
 	Asset          *handler.AssetHandler               // 素材上传与查询
 	AssetLibrary   *handler.AssetLibraryHandler        // 资产库：文件夹、库归属、生成历史
@@ -59,8 +58,6 @@ type Handlers struct {
 	AdminSystem    *handler.AdminSystemHandler         // 版本面板：当前版本、检查更新、迁移状态
 	Showcase       *handler.ShowcaseHandler            // 登录页展示：公开读取 + 后台配置
 	Announcement   *handler.AnnouncementHandler        // 首页公告：用户端读取 + 后台管理
-	Payment        *handler.PaymentHandler             // 积分商城：商品、下单、订单状态；渠道回调（无需登录）
-	AdminPayment   *handler.PaymentAdminHandler        // 后台支付管理：全局设置、渠道、商品、订单
 	AdminRole      middleware.RoleLookup               // 管理接口的角色查询（与 UserState 同一套：Redis 缓存 + 变更时主动失效）
 	UserState      middleware.UserStateLookup          // 登录后分组的用户状态查询（停用 / token_version）
 }
@@ -88,7 +85,6 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		v1.GET("/showcase", h.Showcase.Public) // 登录页背景轮播：未登录即可读取，只暴露播放所需字段
 
 		// 支付渠道的异步通知：渠道服务器调用，不带 JWT，身份由渠道的签名保证；GET（易支付）和 POST（其余）都要接
-		v1.Any("/payment/notify/:provider", h.Payment.Notify)
 
 		// 无需 JWT：身份由一次性 ticket 决定（浏览器 WebSocket 不能带请求头）
 		v1.GET("/ws", h.WS.Connect)
@@ -110,8 +106,7 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		me.DELETE("/avatar", h.Me.DeleteAvatar)
 		me.PUT("/password", h.Me.ChangePassword)
 		me.GET("/stats", h.Me.Stats)
-		me.GET("/activity", h.Me.Activity)     // ?tz=Asia/Shanghai&year=2026
-		me.GET("/credits/ledger", h.Me.Ledger) // ?type=all|task|admin&page=1&page_size=20
+		me.GET("/activity", h.Me.Activity) // ?tz=Asia/Shanghai&year=2026
 
 		// 画布操作
 		canvas := auth.Group("/canvas")
@@ -158,15 +153,6 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		agent.DELETE("/runs/:rid/feedback", fwd) // 取消评价
 		agent.POST("/approvals/:aid/decision", fwd)
 
-		// 积分商城：只操作当前用户自己的订单；pending 是静态段，优先于 /orders/:no
-		pay := auth.Group("/payment")
-		pay.GET("/store", h.Payment.Store)
-		pay.POST("/orders", h.Payment.CreateOrder) // 201
-		pay.GET("/orders/pending", h.Payment.PendingOrder)
-		pay.GET("/orders/:no", h.Payment.GetOrder)
-		pay.POST("/orders/:no/check", h.Payment.CheckOrder)
-		pay.POST("/orders/:no/close", h.Payment.CancelOrder)
-
 		// 长任务生成
 		auth.POST("/ws/ticket", h.WS.IssueTicket)
 		tasks := auth.Group("/generation-tasks")
@@ -174,7 +160,6 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		tasks.GET("", h.GenerationTask.List)    // ?ids=1,2,3 或 ?status=active 或 ?node_id=&canvas_project_id=（节点的生成记录）
 		tasks.GET("/:id", h.GenerationTask.Get)
 		tasks.POST("/:id/cancel", h.GenerationTask.Cancel)
-		auth.GET("/credits", h.GenerationTask.Credits)
 		auth.GET("/models", h.AIModel.List)
 
 		// 用户 TokenPay 钱包：start 返回授权页地址（前端整页跳转），connect 用回调带回的一次性授权码换 Key。
@@ -416,13 +401,10 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		adminUsers := auth.Group("/admin/users", middleware.RequireAdmin(h.AdminRole))
 		adminUsers.GET("", h.AdminUser.List)
 		// 批量接口的 batch 是静态段，与 /:id/... 在同一层；Gin 优先匹配静态段，不冲突（router 测试覆盖）
-		adminUsers.POST("/batch/credits", h.AdminUser.BatchCredits)
 		adminUsers.PUT("/batch/status", h.AdminUser.BatchStatus)
 		adminUsers.GET("/:id", h.AdminUser.Get)
 		adminUsers.GET("/:id/tasks", h.AdminUser.Tasks)
-		adminUsers.GET("/:id/ledger", h.AdminUser.Ledger)
 		adminUsers.GET("/:id/logins", h.AdminUser.Logins)
-		adminUsers.POST("/:id/credits", h.AdminUser.AdjustCredits)
 		adminUsers.PUT("/:id/limits", h.AdminUser.SetLimit)
 		adminUsers.PUT("/:id/status", h.AdminUser.SetStatus)
 		adminUsers.PUT("/:id/role", superOnly, h.AdminUser.SetRole)                  // 仅 super_admin
@@ -454,33 +436,11 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		assistant := auth.Group("/admin/assistant", middleware.RequireAdmin(h.AdminRole))
 		assistant.GET("/sessions", agentRoute(h.AgentProxy))
 		assistant.POST("/sessions", agentRoute(h.AgentProxy))
-		settings.GET("/pricing", h.PricingSettings.Get)
-		settings.PUT("/pricing", h.PricingSettings.Update)
 		settings.PUT("/register", superOnly, h.AdminSettings.UpdateRegister)
 		settings.GET("/smtp", h.AdminSettings.GetSMTP)
 		settings.PUT("/smtp", superOnly, h.AdminSettings.UpdateSMTP)
 		settings.PUT("/smtp/password", superOnly, h.AdminSettings.SetSMTPPassword)
 		settings.POST("/smtp/test", superOnly, h.AdminSettings.TestSMTP)
-
-		// 支付管理：读与商品、订单操作 = admin 或 super_admin；全局设置与渠道配置的写（含校验、启用、停用）= 仅 super_admin。
-		// 渠道密钥只写不读，响应里只有「是否已设置」。sort 是静态段，与 /:id 同层，Gin 优先匹配静态段。
-		adminPay := auth.Group("/admin/payment", middleware.RequireAdmin(h.AdminRole))
-		adminPay.GET("/settings", h.AdminPayment.GetSettings)
-		adminPay.PUT("/settings", superOnly, h.AdminPayment.UpdateSettings)
-		adminPay.GET("/channels", h.AdminPayment.ListChannels)
-		adminPay.PUT("/channels/:provider", superOnly, h.AdminPayment.UpdateChannel)
-		adminPay.POST("/channels/:provider/validate", superOnly, h.AdminPayment.ValidateChannel)
-		adminPay.POST("/channels/:provider/enable", superOnly, h.AdminPayment.EnableChannel)
-		adminPay.POST("/channels/:provider/disable", superOnly, h.AdminPayment.DisableChannel)
-		adminPay.GET("/products", h.AdminPayment.ListProducts)
-		adminPay.POST("/products", h.AdminPayment.CreateProduct)
-		adminPay.PUT("/products/sort", h.AdminPayment.SortProducts)
-		adminPay.PUT("/products/:id", h.AdminPayment.UpdateProduct)
-		adminPay.DELETE("/products/:id", h.AdminPayment.DeleteProduct)
-		adminPay.GET("/orders", h.AdminPayment.ListOrders)
-		adminPay.GET("/orders/:no", h.AdminPayment.GetOrder)
-		adminPay.POST("/orders/:no/query", h.AdminPayment.QueryOrder)
-		adminPay.POST("/orders/:no/close", h.AdminPayment.CloseOrder)
 
 		// 登录页展示（背景轮播视频）：读 = admin 或 super_admin；写 = 仅 super_admin，全部写操作进审计。
 		// order 是静态段，与 items/:id 不在同一层，不冲突。

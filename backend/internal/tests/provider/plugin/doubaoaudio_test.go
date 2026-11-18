@@ -54,7 +54,7 @@ func newDoubaoaudioEnv(t *testing.T) *doubaoaudioEnv {
 func (e *doubaoaudioEnv) snapshot(baseURL, upstream string) *provider.Snapshot {
 	return &provider.Snapshot{
 		Model:   provider.ModelSnapshot{Key: "m", Kind: "audio", UpstreamModel: upstream, Capabilities: promptCaps},
-		Channel: provider.ChannelSnapshot{Key: "doubao-audio-main", PluginKey: "doubao-audio", PluginVersionID: 1, BaseURL: baseURL},
+		Channel: provider.ChannelSnapshot{Wallet: true, Key: "doubao-audio-main", PluginKey: "doubao-audio", PluginVersionID: 1, BaseURL: baseURL},
 		Plugin:  provider.PluginSnapshot{Key: "doubao-audio", Version: e.meta.Version, SHA256: e.sha, Meta: *e.meta},
 
 		ModelRevisionID: 1,

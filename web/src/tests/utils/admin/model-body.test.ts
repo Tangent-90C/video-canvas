@@ -3,8 +3,6 @@ import { describe, expect, test } from "bun:test";
 import {
   checkDeadline,
   checkIdleTimeout,
-  describeDefaultPrice,
-  patchPricing,
   readModelApiFormat,
   readModelBool,
   readModelChannel,
@@ -12,7 +10,6 @@ import {
   readModelNumber,
   readModelPathPrefix,
   readModelString,
-  withDefaultPrice,
   withModelChannel,
   withModelApiFormat,
   withModelField,
@@ -31,14 +28,6 @@ const body = {
   params: { b: 1, a: 2 },
   capabilities: { ops: [], refs: {}, prompt: {}, params: { b: {}, a: {} } },
 };
-
-test("未定价草稿显示待定价，设置正式售价后移除待确认标识", () => {
-  const draft = { pricing: { billing: "per_call" as const, pending: true } };
-  expect(describeDefaultPrice(draft.pricing)).toBe("待定价");
-  expect(withDefaultPrice(draft, 5)?.pricing).toEqual({ billing: "per_call", unit: 5 });
-  expect(patchPricing(draft.pricing, { cost: { on: true, unit: 2 } }).pending).toBe(true);
-  expect(draft.pricing.pending).toBe(true);
-});
 
 describe("读取正文字段", () => {
   test("kind 与 channels[0]；缺失返回空串", () => {
@@ -136,35 +125,6 @@ describe("checkIdleTimeout", () => {
   test("错误格式给出提示，范围 10s – 10m 之外也提示", () => {
     for (const bad of ["30", "m", "两分钟", "-5s"]) expect(checkIdleTimeout(bad)).toContain("格式");
     for (const out of ["5s", "9s", "11m", "1h"]) expect(checkIdleTimeout(out)).toContain("10s");
-  });
-});
-
-describe("默认价格读写", () => {
-  test("按次改 unit、按秒改 per_second，其余定价与键顺序不动；Token 计费不适用", () => {
-    const perCall = { key: "a", pricing: { billing: "per_call", unit: 4, tiers: [] } };
-    expect(withDefaultPrice(perCall, 9)?.pricing).toEqual({
-      billing: "per_call",
-      unit: 9,
-      tiers: [],
-    });
-    const perSecond = { pricing: { billing: "per_second", per_second: 2 } };
-    expect(withDefaultPrice(perSecond, 3)?.pricing).toEqual({
-      billing: "per_second",
-      per_second: 3,
-    });
-    expect(
-      withDefaultPrice({ pricing: { billing: "token", token: { in: 1, out: 1 } } }, 3),
-    ).toBeNull();
-    expect(withDefaultPrice({}, 3)).toBeNull();
-  });
-
-  test("describeDefaultPrice", () => {
-    expect(describeDefaultPrice({ billing: "per_call", unit: 4 })).toBe("4 积分 / 次");
-    expect(describeDefaultPrice({ billing: "per_second", per_second: 2 })).toBe("2 积分 / 秒");
-    expect(describeDefaultPrice({ billing: "token", token: { in: 2, out: 8 } })).toContain(
-      "输入 2",
-    );
-    expect(describeDefaultPrice(null)).toBe("-");
   });
 });
 

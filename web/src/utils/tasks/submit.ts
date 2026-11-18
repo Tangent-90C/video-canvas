@@ -4,23 +4,14 @@ import { readOutputs } from "@/utils/canvas/outputs";
 
 /** 提交失败后要在提交处就地告诉用户的话 */
 export type SubmitErrorInfo = {
-  kind:
-    | "credits"
-    | "limit"
-    | "unavailable"
-    | "invalid"
-    | "asset"
-    | "wallet"
-    | "network"
-    | "unknown";
+  kind: "limit" | "unavailable" | "invalid" | "asset" | "wallet" | "network" | "unknown";
   message: string;
 };
 
 type ErrorLike = { code?: unknown; status?: unknown; message?: unknown };
 
-/** 后端错误码：积分不足 / 排队任务已达上限（原“并发已满”，现在超出并发的任务会排队，只有排队也满了才拒绝）/ 模型不可用 / 参数不合法 / 素材不存在 / 钱包未连接 */
+/** 后端错误码：排队任务已达上限 / 模型不可用 / 参数不合法 / 素材不存在 / 钱包未连接 */
 export const SUBMIT_ERROR_CODE = {
-  insufficientCredits: 40001,
   tooManyTasks: 40002,
   modelUnavailable: 40003,
   invalidParam: 40006,
@@ -35,8 +26,6 @@ export function describeSubmitError(error: unknown): SubmitErrorInfo {
   const status = typeof e.status === "number" ? e.status : 0;
 
   switch (e.code) {
-    case SUBMIT_ERROR_CODE.insufficientCredits:
-      return { kind: "credits", message: "积分不足，无法生成" };
     case SUBMIT_ERROR_CODE.tooManyTasks:
       return { kind: "limit", message: "排队任务已达上限，请等前面的任务完成后再试" };
     case SUBMIT_ERROR_CODE.modelUnavailable:
@@ -49,7 +38,8 @@ export function describeSubmitError(error: unknown): SubmitErrorInfo {
       // 钱包渠道的模型要用户自己的 TokenDance Key：文案引导去连接（弹窗由 gateway 统一弹）
       return { kind: "wallet", message: "需要连接 TokenPay 钱包" };
   }
-  if (status === 402) return { kind: "credits", message: "积分不足，无法生成" };
+  if (status === 402)
+    return { kind: "wallet", message: "TokenDance 余额不足或授权失效，请检查钱包" };
   if (status === 429)
     return { kind: "limit", message: "排队任务已达上限，请等前面的任务完成后再试" };
   if (e.code === "NETWORK_ERROR" || e.code === "TIMEOUT") {

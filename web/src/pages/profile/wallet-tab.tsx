@@ -14,7 +14,7 @@ import { openWalletRecharge } from "@/store/wallet-recharge";
 
 /**
  * 个人中心「钱包」tab：连接自己的 TokenDance 账号。
- * 连接后，钱包渠道上的模型用你自己的 TokenDance 额度支付，不消耗平台积分。
+ * 连接后，钱包渠道上的模型用你自己的 TokenDance 额度支付。
  */
 export function WalletTab() {
   const view = useWalletStore((state) => state.view);
@@ -94,7 +94,7 @@ export function WalletTab() {
         <Wallet className="text-muted-foreground size-10" />
         <p className="text-muted-foreground max-w-md text-sm">
           连接你的 TokenDance 账号后，钱包渠道上的模型会使用你自己的 TokenDance
-          额度支付，不消耗平台积分；每个账号只需授权一次，随时可以断开。
+          额度支付，费用直接计入你的 TokenDance 账户；每个账号只需授权一次，随时可以断开。
         </p>
         <Button onClick={() => void connect()} disabled={starting}>
           {starting ? <LoaderCircle className="animate-spin" /> : <Link2 />}

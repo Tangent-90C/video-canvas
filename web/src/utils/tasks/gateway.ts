@@ -8,7 +8,6 @@ import type {
 } from "@/api/conversation/type";
 import { cancelGenerationTask, createGenerationTask } from "@/api/generation-task";
 import type { CreateTaskItem, CreateTaskRequest, TaskView } from "@/api/generation-task/type";
-import { useCreditsStore } from "@/store/credits";
 import { useTasksStore } from "@/store/tasks";
 import { useWalletStore } from "@/store/wallet";
 import { cancelableTaskIds } from "@/utils/tasks/status";
@@ -45,10 +44,10 @@ function handleSubmitError(error: unknown) {
  * 共用同一套逻辑：
  *
  * 1. 提交：每次点击一个新的 Idempotency-Key，可重试的失败沿用同一个 key 重试（见 submitWithRetry）。
- * 2. 提交成功：返回的任务快照立刻交给 handleTaskView 合并进任务库，并刷新余额；
+ * 2. 提交成功：返回的任务快照立刻交给 handleTaskView 合并进任务库，并刷新 TokenPay 余额；
  *    之后进度全部由任务库驱动（WebSocket 推送 + 断线对账），调用方只订阅任务库，不自己轮询。
  * 3. 取消：逐个取消，某个失败不影响其他；返回的最新快照同样入库，并刷新余额。
- * 4. 转存前的任务都能取消（见 isCancelableTask）；排队中取消退积分，已进入生成取消不退（见 cancelRefunds）。
+ * 4. 转存前的任务都能取消（见 isCancelableTask）；费用以上游 TokenDance 实际账单为准。
  * 5. 状态怎么理解（进行中 / 终态 / 可取消 / 排队中 / 生成中）统一看 status.ts 和 node-view.ts，不要在入口里另写判断。
  *
  * 入口之间只允许在「提交到哪里、结果往哪放」上不同：画布放进节点，对话放进记录。
@@ -56,15 +55,15 @@ function handleSubmitError(error: unknown) {
  */
 
 /**
- * 把任务快照交给任务库并刷新余额。提交和取消成功后都走这里。
- * 余额总要刷新：即使这批里没有任务（全部失败），冻结的积分也可能已经变化。
+ * 把任务快照交给任务库并刷新 TokenPay 余额。提交和取消成功后都走这里。
+ * 余额刷新失败不影响任务快照；真实费用仍以 TokenDance 账单为准。
  * @param views 任务快照；null / undefined（提交失败的格子）会被跳过
  */
 export function acceptTasks(views: ReadonlyArray<TaskView | null | undefined>) {
   for (const view of views) {
     if (view) handleTaskView(view, "reconcile");
   }
-  void useCreditsStore.getState().refresh();
+  void useWalletStore.getState().fetchBalance();
 }
 
 /**
@@ -106,7 +105,7 @@ export async function submitSegmentTask(sid: string, body: SegmentGenerateBody):
 
 /**
  * 提交首页对话的一条生成记录：一条记录对应 1–4 个任务，后端把记录和任务一起创建。
- * 请求本身失败会抛错；某一格提交失败（积分不足、并发已满）不抛错，在记录的 submitErrors 里。
+ * 请求本身失败会抛错；某一格提交失败（钱包未连接、并发已满）不抛错，在记录的 submitErrors 里。
  * @param target 新建一段对话（"new"），或某段对话的 ID
  * @param data 提交内容
  * @returns 记录和所在对话
@@ -127,7 +126,7 @@ export async function submitRecordTasks(
 }
 
 /**
- * 取消任务（排队中退回积分，已进入生成不退）。逐个取消，某个失败（请求层已弹提示）不影响其他；
+ * 取消任务。逐个取消，某个失败（请求层已弹提示）不影响其他；
  * 后端可能直接回最新快照，没有的话等 WebSocket / 对账推终态。
  * @param ids 任务 ID
  * @returns 取消失败的任务 ID

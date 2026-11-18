@@ -85,7 +85,7 @@ const count = (n: number) => n.toLocaleString("en-US");
 
 /**
  * 抽屉头部：用户请求原文（时间线里第一条用户消息，没有就用摘要里的请求首句）和基础信息——
- * 状态、创建与结束时间、耗时、步数、积分、Token（输入 / 输出）
+ * 状态、创建与结束时间、耗时、步数、Token（输入 / 输出）
  */
 export function RunHead({ detail }: { detail: AgentRunDetail }) {
   const request = requestText(detail);
@@ -131,10 +131,6 @@ export function RunHead({ detail }: { detail: AgentRunDetail }) {
           <DescriptionItem>
             <DescriptionTerm>步数</DescriptionTerm>
             <DescriptionDetails className="tabular-nums">{head.steps}</DescriptionDetails>
-          </DescriptionItem>
-          <DescriptionItem>
-            <DescriptionTerm>积分</DescriptionTerm>
-            <DescriptionDetails className="tabular-nums">{head.credits}</DescriptionDetails>
           </DescriptionItem>
           <DescriptionItem className="col-span-2 md:col-span-3">
             <DescriptionTerm>Token（输入 / 输出）</DescriptionTerm>

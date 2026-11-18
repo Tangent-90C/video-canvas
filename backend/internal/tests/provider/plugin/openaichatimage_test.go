@@ -55,7 +55,7 @@ func newOpenAIChatImageEnv(t *testing.T) *openaichatimageEnv {
 func (e *openaichatimageEnv) snapshot(baseURL, upstream string) *provider.Snapshot {
 	return &provider.Snapshot{
 		Model: provider.ModelSnapshot{Key: "m", Kind: "image", UpstreamModel: upstream, Capabilities: openaichatimageCaps()},
-		Channel: provider.ChannelSnapshot{
+		Channel: provider.ChannelSnapshot{Wallet: true,
 			Key: "yingce", PluginKey: "openai-chat-image", PluginVersionID: 1, BaseURL: baseURL,
 		},
 		Plugin:          provider.PluginSnapshot{Key: "openai-chat-image", Version: e.meta.Version, SHA256: e.sha, Meta: *e.meta},

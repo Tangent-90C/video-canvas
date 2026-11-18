@@ -82,7 +82,8 @@ export function ConnectWalletDialog() {
             连接 TokenPay 钱包
           </DialogTitle>
           <DialogDescription>
-            这个模型用你自己的 TokenDance 额度支付。连接后即可生成，不消耗平台积分。
+            这个模型用你自己的 TokenDance 额度支付。连接后即可生成，费用直接计入你的 TokenDance
+            账户。
           </DialogDescription>
         </DialogHeader>
 

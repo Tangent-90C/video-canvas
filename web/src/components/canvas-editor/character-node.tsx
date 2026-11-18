@@ -27,7 +27,6 @@ import { showVersionBadge } from "@/utils/canvas/versions";
 import { nodeFrameSize, paramAspect } from "@/utils/canvas/node-frame";
 import { applyPickedAssets, emptyCharacter, MAX_EXTRAS } from "@/utils/characters/node-character";
 import { characterNodeAspect, characterNodeView, voiceCell } from "@/utils/characters/node-view";
-import { lowestUnit } from "@/utils/pricing/quote";
 
 import { CharacterDetailDialog } from "./character-detail-dialog";
 import { useRegisterNodeActions } from "./node-actions";
@@ -87,8 +86,6 @@ export function CharacterCanvasNode({
   const withVoice: SecondarySubmit = {
     label: "含音色",
     blockedReason: vm.blockedReason ?? voiceBlocked,
-    // 钱包模型不扣平台积分：音色那一段没有积分可加（发送键上显示的是预估花费）
-    extraCredits: voiceGen.model?.wallet ? 0 : lowestUnit(voiceGen.model?.pricing),
     onSubmit: () => void submitWithVoice(),
   };
   const multiSelected = useMultiSelected();

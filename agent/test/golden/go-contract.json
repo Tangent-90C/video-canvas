@@ -2,8 +2,8 @@
   "events": {
     "approval.created": {
       "decision": {},
-      "expires_at": "\u003ctime\u003e",
-      "id": "\u003cid\u003e",
+      "expires_at": "<time>",
+      "id": "<id>",
       "kind": "generate",
       "result": null,
       "payload": {
@@ -28,7 +28,7 @@
         "reason": "先锁定角色"
       },
       "quote_credits": 24,
-      "run_id": "\u003cid\u003e",
+      "run_id": "<id>",
       "status": "pending"
     },
     "approval.decided": {
@@ -53,10 +53,12 @@
           }
         ]
       },
-      "expires_at": "\u003ctime\u003e",
-      "id": "\u003cid\u003e",
+      "expires_at": "<time>",
+      "id": "<id>",
       "kind": "generate",
-      "result": { "ok": true },
+      "result": {
+        "ok": true
+      },
       "payload": {
         "items": [
           {
@@ -79,7 +81,7 @@
         "reason": "先锁定角色"
       },
       "quote_credits": 16,
-      "run_id": "\u003cid\u003e",
+      "run_id": "<id>",
       "status": "executed"
     },
     "feedback.cleared": {},
@@ -92,7 +94,7 @@
       "text": "我先看看画布。"
     },
     "message.done": {
-      "credits": 5,
+      "credits": 0,
       "estimated": false,
       "partial": false,
       "text": "我先看看画布。",
@@ -243,10 +245,12 @@
           }
         ]
       },
-      "expires_at": "\u003ctime\u003e",
-      "id": "\u003cid\u003e",
+      "expires_at": "<time>",
+      "id": "<id>",
       "kind": "generate",
-      "result": { "ok": true },
+      "result": {
+        "ok": true
+      },
       "payload": {
         "items": [
           {
@@ -269,62 +273,62 @@
         "reason": "先锁定角色"
       },
       "quote_credits": 16,
-      "run_id": "\u003cid\u003e",
+      "run_id": "<id>",
       "status": "executed"
     },
     "events": [
       {
         "canvas_id": null,
-        "created_at": "\u003ctime\u003e",
+        "created_at": "<time>",
         "data": {
           "mode": "all",
           "selection": ["n_script"],
           "text": "拆分镜"
         },
-        "run_id": "\u003cid\u003e",
+        "run_id": "<id>",
         "seq": 1,
-        "session_id": "\u003cid\u003e",
+        "session_id": "<id>",
         "type": "message.user"
       },
       {
         "canvas_id": null,
-        "created_at": "\u003ctime\u003e",
+        "created_at": "<time>",
         "data": {
           "status": "queued"
         },
-        "run_id": "\u003cid\u003e",
+        "run_id": "<id>",
         "seq": 2,
-        "session_id": "\u003cid\u003e",
+        "session_id": "<id>",
         "type": "run.status"
       },
       {
         "canvas_id": null,
-        "created_at": "\u003ctime\u003e",
+        "created_at": "<time>",
         "data": {
           "status": "running"
         },
-        "run_id": "\u003cid\u003e",
+        "run_id": "<id>",
         "seq": 3,
-        "session_id": "\u003cid\u003e",
+        "session_id": "<id>",
         "type": "run.status"
       },
       {
         "canvas_id": null,
-        "created_at": "\u003ctime\u003e",
+        "created_at": "<time>",
         "data": {
           "context_tokens": 1000000,
           "spent_credits": 0
         },
-        "run_id": "\u003cid\u003e",
+        "run_id": "<id>",
         "seq": 4,
-        "session_id": "\u003cid\u003e",
+        "session_id": "<id>",
         "type": "run.usage"
       },
       {
         "canvas_id": null,
-        "created_at": "\u003ctime\u003e",
+        "created_at": "<time>",
         "data": {
-          "credits": 5,
+          "credits": 0,
           "estimated": false,
           "partial": false,
           "text": "我先看看画布。",
@@ -336,28 +340,28 @@
             }
           ]
         },
-        "run_id": "\u003cid\u003e",
+        "run_id": "<id>",
         "seq": 5,
-        "session_id": "\u003cid\u003e",
+        "session_id": "<id>",
         "type": "message.done"
       },
       {
         "canvas_id": null,
-        "created_at": "\u003ctime\u003e",
+        "created_at": "<time>",
         "data": {
           "id": "tc-canvas_get_state",
           "label": "读取画布",
           "name": "canvas_get_state",
           "verb": "读取"
         },
-        "run_id": "\u003cid\u003e",
+        "run_id": "<id>",
         "seq": 6,
-        "session_id": "\u003cid\u003e",
+        "session_id": "<id>",
         "type": "tool.start"
       },
       {
         "canvas_id": null,
-        "created_at": "\u003ctime\u003e",
+        "created_at": "<time>",
         "data": {
           "id": "tc-canvas_get_state",
           "is_error": false,
@@ -366,28 +370,28 @@
           "summary": "读取画布目录（1 个节点）",
           "verb": "读取"
         },
-        "run_id": "\u003cid\u003e",
+        "run_id": "<id>",
         "seq": 7,
-        "session_id": "\u003cid\u003e",
+        "session_id": "<id>",
         "type": "tool.end"
       },
       {
         "canvas_id": null,
-        "created_at": "\u003ctime\u003e",
+        "created_at": "<time>",
         "data": {
           "id": "tc-plan_update",
           "label": "更新计划",
           "name": "plan_update",
           "verb": "计划"
         },
-        "run_id": "\u003cid\u003e",
+        "run_id": "<id>",
         "seq": 8,
-        "session_id": "\u003cid\u003e",
+        "session_id": "<id>",
         "type": "tool.start"
       },
       {
         "canvas_id": null,
-        "created_at": "\u003ctime\u003e",
+        "created_at": "<time>",
         "data": {
           "steps": [
             {
@@ -400,14 +404,14 @@
             }
           ]
         },
-        "run_id": "\u003cid\u003e",
+        "run_id": "<id>",
         "seq": 9,
-        "session_id": "\u003cid\u003e",
+        "session_id": "<id>",
         "type": "plan.updated"
       },
       {
         "canvas_id": null,
-        "created_at": "\u003ctime\u003e",
+        "created_at": "<time>",
         "data": {
           "id": "tc-plan_update",
           "is_error": false,
@@ -416,51 +420,51 @@
           "summary": "更新计划（2 步）",
           "verb": "计划"
         },
-        "run_id": "\u003cid\u003e",
+        "run_id": "<id>",
         "seq": 10,
-        "session_id": "\u003cid\u003e",
+        "session_id": "<id>",
         "type": "tool.end"
       },
       {
         "canvas_id": null,
-        "created_at": "\u003ctime\u003e",
+        "created_at": "<time>",
         "data": {
           "id": "tc-canvas_apply_ops",
           "label": "修改画布",
           "name": "canvas_apply_ops",
           "verb": "修改"
         },
-        "run_id": "\u003cid\u003e",
+        "run_id": "<id>",
         "seq": 11,
-        "session_id": "\u003cid\u003e",
+        "session_id": "<id>",
         "type": "tool.start"
       },
       {
         "canvas_id": null,
-        "created_at": "\u003ctime\u003e",
+        "created_at": "<time>",
         "data": {
-          "created": ["\u003cnode\u003e"],
+          "created": ["<node>"],
           "id": "tc-canvas_apply_ops",
           "is_error": false,
           "label": "修改画布",
           "name": "canvas_apply_ops",
-          "node_ids": ["\u003cnode\u003e"],
+          "node_ids": ["<node>"],
           "summary": "应用 2 项操作",
           "updated": [],
           "verb": "修改"
         },
-        "run_id": "\u003cid\u003e",
+        "run_id": "<id>",
         "seq": 12,
-        "session_id": "\u003cid\u003e",
+        "session_id": "<id>",
         "type": "tool.end"
       },
       {
         "canvas_id": null,
-        "created_at": "\u003ctime\u003e",
+        "created_at": "<time>",
         "data": {
           "decision": {},
-          "expires_at": "\u003ctime\u003e",
-          "id": "\u003cid\u003e",
+          "expires_at": "<time>",
+          "id": "<id>",
           "kind": "generate",
           "result": null,
           "payload": {
@@ -485,51 +489,51 @@
             "reason": "先锁定角色"
           },
           "quote_credits": 24,
-          "run_id": "\u003cid\u003e",
+          "run_id": "<id>",
           "status": "pending"
         },
-        "run_id": "\u003cid\u003e",
+        "run_id": "<id>",
         "seq": 13,
-        "session_id": "\u003cid\u003e",
+        "session_id": "<id>",
         "type": "approval.created"
       },
       {
         "canvas_id": null,
-        "created_at": "\u003ctime\u003e",
+        "created_at": "<time>",
         "data": {
           "status": "waiting_approval"
         },
-        "run_id": "\u003cid\u003e",
+        "run_id": "<id>",
         "seq": 14,
-        "session_id": "\u003cid\u003e",
+        "session_id": "<id>",
         "type": "run.status"
       },
       {
         "canvas_id": null,
-        "created_at": "\u003ctime\u003e",
+        "created_at": "<time>",
         "data": {
           "status": "running"
         },
-        "run_id": "\u003cid\u003e",
+        "run_id": "<id>",
         "seq": 15,
-        "session_id": "\u003cid\u003e",
+        "session_id": "<id>",
         "type": "run.status"
       },
       {
         "canvas_id": null,
-        "created_at": "\u003ctime\u003e",
+        "created_at": "<time>",
         "data": {
           "context_tokens": 1000000,
-          "spent_credits": 16
+          "spent_credits": 0
         },
-        "run_id": "\u003cid\u003e",
+        "run_id": "<id>",
         "seq": 16,
-        "session_id": "\u003cid\u003e",
+        "session_id": "<id>",
         "type": "run.usage"
       },
       {
         "canvas_id": null,
-        "created_at": "\u003ctime\u003e",
+        "created_at": "<time>",
         "data": {
           "decision": {
             "decision": "approve",
@@ -552,10 +556,12 @@
               }
             ]
           },
-          "expires_at": "\u003ctime\u003e",
-          "id": "\u003cid\u003e",
+          "expires_at": "<time>",
+          "id": "<id>",
           "kind": "generate",
-          "result": { "ok": true },
+          "result": {
+            "ok": true
+          },
           "payload": {
             "items": [
               {
@@ -578,96 +584,96 @@
             "reason": "先锁定角色"
           },
           "quote_credits": 16,
-          "run_id": "\u003cid\u003e",
+          "run_id": "<id>",
           "status": "executed"
         },
-        "run_id": "\u003cid\u003e",
+        "run_id": "<id>",
         "seq": 17,
-        "session_id": "\u003cid\u003e",
+        "session_id": "<id>",
         "type": "approval.decided"
       },
       {
         "canvas_id": null,
-        "created_at": "\u003ctime\u003e",
+        "created_at": "<time>",
         "data": {
           "error": "",
           "status": "succeeded"
         },
-        "run_id": "\u003cid\u003e",
+        "run_id": "<id>",
         "seq": 18,
-        "session_id": "\u003cid\u003e",
+        "session_id": "<id>",
         "type": "run.status"
       },
       {
         "canvas_id": null,
-        "created_at": "\u003ctime\u003e",
+        "created_at": "<time>",
         "data": {
           "reverted": 1,
           "skipped": 0
         },
-        "run_id": "\u003cid\u003e",
+        "run_id": "<id>",
         "seq": 19,
-        "session_id": "\u003cid\u003e",
+        "session_id": "<id>",
         "type": "run.undone"
       },
       {
         "canvas_id": null,
-        "created_at": "\u003ctime\u003e",
+        "created_at": "<time>",
         "data": {
           "mode": "all",
           "selection": null,
           "text": "再来一轮"
         },
-        "run_id": "\u003cid\u003e",
+        "run_id": "<id>",
         "seq": 20,
-        "session_id": "\u003cid\u003e",
+        "session_id": "<id>",
         "type": "message.user"
       },
       {
         "canvas_id": null,
-        "created_at": "\u003ctime\u003e",
+        "created_at": "<time>",
         "data": {
           "status": "queued"
         },
-        "run_id": "\u003cid\u003e",
+        "run_id": "<id>",
         "seq": 21,
-        "session_id": "\u003cid\u003e",
+        "session_id": "<id>",
         "type": "run.status"
       },
       {
         "canvas_id": null,
-        "created_at": "\u003ctime\u003e",
+        "created_at": "<time>",
         "data": {
           "status": "running"
         },
-        "run_id": "\u003cid\u003e",
+        "run_id": "<id>",
         "seq": 22,
-        "session_id": "\u003cid\u003e",
+        "session_id": "<id>",
         "type": "run.status"
       },
       {
         "canvas_id": null,
-        "created_at": "\u003ctime\u003e",
+        "created_at": "<time>",
         "data": {
           "steer": true,
           "text": "再暖一点"
         },
-        "run_id": "\u003cid\u003e",
+        "run_id": "<id>",
         "seq": 23,
-        "session_id": "\u003cid\u003e",
+        "session_id": "<id>",
         "type": "message.user"
       },
       {
         "canvas_id": null,
-        "created_at": "\u003ctime\u003e",
+        "created_at": "<time>",
         "data": {
           "hint": "没做完的计划还留着，可以接着让它做",
           "status": "canceled",
           "title": "已停止"
         },
-        "run_id": "\u003cid\u003e",
+        "run_id": "<id>",
         "seq": 24,
-        "session_id": "\u003cid\u003e",
+        "session_id": "<id>",
         "type": "run.status"
       }
     ],
@@ -680,56 +686,56 @@
       "events": [
         {
           "canvas_id": null,
-          "created_at": "\u003ctime\u003e",
+          "created_at": "<time>",
           "data": {
             "mode": "all",
             "selection": ["n_script"],
             "text": "拆分镜"
           },
-          "run_id": "\u003cid\u003e",
+          "run_id": "<id>",
           "seq": 1,
-          "session_id": "\u003cid\u003e",
+          "session_id": "<id>",
           "type": "message.user"
         },
         {
           "canvas_id": null,
-          "created_at": "\u003ctime\u003e",
+          "created_at": "<time>",
           "data": {
             "status": "queued"
           },
-          "run_id": "\u003cid\u003e",
+          "run_id": "<id>",
           "seq": 2,
-          "session_id": "\u003cid\u003e",
+          "session_id": "<id>",
           "type": "run.status"
         },
         {
           "canvas_id": null,
-          "created_at": "\u003ctime\u003e",
+          "created_at": "<time>",
           "data": {
             "status": "running"
           },
-          "run_id": "\u003cid\u003e",
+          "run_id": "<id>",
           "seq": 3,
-          "session_id": "\u003cid\u003e",
+          "session_id": "<id>",
           "type": "run.status"
         },
         {
           "canvas_id": null,
-          "created_at": "\u003ctime\u003e",
+          "created_at": "<time>",
           "data": {
             "context_tokens": 1000000,
             "spent_credits": 0
           },
-          "run_id": "\u003cid\u003e",
+          "run_id": "<id>",
           "seq": 4,
-          "session_id": "\u003cid\u003e",
+          "session_id": "<id>",
           "type": "run.usage"
         },
         {
           "canvas_id": null,
-          "created_at": "\u003ctime\u003e",
+          "created_at": "<time>",
           "data": {
-            "credits": 5,
+            "credits": 0,
             "estimated": false,
             "partial": false,
             "text": "我先看看画布。",
@@ -741,28 +747,28 @@
               }
             ]
           },
-          "run_id": "\u003cid\u003e",
+          "run_id": "<id>",
           "seq": 5,
-          "session_id": "\u003cid\u003e",
+          "session_id": "<id>",
           "type": "message.done"
         },
         {
           "canvas_id": null,
-          "created_at": "\u003ctime\u003e",
+          "created_at": "<time>",
           "data": {
             "id": "tc-canvas_get_state",
             "label": "读取画布",
             "name": "canvas_get_state",
             "verb": "读取"
           },
-          "run_id": "\u003cid\u003e",
+          "run_id": "<id>",
           "seq": 6,
-          "session_id": "\u003cid\u003e",
+          "session_id": "<id>",
           "type": "tool.start"
         },
         {
           "canvas_id": null,
-          "created_at": "\u003ctime\u003e",
+          "created_at": "<time>",
           "data": {
             "id": "tc-canvas_get_state",
             "is_error": false,
@@ -771,28 +777,28 @@
             "summary": "读取画布目录（1 个节点）",
             "verb": "读取"
           },
-          "run_id": "\u003cid\u003e",
+          "run_id": "<id>",
           "seq": 7,
-          "session_id": "\u003cid\u003e",
+          "session_id": "<id>",
           "type": "tool.end"
         },
         {
           "canvas_id": null,
-          "created_at": "\u003ctime\u003e",
+          "created_at": "<time>",
           "data": {
             "id": "tc-plan_update",
             "label": "更新计划",
             "name": "plan_update",
             "verb": "计划"
           },
-          "run_id": "\u003cid\u003e",
+          "run_id": "<id>",
           "seq": 8,
-          "session_id": "\u003cid\u003e",
+          "session_id": "<id>",
           "type": "tool.start"
         },
         {
           "canvas_id": null,
-          "created_at": "\u003ctime\u003e",
+          "created_at": "<time>",
           "data": {
             "steps": [
               {
@@ -805,14 +811,14 @@
               }
             ]
           },
-          "run_id": "\u003cid\u003e",
+          "run_id": "<id>",
           "seq": 9,
-          "session_id": "\u003cid\u003e",
+          "session_id": "<id>",
           "type": "plan.updated"
         },
         {
           "canvas_id": null,
-          "created_at": "\u003ctime\u003e",
+          "created_at": "<time>",
           "data": {
             "id": "tc-plan_update",
             "is_error": false,
@@ -821,51 +827,51 @@
             "summary": "更新计划（2 步）",
             "verb": "计划"
           },
-          "run_id": "\u003cid\u003e",
+          "run_id": "<id>",
           "seq": 10,
-          "session_id": "\u003cid\u003e",
+          "session_id": "<id>",
           "type": "tool.end"
         },
         {
           "canvas_id": null,
-          "created_at": "\u003ctime\u003e",
+          "created_at": "<time>",
           "data": {
             "id": "tc-canvas_apply_ops",
             "label": "修改画布",
             "name": "canvas_apply_ops",
             "verb": "修改"
           },
-          "run_id": "\u003cid\u003e",
+          "run_id": "<id>",
           "seq": 11,
-          "session_id": "\u003cid\u003e",
+          "session_id": "<id>",
           "type": "tool.start"
         },
         {
           "canvas_id": null,
-          "created_at": "\u003ctime\u003e",
+          "created_at": "<time>",
           "data": {
-            "created": ["\u003cnode\u003e"],
+            "created": ["<node>"],
             "id": "tc-canvas_apply_ops",
             "is_error": false,
             "label": "修改画布",
             "name": "canvas_apply_ops",
-            "node_ids": ["\u003cnode\u003e"],
+            "node_ids": ["<node>"],
             "summary": "应用 2 项操作",
             "updated": [],
             "verb": "修改"
           },
-          "run_id": "\u003cid\u003e",
+          "run_id": "<id>",
           "seq": 12,
-          "session_id": "\u003cid\u003e",
+          "session_id": "<id>",
           "type": "tool.end"
         },
         {
           "canvas_id": null,
-          "created_at": "\u003ctime\u003e",
+          "created_at": "<time>",
           "data": {
             "decision": {},
-            "expires_at": "\u003ctime\u003e",
-            "id": "\u003cid\u003e",
+            "expires_at": "<time>",
+            "id": "<id>",
             "kind": "generate",
             "result": null,
             "payload": {
@@ -890,51 +896,51 @@
               "reason": "先锁定角色"
             },
             "quote_credits": 24,
-            "run_id": "\u003cid\u003e",
+            "run_id": "<id>",
             "status": "pending"
           },
-          "run_id": "\u003cid\u003e",
+          "run_id": "<id>",
           "seq": 13,
-          "session_id": "\u003cid\u003e",
+          "session_id": "<id>",
           "type": "approval.created"
         },
         {
           "canvas_id": null,
-          "created_at": "\u003ctime\u003e",
+          "created_at": "<time>",
           "data": {
             "status": "waiting_approval"
           },
-          "run_id": "\u003cid\u003e",
+          "run_id": "<id>",
           "seq": 14,
-          "session_id": "\u003cid\u003e",
+          "session_id": "<id>",
           "type": "run.status"
         },
         {
           "canvas_id": null,
-          "created_at": "\u003ctime\u003e",
+          "created_at": "<time>",
           "data": {
             "status": "running"
           },
-          "run_id": "\u003cid\u003e",
+          "run_id": "<id>",
           "seq": 15,
-          "session_id": "\u003cid\u003e",
+          "session_id": "<id>",
           "type": "run.status"
         },
         {
           "canvas_id": null,
-          "created_at": "\u003ctime\u003e",
+          "created_at": "<time>",
           "data": {
             "context_tokens": 1000000,
-            "spent_credits": 16
+            "spent_credits": 0
           },
-          "run_id": "\u003cid\u003e",
+          "run_id": "<id>",
           "seq": 16,
-          "session_id": "\u003cid\u003e",
+          "session_id": "<id>",
           "type": "run.usage"
         },
         {
           "canvas_id": null,
-          "created_at": "\u003ctime\u003e",
+          "created_at": "<time>",
           "data": {
             "decision": {
               "decision": "approve",
@@ -957,10 +963,12 @@
                 }
               ]
             },
-            "expires_at": "\u003ctime\u003e",
-            "id": "\u003cid\u003e",
+            "expires_at": "<time>",
+            "id": "<id>",
             "kind": "generate",
-            "result": { "ok": true },
+            "result": {
+              "ok": true
+            },
             "payload": {
               "items": [
                 {
@@ -983,96 +991,96 @@
               "reason": "先锁定角色"
             },
             "quote_credits": 16,
-            "run_id": "\u003cid\u003e",
+            "run_id": "<id>",
             "status": "executed"
           },
-          "run_id": "\u003cid\u003e",
+          "run_id": "<id>",
           "seq": 17,
-          "session_id": "\u003cid\u003e",
+          "session_id": "<id>",
           "type": "approval.decided"
         },
         {
           "canvas_id": null,
-          "created_at": "\u003ctime\u003e",
+          "created_at": "<time>",
           "data": {
             "error": "",
             "status": "succeeded"
           },
-          "run_id": "\u003cid\u003e",
+          "run_id": "<id>",
           "seq": 18,
-          "session_id": "\u003cid\u003e",
+          "session_id": "<id>",
           "type": "run.status"
         },
         {
           "canvas_id": null,
-          "created_at": "\u003ctime\u003e",
+          "created_at": "<time>",
           "data": {
             "reverted": 1,
             "skipped": 0
           },
-          "run_id": "\u003cid\u003e",
+          "run_id": "<id>",
           "seq": 19,
-          "session_id": "\u003cid\u003e",
+          "session_id": "<id>",
           "type": "run.undone"
         },
         {
           "canvas_id": null,
-          "created_at": "\u003ctime\u003e",
+          "created_at": "<time>",
           "data": {
             "mode": "all",
             "selection": null,
             "text": "再来一轮"
           },
-          "run_id": "\u003cid\u003e",
+          "run_id": "<id>",
           "seq": 20,
-          "session_id": "\u003cid\u003e",
+          "session_id": "<id>",
           "type": "message.user"
         },
         {
           "canvas_id": null,
-          "created_at": "\u003ctime\u003e",
+          "created_at": "<time>",
           "data": {
             "status": "queued"
           },
-          "run_id": "\u003cid\u003e",
+          "run_id": "<id>",
           "seq": 21,
-          "session_id": "\u003cid\u003e",
+          "session_id": "<id>",
           "type": "run.status"
         },
         {
           "canvas_id": null,
-          "created_at": "\u003ctime\u003e",
+          "created_at": "<time>",
           "data": {
             "status": "running"
           },
-          "run_id": "\u003cid\u003e",
+          "run_id": "<id>",
           "seq": 22,
-          "session_id": "\u003cid\u003e",
+          "session_id": "<id>",
           "type": "run.status"
         },
         {
           "canvas_id": null,
-          "created_at": "\u003ctime\u003e",
+          "created_at": "<time>",
           "data": {
             "steer": true,
             "text": "再暖一点"
           },
-          "run_id": "\u003cid\u003e",
+          "run_id": "<id>",
           "seq": 23,
-          "session_id": "\u003cid\u003e",
+          "session_id": "<id>",
           "type": "message.user"
         },
         {
           "canvas_id": null,
-          "created_at": "\u003ctime\u003e",
+          "created_at": "<time>",
           "data": {
             "hint": "没做完的计划还留着，可以接着让它做",
             "status": "canceled",
             "title": "已停止"
           },
-          "run_id": "\u003cid\u003e",
+          "run_id": "<id>",
           "seq": 24,
-          "session_id": "\u003cid\u003e",
+          "session_id": "<id>",
           "type": "run.status"
         }
       ],
@@ -1093,46 +1101,46 @@
       }
     ],
     "run_canceled": {
-      "budget_credits": 50,
-      "canvas_id": "\u003cid\u003e",
+      "budget_credits": 0,
+      "canvas_id": "<id>",
       "context_tokens": 0,
-      "created_at": "\u003ctime\u003e",
-      "ended_at": "\u003ctime\u003e",
+      "created_at": "<time>",
+      "ended_at": "<time>",
       "error_code": "",
       "error_message": "",
-      "id": "\u003cid\u003e",
+      "id": "<id>",
       "max_steps": 40,
       "mode": "all",
-      "session_id": "\u003cid\u003e",
+      "session_id": "<id>",
       "spent_credits": 0,
       "status": "canceled",
       "steps": 0
     },
     "run_started": {
-      "budget_credits": 50,
-      "canvas_id": "\u003cid\u003e",
+      "budget_credits": 0,
+      "canvas_id": "<id>",
       "context_tokens": 0,
-      "created_at": "\u003ctime\u003e",
+      "created_at": "<time>",
       "ended_at": null,
       "error_code": "",
       "error_message": "",
-      "id": "\u003cid\u003e",
+      "id": "<id>",
       "max_steps": 40,
       "mode": "all",
-      "session_id": "\u003cid\u003e",
+      "session_id": "<id>",
       "spent_credits": 0,
       "status": "queued",
       "steps": 0
     },
     "session": {
-      "canvas_id": "\u003cid\u003e",
-      "created_at": "\u003ctime\u003e",
-      "id": "\u003cid\u003e",
+      "canvas_id": "<id>",
+      "created_at": "<time>",
+      "id": "<id>",
       "last_seq": 0,
       "mode": "storyboard",
       "model_key": "claude",
       "title": "角色设计",
-      "updated_at": "\u003ctime\u003e"
+      "updated_at": "<time>"
     },
     "undo": {
       "reverted": 1,

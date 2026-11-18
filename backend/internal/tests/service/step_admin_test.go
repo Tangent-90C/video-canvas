@@ -12,7 +12,7 @@ import (
 	"video-canvas/internal/stepkit"
 )
 
-// 本文件测试环节后台：列表与详情、发起试跑与冻结积分、River 任务执行与结算。设计见 营销工作室.md §6.9、§6.11。
+// 本文件测试环节后台：列表与详情、发起试跑、JOB 执行；平台积分已停用。设计见 营销工作室.md §6.9、§6.11。
 
 func TestStepListAndDetail(t *testing.T) {
 	e := newStepEnv(t)
@@ -60,7 +60,7 @@ func TestStepGetUnknownStep(t *testing.T) {
 	wantStepCode(t, err, 68012)
 }
 
-func TestStepCreateTrialFreezesCreditsAndEnqueues(t *testing.T) {
+func TestStepCreateTrialEnqueuesWithoutPlatformCredits(t *testing.T) {
 	e := newStepEnv(t)
 	list := e.create(t, builtinTrialReq())
 	if len(list.Trials) != 1 || list.Trials[0].Status != "queued" || list.Trials[0].Candidate.Source != "builtin" || list.Trials[0].CompareOf != nil {
@@ -70,16 +70,15 @@ func TestStepCreateTrialFreezesCreditsAndEnqueues(t *testing.T) {
 		t.Fatalf("应入队 1 个 job：%v", e.repo.Enqueued)
 	}
 	trial := e.repo.Trials[e.repo.Enqueued[0]]
-	// 按次计费 2 积分，预估按最多调用 2 次冻结
-	if trial.Frozen != 4 || trial.CreatedBy != stepActor || trial.StepKey != stepKeyName || trial.TextModelID != "text-a" {
+	if trial.Frozen != 0 || trial.Credits != 0 || trial.CreatedBy != stepActor || trial.StepKey != stepKeyName || trial.TextModelID != "text-a" {
 		t.Fatalf("试跑行不对：%+v", trial)
 	}
-	if c := e.repo.Credits[stepActor]; c.Frozen != 4 || c.Balance != 100 {
-		t.Fatalf("应冻结在操作管理员账户：%+v", c)
+	if c := e.repo.Credits[stepActor]; c.Frozen != 0 || c.Balance != 100 {
+		t.Fatalf("不应改动平台积分账户：%+v", c)
 	}
 	ledger := e.repo.LedgerOf(trial.ID)
-	if len(ledger) != 1 || ledger[0].Type != model.LedgerFreeze || ledger[0].Amount != 4 || ledger[0].UserID != stepActor {
-		t.Fatalf("冻结流水应关联试跑：%+v", ledger)
+	if len(ledger) != 0 {
+		t.Fatalf("不应写平台积分流水：%+v", ledger)
 	}
 	if got := e.audit.Actions(); len(got) != 1 || got[0] != model.AdminAuditStepTrial {
 		t.Fatalf("发起试跑应写审计：%v", got)
@@ -110,8 +109,8 @@ func TestStepCreateTrialCompareUsesCurrentEffective(t *testing.T) {
 	if len(e2.repo.Enqueued) != 2 {
 		t.Fatal("两条都要入队")
 	}
-	if c := e2.repo.Credits[stepActor]; c.Frozen != 8 {
-		t.Fatalf("两条各冻结 4：%+v", c)
+	if c := e2.repo.Credits[stepActor]; c.Frozen != 0 || c.Balance != 100 || len(e2.repo.Ledger) != 0 {
+		t.Fatalf("两条也不应冻结平台积分：%+v ledger=%+v", c, e2.repo.Ledger)
 	}
 }
 
@@ -154,7 +153,6 @@ func TestStepCreateTrialRejections(t *testing.T) {
 			e.models.Snapshots["img"].Model.Kind = "image"
 			r.TextModel = "img"
 		}, 10001},
-		"积分不足": {func(e *stepEnv, _ *model.CreateStepTrialReq) { e.repo.Credits[stepActor].Balance = 3 }, 40001},
 	}
 	for name, c := range cases {
 		e := newStepEnv(t)
@@ -164,8 +162,8 @@ func TestStepCreateTrialRejections(t *testing.T) {
 		if stepCodeOf(err) != c.code {
 			t.Fatalf("%s：应返回 %d，实际 %v", name, c.code, err)
 		}
-		if len(e.repo.Trials) != 0 || len(e.repo.Enqueued) != 0 || e.repo.Credits[stepActor].Frozen != 0 {
-			t.Fatalf("%s：拒绝时不应留下试跑、job 或冻结", name)
+		if len(e.repo.Trials) != 0 || len(e.repo.Enqueued) != 0 || e.repo.Credits[stepActor].Frozen != 0 || len(e.repo.Ledger) != 0 {
+			t.Fatalf("%s：拒绝时不应留下试跑、job 或积分变化", name)
 		}
 	}
 }
@@ -219,29 +217,22 @@ func TestStepCreateTrialBusyClearsAfterFinish(t *testing.T) {
 	}
 }
 
-func TestStepTrialSucceedsAndSettlesCredits(t *testing.T) {
+func TestStepTrialSucceedsWithoutPlatformCredits(t *testing.T) {
 	e := newStepEnv(t)
 	trial := e.runTrial(t, builtinTrialReq(), okReply())
 	if trial.Status != model.StepTrialSucceeded || !trial.Passed || trial.Attempts != 1 || trial.FinishedAt == nil {
 		t.Fatalf("应成功通过：%+v", trial)
 	}
-	if trial.InputTokens != 100 || trial.OutputTokens != 20 || trial.Credits != 2 || len(trial.Output) == 0 || len(trial.Method) == 0 {
-		t.Fatalf("用量、积分、输出、方法快照应落库：%+v", trial)
+	if trial.InputTokens != 100 || trial.OutputTokens != 20 || trial.Credits != 0 || trial.Frozen != 0 || len(trial.Output) == 0 || len(trial.Method) == 0 {
+		t.Fatalf("用量、输出、方法快照应落库且平台积分为 0：%+v", trial)
 	}
 	c := e.repo.Credits[stepActor]
-	if c.Balance != 98 || c.Frozen != 0 {
-		t.Fatalf("应扣 2 积分并释放冻结：%+v", c)
-	}
-	types := map[string]int{}
-	for _, l := range e.repo.LedgerOf(trial.ID) {
-		types[l.Type] += l.Amount
-	}
-	if types[model.LedgerFreeze] != 4 || types[model.LedgerSettle] != 2 || types[model.LedgerRefund] != 2 {
-		t.Fatalf("流水应是冻结 4 = 结算 2 + 退回 2：%v", types)
+	if c.Balance != 100 || c.Frozen != 0 || len(e.repo.LedgerOf(trial.ID)) != 0 {
+		t.Fatalf("不应改动平台积分：%+v ledger=%+v", c, e.repo.LedgerOf(trial.ID))
 	}
 	// 视图：预览、候选
 	v, err := e.svc.GetTrial(context.Background(), encodeTrialID(trial.ID))
-	if err != nil || v.Status != "succeeded" || !v.Passed || v.Preview == "" || len(v.Errors) != 0 || v.Credits != 2 || v.Output == nil {
+	if err != nil || v.Status != "succeeded" || !v.Passed || v.Preview == "" || len(v.Errors) != 0 || v.Credits != 0 || v.Output == nil {
 		t.Fatalf("试跑视图不对：%+v %v", v, err)
 	}
 	// 列表的最近试跑
@@ -251,7 +242,7 @@ func TestStepTrialSucceedsAndSettlesCredits(t *testing.T) {
 	}
 }
 
-// 输出不合格（重写一次仍不过）：试跑「成功」但 passed=false，带原因；上游确实被调用，照常收费。
+// 输出不合格（重写一次仍不过）：试跑「成功」但 passed=false，带原因；平台积分不变。
 func TestStepTrialValidationFailureIsNotCallFailure(t *testing.T) {
 	e := newStepEnv(t)
 	bad := stepfake.Reply{Text: stepBad, Usage: llmgateway.Usage{InputTokens: 10, OutputTokens: 5}}
@@ -263,8 +254,8 @@ func TestStepTrialValidationFailureIsNotCallFailure(t *testing.T) {
 	if len(v.Errors) != 1 || v.Errors[0] != "标题含禁用词" || v.Error != "" {
 		t.Fatalf("应带格式校验原因，没有调用失败原因：%+v", v)
 	}
-	if e.repo.Credits[stepActor].Balance == 100 {
-		t.Fatal("输出不合格也用了上游，应收费")
+	if e.repo.Credits[stepActor].Balance != 100 || len(e.repo.LedgerOf(trial.ID)) != 0 {
+		t.Fatal("平台积分应保持不变")
 	}
 	// 未通过的试跑不会让「最近试跑」显示通过
 	list, _ := e.svc.List(context.Background())
@@ -282,8 +273,8 @@ func TestStepTrialRewritesOnce(t *testing.T) {
 	}
 }
 
-// 调用本身失败：状态 failed，记原因，全额退回冻结，不收费。
-func TestStepTrialCallFailureRefunds(t *testing.T) {
+// 调用本身失败：状态 failed，记原因，平台积分不变。
+func TestStepTrialCallFailureKeepsPlatformCredits(t *testing.T) {
 	e := newStepEnv(t)
 	trial := e.runTrial(t, builtinTrialReq(), stepfake.Reply{Err: errors.New("上游 502")})
 	if trial.Status != model.StepTrialFailed || trial.Passed || trial.Error == "" || trial.Credits != 0 {
@@ -293,12 +284,8 @@ func TestStepTrialCallFailureRefunds(t *testing.T) {
 	if c.Balance != 100 || c.Frozen != 0 {
 		t.Fatalf("应全额退回：%+v", c)
 	}
-	types := map[string]int{}
-	for _, l := range e.repo.LedgerOf(trial.ID) {
-		types[l.Type] += l.Amount
-	}
-	if types[model.LedgerRefund] != 4 || types[model.LedgerSettle] != 0 {
-		t.Fatalf("应退回 4，结算 0：%v", types)
+	if len(e.repo.LedgerOf(trial.ID)) != 0 {
+		t.Fatalf("不应写平台积分流水：%+v", e.repo.LedgerOf(trial.ID))
 	}
 	v, _ := e.svc.GetTrial(context.Background(), encodeTrialID(trial.ID))
 	if v.Status != "failed" || v.Error == "" || v.Output != nil {
@@ -316,8 +303,8 @@ func TestStepTrialCandidateGoneBeforeRun(t *testing.T) {
 	if trial.Status != model.StepTrialFailed || e.caller.Calls != 0 || trial.Credits != 0 {
 		t.Fatalf("%+v calls=%d", trial, e.caller.Calls)
 	}
-	if c := e.repo.Credits[stepActor]; c.Balance != 100 || c.Frozen != 0 {
-		t.Fatalf("应退回冻结：%+v", c)
+	if c := e.repo.Credits[stepActor]; c.Balance != 100 || c.Frozen != 0 || len(e.repo.Ledger) != 0 {
+		t.Fatalf("不应改动平台积分：%+v", c)
 	}
 }
 
@@ -348,7 +335,7 @@ func TestStepTrialHandleIsIdempotent(t *testing.T) {
 	if err := e.svc.HandleStepTrial(context.Background(), 99999); err != nil {
 		t.Fatalf("不存在的试跑应忽略：%v", err)
 	}
-	if c := e.repo.Credits[stepActor]; c.Balance != 98 || c.Frozen != 0 || e.caller.Calls != 1 {
+	if c := e.repo.Credits[stepActor]; c.Balance != 100 || c.Frozen != 0 || len(e.repo.Ledger) != 0 || e.caller.Calls != 1 {
 		t.Fatalf("不应重复扣费或重复调用：%+v calls=%d", c, e.caller.Calls)
 	}
 }

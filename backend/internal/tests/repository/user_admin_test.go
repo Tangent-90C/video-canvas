@@ -190,7 +190,7 @@ func TestUserRepository_ListAdmin(t *testing.T) {
 	}
 	mkTask(t, db, model.GenerationTask{UserID: a.ID, Kind: "video", ModelKey: "m", Provider: "p", Status: model.TaskRunning, IsTest: true, NextPollAt: time.Now(), DeadlineAt: time.Now()})
 
-	t.Run("无筛选：id 倒序，带积分与进行中任务数；无积分账户标记", func(t *testing.T) {
+	t.Run("无筛选：id 倒序，带进行中任务数；历史积分账户不再读取", func(t *testing.T) {
 		rows, total, err := repo.ListAdmin(ctx, UserListFilter{Limit: 10})
 		if err != nil || total != 3 || len(rows) != 3 {
 			t.Fatalf("total=%d rows=%d err=%v", total, len(rows), err)
@@ -199,7 +199,7 @@ func TestUserRepository_ListAdmin(t *testing.T) {
 			t.Fatalf("应按 id 倒序：%+v", rows)
 		}
 		ra := rows[2]
-		if ra.Balance != 50 || ra.Frozen != 8 || !ra.HasCreditAccount || ra.ActiveTasks != 2 {
+		if ra.Balance != 0 || ra.Frozen != 0 || ra.HasCreditAccount || ra.ActiveTasks != 2 {
 			t.Fatalf("alice 视图不对：%+v", ra)
 		}
 		if rows[0].HasCreditAccount || rows[0].Balance != 0 || rows[0].MaxActiveTasks == nil || *rows[0].MaxActiveTasks != 4 {
@@ -235,7 +235,7 @@ func TestUserRepository_ListAdmin(t *testing.T) {
 		})
 	}
 
-	t.Run("详情统计：任务总数 / 成功 / 失败 / 近 7 天 / 已花积分", func(t *testing.T) {
+	t.Run("详情统计：任务总数 / 成功 / 失败 / 近 7 天；历史积分流水不再读取", func(t *testing.T) {
 		for _, st := range []string{model.TaskFailed, model.TaskExpired} {
 			mkTask(t, db, model.GenerationTask{UserID: a.ID, Kind: "video", ModelKey: "m", Provider: "p", Status: st, NextPollAt: time.Now(), DeadlineAt: time.Now()})
 		}
@@ -248,7 +248,7 @@ func TestUserRepository_ListAdmin(t *testing.T) {
 			t.Fatal(err)
 		}
 		// 正式任务 6 条：running/pending/succeeded/failed/expired + 10 天前 succeeded；试跑不计
-		if st.Total != 6 || st.Success != 2 || st.Failed != 2 || st.Last7d != 5 || st.SpentCredits != 10 {
+		if st.Total != 6 || st.Success != 2 || st.Failed != 2 || st.Last7d != 5 || st.SpentCredits != 0 {
 			t.Fatalf("统计不对：%+v", st)
 		}
 	})

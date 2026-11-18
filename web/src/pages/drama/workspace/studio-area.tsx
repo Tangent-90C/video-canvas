@@ -185,10 +185,8 @@ export function StudioArea({
   return frame(
     <Gate icon={<Clapperboard />} title={`第 ${episode.no} 集还没有分镜`}>
       <StoryboardButton
-        episode={episode}
         label={action.label}
         disabledReason={action.disabledReason}
-        maxSeconds={video.maxSeconds}
         busy={starter.pending === episode.no}
         onStart={() => void starter.start(episode)}
       />

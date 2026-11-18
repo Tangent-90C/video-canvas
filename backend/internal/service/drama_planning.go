@@ -38,7 +38,7 @@ func (s *DramaService) advancePlanningTx(ctx context.Context, tx repository.Dram
 		}
 		step = "plan"
 	}
-	j, err := s.enqueue(ctx, tx, p, &model.DramaJobReq{Step: step}, snap, nil, 0, nil)
+	j, err := s.enqueue(ctx, tx, p, &model.DramaJobReq{Step: step}, snap, nil, nil)
 	if err == nil {
 		return j, nil
 	}
@@ -99,8 +99,6 @@ func setPlanningState(ctx context.Context, tx repository.DramaTx, p *model.Drama
 // planningPauseCode 为前端提供稳定的暂停分类，不泄露上游错误。
 func planningPauseCode(code int) string {
 	switch code {
-	case errcode.ErrInsufficientCredits.Code:
-		return "credits"
 	case errcode.ErrDramaContext.Code:
 		return "context"
 	case errcode.ErrDramaCustomPrompt.Code:

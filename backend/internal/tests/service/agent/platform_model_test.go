@@ -88,8 +88,8 @@ func TestProxyModelPlatform_StreamsAndSettlesWithoutTouchingRunState(t *testing.
 	if s.tg.BaseURL != "https://llm.example" || s.tg.APIKey != "sk-test" || s.tg.UpstreamModel != "claude-up" {
 		t.Errorf("目标应来自渠道快照和凭证: %+v", s.tg)
 	}
-	if len(b.bill.settled) != 1 || b.bill.settled[0].Credits != 5 {
-		t.Errorf("应按用量结算: %+v", b.bill.settled)
+	if len(b.bill.settled) != 1 || b.bill.settled[0].Credits != 0 || b.bill.settled[0].InputTokens == 0 {
+		t.Errorf("应记录用量但平台积分保持 0: %+v", b.bill.settled)
 	}
 	if b.bill.calls[0].RunID != 900101 || b.bill.calls[0].UserID != 1 || b.bill.calls[0].ModelKey != "claude" {
 		t.Errorf("调用记录要记在这个运行名下: %+v", b.bill.calls[0])
@@ -103,39 +103,29 @@ func TestProxyModelPlatform_BudgetUsesSettledCallsPlusExtra(t *testing.T) {
 	b := newBridgeEnv(t)
 	rc := platformCtx(900102, "all")
 	rc.BudgetCredits = 5
-	if _, _, err := proxyPlatform(context.Background(), b, rc); err != nil { // 第一次的最坏情况预估约 1 积分，预算 5 够；实际花 5
+	if _, _, err := proxyPlatform(context.Background(), b, rc); err != nil {
 		t.Fatal(err)
 	}
-	// 已花 5（由 Go 按调用记录累加，调用方没有告诉它），预算剩 0，再来一次的最坏情况必然超出
-	_, _, err := proxyPlatform(context.Background(), b, rc)
-	if err == nil {
-		t.Fatal("第二次应因本轮预算不够被拒绝")
+	if _, _, err := proxyPlatform(context.Background(), b, rc); err != nil {
+		t.Fatalf("平台积分预算不应拦截钱包调用：%v", err)
 	}
-	wantAgentCode(t, err, errcode.ErrAgentOverBudget)
-	if len(b.bill.calls) != 1 || b.str.calls != 1 {
-		t.Errorf("被拒绝的调用不能创建调用记录、也不能发往上游: calls=%d upstream=%d", len(b.bill.calls), b.str.calls)
+	if len(b.bill.calls) != 2 || b.str.calls != 2 {
+		t.Fatalf("两次都应创建调用记录并发往上游: calls=%d upstream=%d", len(b.bill.calls), b.str.calls)
 	}
-	// 除模型调用外已经花掉的积分（已批准的生成）也算进本轮
 	other := platformCtx(900103, "all")
 	other.BudgetCredits, other.SpentExtra = 8, 8
-	_, _, err = proxyPlatform(context.Background(), b, other)
-	wantAgentCode(t, err, errcode.ErrAgentOverBudget)
-	// 预算为 0 表示不限制
-	free := platformCtx(900104, "all")
-	free.SpentExtra = 1000
-	if _, _, err := proxyPlatform(context.Background(), b, free); err != nil {
-		t.Errorf("预算 0 不限制本轮: %v", err)
+	if _, _, err := proxyPlatform(context.Background(), b, other); err != nil {
+		t.Fatalf("历史预算/已花字段不应拦截钱包调用：%v", err)
 	}
 }
 
 func TestProxyModelPlatform_AccountAndModelErrors(t *testing.T) {
-	t.Run("余额不够", func(t *testing.T) {
+	t.Run("平台积分余额为零也放行钱包调用", func(t *testing.T) {
 		b := newBridgeEnv(t)
 		b.bill.available = 0
 		_, _, err := proxyPlatform(context.Background(), b, platformCtx(900105, "all"))
-		wantAgentCode(t, err, errcode.ErrInsufficientCredits)
-		if len(b.bill.calls) != 0 {
-			t.Error("不能创建调用记录")
+		if err != nil || len(b.bill.calls) != 1 || b.bill.calls[0].UserID != 1 {
+			t.Fatalf("钱包调用不应看平台积分：err=%v calls=%+v", err, b.bill.calls)
 		}
 	})
 	t.Run("没有给模型", func(t *testing.T) {
@@ -184,8 +174,8 @@ func TestProxyModelPlatform_CancelledCallerIsStillCharged(t *testing.T) {
 		return &llmgateway.Result{Text: "半", Usage: llmgateway.Usage{InputTokens: 1_000_000, OutputTokens: 10}}, c.Err()
 	}
 	_, _, _ = proxyPlatform(ctx, b, platformCtx(900109, "all"))
-	if len(b.bill.settled) != 1 || b.bill.settled[0].Credits == 0 {
-		t.Errorf("调用方断开后，已经产生的用量仍要结算（结算用不会被取消的上下文）: %+v", b.bill.settled)
+	if len(b.bill.settled) != 1 || b.bill.settled[0].Credits != 0 || b.bill.settled[0].InputTokens == 0 || b.bill.settled[0].Error == "" {
+		t.Errorf("调用方断开后仍要记录用量和错误，但平台积分保持 0: %+v", b.bill.settled)
 	}
 }
 
@@ -202,8 +192,8 @@ func TestProxyModelPlatform_TitlePurposeIsRecordedAndDoesNotCountAsContext(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	if u.SpentCredits == 0 || u.ContextTokens != 0 {
-		t.Errorf("命名调用照常计费，但不算对话的上下文大小: %+v", u)
+	if u.SpentCredits != 0 || u.ContextTokens != 0 {
+		t.Errorf("命名调用不应产生平台积分，也不计入上下文: %+v", u)
 	}
 }
 
@@ -220,8 +210,8 @@ func TestProxyModelPlatform_ActivityPurposeIsRecordedAndDoesNotCountAsContext(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if u.SpentCredits == 0 || u.ContextTokens != 0 {
-		t.Errorf("活动说明调用和命名一样照常计费，但不算对话的上下文大小: %+v", u)
+	if u.SpentCredits != 0 || u.ContextTokens != 0 {
+		t.Errorf("活动说明调用不应产生平台积分，也不计入上下文: %+v", u)
 	}
 }
 
@@ -251,8 +241,8 @@ func TestProxyModelPlatform_SummaryPurposeIsRecordedAndDoesNotCountAsContext(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	if u.SpentCredits == 0 || u.ContextTokens != 0 {
-		t.Errorf("摘要调用要计费，但不代表对话现在多大: %+v", u)
+	if u.SpentCredits != 0 || u.ContextTokens != 0 {
+		t.Errorf("摘要调用不应产生平台积分，也不代表对话上下文大小: %+v", u)
 	}
 }
 
@@ -270,11 +260,11 @@ func TestPlatformRunUsage_SumsCallsAndFindsOneCall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if u.SpentCredits != 10 || u.ContextTokens != 1_000_000 {
-		t.Errorf("两次调用各 5 积分；上下文大小是最近一次对话调用的输入 token: %+v", u)
+	if u.SpentCredits != 0 || u.ContextTokens != 1_000_000 {
+		t.Errorf("平台积分应为 0；上下文大小是最近一次对话调用的输入 token: %+v", u)
 	}
-	if u.Call == nil || u.Call.ID != first || u.Call.Status != model.ModelCallSettled || u.Call.Charged != 5 || u.Call.Credits != 5 {
-		t.Errorf("带了调用 id 要给出这次调用的积分（message.done 要用）: %+v", u.Call)
+	if u.Call == nil || u.Call.ID != first || u.Call.Status != model.ModelCallSettled || u.Call.Charged != 0 || u.Call.Credits != 0 {
+		t.Errorf("带了调用 id 要给出这次调用，平台积分必须为 0: %+v", u.Call)
 	}
 	// 不带调用 id 就没有 call
 	if u2, _ := b.br.PlatformRunUsage(context.Background(), rc, 0); u2.Call != nil {

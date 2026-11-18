@@ -12,7 +12,7 @@
 **A self-hosted AI visual creation platform: infinite canvas · Drama Studio · canvas Agent**
 
 Import a script or novel, break it into characters and shots, and connect the steps on a canvas to generate video.
-Accounts, credits, model channels, usage and audit logs are all built in, and one command deploys it for your team.
+Accounts, TokenPay wallets, model channels, usage and audit logs are all built in, and one command deploys it for your team.
 
 [Live demo](https://canvas.vbing.site) · [Quick start](#quick-start) · [Features](#walkthrough) · [简体中文](README.md)
 
@@ -30,12 +30,12 @@ Accounts, credits, model channels, usage and audit logs are all built in, and on
 ## Who it is for
 
 - Creators who want to turn a **novel or script** into storyboards and short-drama video
-- Operators who want a shared AI creation platform for a **team or several users**, with accounts, credits, usage and audit logs
+- Operators who want a shared AI creation platform for a **team or several users**, with accounts, TokenPay wallets, usage and audit logs
 - Anyone with several model APIs who wants to **connect and bill them in one place**
 
 ## Why 连镜
 
-- **A self-hosted platform that works for many users**: accounts, credits (frozen on submission, charged on success, refunded on failure or cancellation), payments, usage records and audit logs, all in the admin console.
+- **A self-hosted platform that works for many users**: accounts, TokenPay wallet connections, real usage records, audit logs and runtime observability. The platform no longer issues or settles its own credits.
 - **Model access is a plugin, not hard-coded**: more than 20 built-in protocol plugins, and you can upload your own. Plugins run in an isolated plugin-runner and only do two things, turn a task into a request and turn a response into a result, with no network, file or timer access. See the [plugin contract](backend/docs/plugin-contract.md).
 - **The Agent is a separate service and holds no channel keys**: the canvas Agent runs on its own and reads and writes canvases, calls models and bills through a platform API. Channel keys are stored encrypted and are write-only.
 - **Upgrades can be rolled back**: the database is backed up before every upgrade and any failed step reverts to the previous version. A super admin can also upgrade from the admin console.
@@ -111,15 +111,15 @@ Compose shots with mannequins, props and multiple cameras, then export camera vi
 
 <a href="docs/assets/screenshots/%E9%A6%96%E9%A1%B5.png"><img src="docs/assets/screenshots/%E9%A6%96%E9%A1%B5.png" alt="Home" /></a>
 
-### 6. Generation and credits
+### 6. Generation and TokenPay
 
 - **Asynchronous tasks**: Submitting returns immediately. Progress is pushed over WebSocket and reconciled automatically after a reconnect. Tasks can be cancelled.
-- **Credit settlement**: Credits are frozen on submission, charged on success and refunded on failure or cancellation. Online top-up is supported.
+- **TokenPay settlement**: Users connect their own TokenPay wallet first. Model calls are charged directly to their TokenDance quota, with an inline connection prompt when the wallet is missing. The model picker shows TokenDance public real-time pricing, falling back to “actual TokenDance bill” when no price is available.
 
 ### 7. Admin console
 
 - **Channels and models**: Connectivity is checked before saving, and a model can only be enabled after validation.
-- **Operations**: Credit pricing, users, payments, usage records, audit logs and a runtime overview.
+- **Operations**: Model catalog, users, TokenPay wallet status, usage records, audit logs and a runtime overview.
 - **Secret handling**: Channel keys and storage secrets are stored encrypted and are write-only.
 - **Asset storage**: Local disk is built in. In production you can add Alibaba Cloud OSS, Tencent Cloud COS, AWS S3 or Cloudflare R2 in the admin console and choose a default. Changing the default only affects new assets; existing assets are always read from the storage they were written to.
 - **In-app upgrades**: With the updater enabled, a super admin can upgrade to the latest release, or roll back to the version before the last upgrade, from the admin console.
@@ -147,7 +147,7 @@ flowchart LR
   API --> PG[("PostgreSQL")]
   API --> Redis[("Redis")]
   API -->|"reverse proxy after login check"| Agent["Agent service<br/>TypeScript + SQLite"]
-  Agent -->|"Platform API: canvas / model proxy / billing"| API
+  Agent -->|"Platform API: canvas / model proxy; user TokenPay key"| API
   API --> Runner["plugin-runner<br/>JS plugin sandbox"]
   Runner --> Providers["Model providers"]
 ```
@@ -169,9 +169,9 @@ When it finishes, open `http://{your-ip}:38080`. When accessing through an IP or
 ### First run
 
 1. Open the app and register. The first account in the system becomes the super admin.
-2. Go to **Admin console → Channels**, choose a provider plugin, enter the Base URL and API key, and save once the connectivity check passes.
-3. Fetch or create models under the channel, validate them and enable them.
-4. Go back to the home page to generate, or create a canvas and organize the generation flow with nodes.
+2. Go to **Admin console → TokenPay wallet**, enter the gateway URL and the product-side channel key, then sync the model catalog. That key is only used for catalog sync and never pays on behalf of users.
+3. Connect your own TokenPay wallet in the profile page.
+4. Go back to the home page to generate, or create a canvas and organize the generation flow with nodes. If the wallet is missing, model entry points open the connection prompt directly.
 
 ### Updates and production configuration
 

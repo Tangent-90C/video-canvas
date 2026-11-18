@@ -58,10 +58,6 @@ export interface UsageItem {
   model_key: string;
   model_name: string;
   status: UsageStatus;
-  /** 冻结积分 */
-  credits: number;
-  /** 实扣积分；还没结算为 null */
-  charged_credits: number | null;
   error_code: string;
   /** 给用户看的失败文案 */
   error_message: string;
@@ -79,8 +75,6 @@ export interface UsageSummary {
   canceled: number;
   expired: number;
   active: number;
-  /** 实扣积分合计 */
-  charged_credits: number;
 }
 
 /** 任务产物 */
@@ -106,14 +100,6 @@ export interface UsageEvent {
   created_at: string;
 }
 
-/** 积分流水：amount 已带符号，freeze / settle 为负，refund 为正 */
-export interface UsageLedger {
-  id: number;
-  type: "freeze" | "settle" | "refund";
-  amount: number;
-  created_at: string;
-}
-
 /** 任务详情（GET /admin/usage/:ref） */
 export interface UsageDetail {
   task: {
@@ -129,8 +115,6 @@ export interface UsageDetail {
     status: UsageStatus;
     /** 0 到 100；平台没给为 null */
     progress: number | null;
-    credits: number;
-    charged_credits: number | null;
     error_code: string;
     error_message: string;
     is_test: boolean;
@@ -146,7 +130,6 @@ export interface UsageDetail {
   /** upstream 是上游错误原文（仅渠道 Key 被遮），没有为 null */
   error: { code: string; message: string; upstream: string | null };
   events: UsageEvent[];
-  ledger: UsageLedger[];
   /** 仅试跑任务有：trace_json 的步骤数组，和试跑追踪面板吃的结构一致 */
   trace: unknown[] | null;
 }

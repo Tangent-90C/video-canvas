@@ -15,9 +15,9 @@ func newModeEnv(t *testing.T) (*bridgeEnv, string) {
 	t.Helper()
 	b := newBridgeEnv(t)
 	b.reg.models = append(b.reg.models,
-		provider.ModelInfo{Key: "veo", Kind: "video", Label: "Veo", Capabilities: modelcfg.Capabilities{Ops: []string{"t2v", "i2v", "omni"}}},
-		provider.ModelInfo{Key: "kling", Kind: "video", Label: "Kling", Capabilities: modelcfg.Capabilities{Ops: []string{"t2v"}}},
-		provider.ModelInfo{Key: "flux", Kind: "image", Label: "Flux", Capabilities: modelcfg.Capabilities{Ops: []string{"t2i", "i2i"}}},
+		provider.ModelInfo{Key: "veo", Kind: "video", Label: "Veo", Wallet: true, Capabilities: modelcfg.Capabilities{Ops: []string{"t2v", "i2v", "omni"}}},
+		provider.ModelInfo{Key: "kling", Kind: "video", Label: "Kling", Wallet: true, Capabilities: modelcfg.Capabilities{Ops: []string{"t2v"}}},
+		provider.ModelInfo{Key: "flux", Kind: "image", Label: "Flux", Wallet: true, Capabilities: modelcfg.Capabilities{Ops: []string{"t2i", "i2i"}}},
 	)
 	b.repo.canvas.PayloadJSON = []byte(`{"nodes":[],"edges":[]}`)
 	tok, _ := b.token(t, "all")

@@ -60,7 +60,7 @@ const jimengKey = "AKLTtest|sk/Secret+Value=="
 func (e *jimengEnv) snapshot(baseURL, upstreamModel string) *provider.Snapshot {
 	return &provider.Snapshot{
 		Model: provider.ModelSnapshot{Key: "m", Kind: "video", UpstreamModel: upstreamModel, Capabilities: promptCaps},
-		Channel: provider.ChannelSnapshot{
+		Channel: provider.ChannelSnapshot{Wallet: true,
 			Key: "jimeng-main", PluginKey: "jimeng", PluginVersionID: 1, BaseURL: baseURL,
 		},
 		Plugin:          provider.PluginSnapshot{Key: "jimeng", Version: e.meta.Version, SHA256: e.sha, Meta: *e.meta},

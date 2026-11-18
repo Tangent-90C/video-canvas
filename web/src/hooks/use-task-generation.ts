@@ -28,7 +28,7 @@ export type TaskGeneration = ReturnType<typeof useTaskGeneration>;
  * -> 节点写 taskId、status=running，此后完全由任务 store 与回填驱动。
  * 生成数量 N > 1 时一次请求提交 N 个任务，**都绑在这个节点上**（node_ids 全是它自己，不再复制出副本节点）：
  * 成功创建的任务写进 pendingTaskIds，陆续回填成这个节点的历史版本（docs/design/多结果归并）。
- * 只有一部分任务提交成功（积分只够几个、并发已满）时，成功的照常生成，失败的数量用 toast 说明；
+ * 只有一部分任务提交成功（并发已满或其他节点级错误）时，成功的照常生成，失败的数量用 toast 说明；
  * 一个都没成功时节点不动，把原因交回调用方就地提示。
  */
 export function useTaskGeneration(nodeId: string, nodeKind: TaskNodeKind) {
@@ -46,8 +46,6 @@ export function useTaskGeneration(nodeId: string, nodeKind: TaskNodeKind) {
       currentSrc?: string | null;
       /** 生成数量：拆成几个任务（都绑在这个节点上），默认 1 */
       count?: number;
-      /** 前端算出的每个任务的积分；与后端冻结额不一致时记日志（两份计价算法漂移了），以后端为准 */
-      expectedCredits?: number;
       /** 提交成功后随任务一起写进节点的字段（同一次更新，不会被旧状态抢先读到），参数是成功创建的任务 id */
       extraPatch?: (taskIds: string[]) => Partial<CanvasNodeData>;
     }): Promise<SubmitOutcome> => {
@@ -69,20 +67,6 @@ export function useTaskGeneration(nodeId: string, nodeKind: TaskNodeKind) {
           node_ids: Array.from({ length: count }, () => nodeId),
           input: args.input,
         });
-        for (const item of items) {
-          if (
-            item.task &&
-            args.expectedCredits !== undefined &&
-            item.task.credits !== args.expectedCredits
-          ) {
-            console.warn("[pricing] 前端计价与后端冻结额不一致，以后端为准", {
-              model: args.modelKey,
-              expected: args.expectedCredits,
-              frozen: item.task.credits,
-              taskId: item.task.id,
-            });
-          }
-        }
         const { taskIds, failures } = settleSubmission(items);
         if (taskIds.length === 0) {
           return {

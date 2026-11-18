@@ -48,7 +48,7 @@ func (s *AIConfigService) DryRun(ctx context.Context, adminID uint64, modelKey s
 	}
 	// 4. 渲染。runner 连不上是临时故障，返回 503 让运营稍后重试；
 	//    其余失败几乎都是插件或配置问题（钩子抛异常、请求描述非法），把脱敏后的原因带给运营
-	secrets := s.trialSecrets(ctx, snap)
+	secrets := s.trialSecrets(ctx, adminID, snap)
 	res, err := s.dryRunner.DryRun(ctx, adminID, snap, normalized)
 	if provider.CodeOf(err) == provider.CodeRunnerUnavailable {
 		return nil, errcode.ErrRunnerUnavailable
@@ -72,7 +72,10 @@ func (s *AIConfigService) TestRun(ctx context.Context, adminID uint64, modelKey 
 	if err != nil {
 		return nil, err
 	}
-	// 3. 插件需要鉴权时渠道 Key 必须已设置：试跑会真实调用上游，提前拦下比创建一个必然失败的任务更清楚
+	if !snap.Channel.Wallet {
+		return nil, errcode.ErrWalletNotConnected.WithMsg("该模型未接入 TokenPay 钱包，请选择钱包模型")
+	}
+	// 3. 钱包模型用发起管理员自己的 Key；不再检查或读取产品方渠道 Key。
 	if err := s.checkSnapshotSecret(ctx, snap); err != nil {
 		return nil, err
 	}
@@ -160,8 +163,11 @@ func (s *AIConfigService) buildTrialSnapshot(ctx context.Context, modelKey strin
 	return provider.NewSnapshot(cfg, rt, rev.ID), nil
 }
 
-// checkSnapshotSecret 需要渠道 Key 时要求它已设置（ErrChannelSecretUnset）：快照里的插件需要宿主注入鉴权，或这是 Agent 模型（没有插件）。
+// checkSnapshotSecret 对钱包模型不检查产品方渠道 Key；历史非钱包模型仍按旧规则检查，供迁移诊断使用。
 func (s *AIConfigService) checkSnapshotSecret(ctx context.Context, snap *provider.Snapshot) error {
+	if snap.Channel.Wallet {
+		return nil
+	}
 	ch := &model.AIChannel{Key: snap.Channel.Key}
 	if snap.Plugin.Key == "" {
 		return s.checkChannelSecret(ctx, &aiResolvedChannel{channel: ch})
@@ -184,8 +190,12 @@ func aiNormalizeTrialInput(snap *provider.Snapshot, input map[string]any) (map[s
 
 // trialSecrets 取出快照里渠道 Key 的明文，仅用于对输出做脱敏；取不到（未设置、没有主密钥）就返回空，
 // 这时本来也不会有明文可泄露，所以忽略错误。
-func (s *AIConfigService) trialSecrets(ctx context.Context, snap *provider.Snapshot) []string {
-	v, err := s.Get(ctx, model.ChannelSecretName(snap.Channel.Key))
+func (s *AIConfigService) trialSecrets(ctx context.Context, userID uint64, snap *provider.Snapshot) []string {
+	name := model.ChannelSecretName(snap.Channel.Key)
+	if snap.Channel.Wallet {
+		name = model.WalletSecretName(userID)
+	}
+	v, err := s.Get(ctx, name)
 	if err != nil || v == "" {
 		return nil
 	}

@@ -173,7 +173,7 @@ func newSBEnv(replies ...stepfake.Reply) *sbEnv {
 	models.Snapshots = map[string]*provider.Snapshot{"agent-a": stepfake.TextModel("agent-a", false, false, 5)}
 	caller := &stepfake.Caller{Replies: replies}
 	bc := &sbBroadcaster{}
-	svc := service.NewStoryboardService(service.StoryboardDeps{Repo: repo, Models: models, Caller: caller, Credits: stepfake.Policy{Initial: 100}, Broadcaster: bc})
+	svc := service.NewStoryboardService(service.StoryboardDeps{Repo: repo, Models: models, Caller: caller, Wallets: connectedWallet{}, Broadcaster: bc})
 	return &sbEnv{svc: svc, repo: repo, caller: caller, models: models, bc: bc}
 }
 
@@ -224,7 +224,7 @@ func TestStoryboardSplit_SubmitReturnsPendingAndEnqueues(t *testing.T) {
 	}
 }
 
-// TestStoryboardSplit_Succeeds worker 跑完后：拆出镜头、时长截断，按实际用量扣费、推送 running 和 succeeded。
+// TestStoryboardSplit_Succeeds worker 跑完后：拆出镜头、时长截断，平台积分不变，推送 running 和 succeeded。
 func TestStoryboardSplit_Succeeds(t *testing.T) {
 	e := newSBEnv(stepfake.Reply{Text: sbValid, Usage: llmgateway.Usage{InputTokens: 10, OutputTokens: 10}})
 	id := submit(t, e, "雨夜，林晚推门进便利店。")
@@ -238,7 +238,7 @@ func TestStoryboardSplit_Succeeds(t *testing.T) {
 	if snap.Status != model.SplitJobSucceeded || len(snap.Shots) != 2 || snap.Shots[1].Duration != 60 {
 		t.Fatalf("终态不对：%+v", snap)
 	}
-	if snap.Credits != 5 || e.repo.Credits[sbUser].Balance != 95 || len(e.repo.Ledger) != 2 {
+	if snap.Credits != 0 || e.repo.Credits[sbUser].Balance != 100 || len(e.repo.Ledger) != 0 {
 		t.Fatalf("扣费不对：%+v %d", snap, e.repo.Credits[sbUser].Balance)
 	}
 	if got := e.bc.statuses(); !reflect.DeepEqual(got, []string{model.SplitJobRunning, model.SplitJobSucceeded}) {
@@ -292,7 +292,7 @@ func TestStoryboardSplit_ModelCallFailure(t *testing.T) {
 	}
 }
 
-// TestStoryboardSplit_RejectsBeforeEnqueue 空剧本、超长剧本、别人的画布、积分不够、没有模型：提交就拒绝，不建任务、不入队。
+// TestStoryboardSplit_RejectsBeforeEnqueue 空剧本、超长剧本、别人的画布、没有模型：提交就拒绝，不建任务、不入队。
 func TestStoryboardSplit_RejectsBeforeEnqueue(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -304,10 +304,6 @@ func TestStoryboardSplit_RejectsBeforeEnqueue(t *testing.T) {
 			return sbCanvas, sbReq(strings.Repeat("字", 20001))
 		}, errcode.ErrStoryboardScriptTooLong},
 		{"别人的画布", func(*sbEnv) (uint64, *model.StoryboardSplitReq) { return 99, sbReq("剧本") }, errcode.ErrCanvasNotFound},
-		{"积分不够", func(e *sbEnv) (uint64, *model.StoryboardSplitReq) {
-			e.repo.Credits[sbUser].Balance = 1
-			return sbCanvas, sbReq("剧本")
-		}, errcode.ErrInsufficientCredits},
 		{"没有模型", func(e *sbEnv) (uint64, *model.StoryboardSplitReq) {
 			delete(e.models.Snapshots, "agent-a")
 			return sbCanvas, sbReq("剧本")
@@ -375,8 +371,8 @@ func TestStoryboardSplit_WorkerIsIdempotent(t *testing.T) {
 	if e.caller.Calls != 1 {
 		t.Errorf("只该调一次模型，实际 %d", e.caller.Calls)
 	}
-	if e.repo.Credits[sbUser].Balance != 95 || len(e.repo.Ledger) != 2 {
-		t.Errorf("只该扣一次费：余额 %d，流水 %d", e.repo.Credits[sbUser].Balance, len(e.repo.Ledger))
+	if e.repo.Credits[sbUser].Balance != 100 || len(e.repo.Ledger) != 0 {
+		t.Errorf("不应改动平台积分：余额 %d，流水 %d", e.repo.Credits[sbUser].Balance, len(e.repo.Ledger))
 	}
 }
 
@@ -443,7 +439,7 @@ func (c *ctxCaller) Complete(ctx context.Context, _ *provider.Snapshot, _ []llmg
 func splitEnvWithCaller(deadline time.Duration, caller stepkit.Caller) *sbEnv {
 	e := newSBEnv()
 	e.models.Snapshots["agent-a"].Model.Deadline = modelcfg.Duration(deadline)
-	e.svc = service.NewStoryboardService(service.StoryboardDeps{Repo: e.repo, Models: e.models, Caller: caller, Credits: stepfake.Policy{Initial: 100}, Broadcaster: e.bc})
+	e.svc = service.NewStoryboardService(service.StoryboardDeps{Repo: e.repo, Models: e.models, Caller: caller, Wallets: connectedWallet{}, Broadcaster: e.bc})
 	return e
 }
 
@@ -501,7 +497,7 @@ func TestStoryboardSplit_SlowStreamOver60sSucceeds(t *testing.T) {
 	e := newSBEnv()
 	e.models.Snapshots["agent-a"].Model.Deadline = modelcfg.Duration(5 * time.Minute)
 	slow := &simulatedSlowCaller{took: 90 * time.Second, reply: sbValid}
-	e.svc = service.NewStoryboardService(service.StoryboardDeps{Repo: e.repo, Models: e.models, Caller: slow, Credits: stepfake.Policy{Initial: 100}, Broadcaster: e.bc})
+	e.svc = service.NewStoryboardService(service.StoryboardDeps{Repo: e.repo, Models: e.models, Caller: slow, Wallets: connectedWallet{}, Broadcaster: e.bc})
 	id := submit(t, e, long)
 	if err := run(t, e, id); err != nil {
 		t.Fatal(err)

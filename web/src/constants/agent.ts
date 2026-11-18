@@ -83,7 +83,7 @@ export const RUN_STATUS_TEXT: Record<string, { title: string; hint: string }> = 
   failed: { title: "运行失败", hint: "可以换个说法重试" },
   timeout: { title: "运行超时", hint: "可以继续，或换个说法重试" },
   interrupted: { title: "运行被中断", hint: "服务重启或运行进程退出了，可以从断点继续" },
-  budget_exhausted: { title: "本轮额度用完了", hint: "追加额度后可以继续" },
+  budget_exhausted: { title: "历史额度状态", hint: "直接继续即可，费用按 TokenDance 实际账单" },
   step_limit: { title: "达到本轮步数上限", hint: "继续的话会再给一轮步数" },
   canceled: { title: "已停止", hint: "没做完的计划还留着，可以接着让它做" },
   expired: { title: "等待超时", hint: "你太久没有回应，这一轮已经结束" },

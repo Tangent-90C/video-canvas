@@ -9,7 +9,6 @@ import { cn } from "@/lib/utils";
 import {
   COMPARE_METRIC_LABEL,
   buildVersionCards,
-  formatCredits,
   formatRate,
   type CompareMetric,
   type MetricDelta,
@@ -121,7 +120,6 @@ function VersionCard({
           delta={delta("fail_end_rate")}
         />
         <Metric label="中位耗时" value={formatDurationMs(group.median_duration_ms)} />
-        <Metric label="平均积分" value={formatCredits(group.avg_credits)} />
         <Metric label="反馈率" value={formatRate(group.feedback_rate)} />
       </div>
     </button>

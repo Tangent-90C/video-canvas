@@ -1,5 +1,3 @@
-import type { Pricing } from "@/api/model/type";
-
 /**
  * 模型配置正文（admin-ai-api.md「模型配置正文」）的小工具。
  * 编辑器是 JSON 文本、键顺序是刻意保留的（capabilities.params 的书写顺序就是画布参数面板的渲染顺序），
@@ -143,46 +141,6 @@ export function withModelUpstream(
     upstream_model: upstreamModel,
   };
   return withModelField(body, "channels", channels);
-}
-
-/** 正文里的 pricing；缺失或不是对象返回 null */
-export const readModelPricing = (body: unknown): Pricing | null =>
-  isRecord(body) && isRecord(body.pricing) ? (body.pricing as unknown as Pricing) : null;
-
-/** 默认价格的字段名：按次 unit、按秒 per_second；Token 计费没有单一默认价，返回 null */
-export const defaultPriceField = (pricing: Pricing | null) =>
-  pricing?.billing === "per_second" ? "per_second" : pricing?.billing === "token" ? null : "unit";
-
-/** 默认价格的文案：「10 积分 / 次」「2 积分 / 秒」「输入 2 / 输出 8（积分 / 百万 Token）」 */
-export function describeDefaultPrice(pricing: Pricing | null) {
-  if (!pricing) return "-";
-  if (pricing.pending) return "待定价";
-  if (pricing.billing === "token")
-    return `输入 ${pricing.token?.in ?? 0} / 输出 ${pricing.token?.out ?? 0}（积分 / 百万 Token）`;
-  return pricing.billing === "per_second"
-    ? `${pricing.per_second ?? 0} 积分 / 秒`
-    : `${pricing.unit ?? 0} 积分 / 次`;
-}
-
-/** 管理员填写有效售价后结束待定价状态，修改成本等其他字段时保留草稿标识。 */
-export function patchPricing(pricing: Pricing, patch: Partial<Pricing>): Pricing {
-  const next = { ...pricing, ...patch };
-  const price =
-    next.billing === "token"
-      ? Math.max(next.token?.in ?? 0, next.token?.out ?? 0)
-      : next.billing === "per_second"
-        ? next.per_second
-        : next.unit;
-  if (typeof price === "number" && Number.isFinite(price) && price > 0) delete next.pending;
-  return next;
-}
-
-/** 把默认价格改成指定值（键顺序不动）；Token 计费或没有 pricing 时返回 null，表示不适用 */
-export function withDefaultPrice(body: unknown, value: number): Record<string, unknown> | null {
-  const pricing = readModelPricing(body);
-  const field = defaultPriceField(pricing);
-  if (!pricing || !field) return null;
-  return withModelField(body, "pricing", patchPricing(pricing, { [field]: value }));
 }
 
 /** 正文里的数字字段（sort 等）；不是数字返回 null */

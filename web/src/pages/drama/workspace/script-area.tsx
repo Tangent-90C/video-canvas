@@ -319,8 +319,8 @@ function NextStepPill({
                 <span className="tabular-nums">{step.episodes.length} 集还没有剧本</span>
                 {estimate.status === "ready" && (
                   <span className="text-muted-foreground text-xs tabular-nums">
-                    {step.episodes.length > MAX_JOB_EPISODES && `前 ${MAX_JOB_EPISODES} 集 `}约{" "}
-                    <span className="text-credit">{estimate.credits}</span> 积分
+                    {step.episodes.length > MAX_JOB_EPISODES && `前 ${MAX_JOB_EPISODES} 集 `}费用按
+                    TokenDance 实际账单
                   </span>
                 )}
               </>
@@ -386,7 +386,7 @@ export function ScriptArea({
               role="alert"
               className="bg-destructive/10 text-destructive mx-auto mt-4 w-full max-w-3xl rounded-lg px-4 py-2 text-sm"
             >
-              上一步任务失败了，可以在上方重试，失败不扣积分。
+              上一步任务失败了，可以在上方重试；费用以 TokenDance 实际账单为准。
             </div>
           )}
           {/* 窄屏没有左侧分集栏：顶部用标签切换大纲、人物和集 */}

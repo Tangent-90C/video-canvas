@@ -257,24 +257,13 @@ func adminRoleAllows(role, required string) bool {
 	return role == model.RoleSuperAdmin || (role == model.RoleAdmin && required == model.RoleAdmin)
 }
 
-// applyChangeItem 分派管理操作或模型、定价变更；模型与定价的审计失败和 SHA 冲突会回滚该条。
+// applyChangeItem 分派管理操作或模型变更；审计失败和 SHA 冲突会回滚该条。
 func (s *AdminAssistantService) applyChangeItem(ctx context.Context, rc RunContext, approvalID uint64, p AdminChangePayload, index int, item AdminChangeItem) (uint64, error) {
 	if isManagementTarget(item.Target) {
 		return s.applyManagementItem(ctx, rc, approvalID, p, index, item)
 	}
 	detail := map[string]any{"via": "assistant", "order_no": p.OrderNo, "session_id": strconv.FormatUint(rc.SessionID, 10), "run_id": strconv.FormatUint(rc.RunID, 10), "approval_id": strconv.FormatUint(approvalID, 10), "index": index, "diff": item.Diff, "before": item.Before, "after": item.After}
 	switch item.Target {
-	case "pricing_settings":
-		if p.RevertOf != "" {
-			_, id, err := s.d.Settings.Restore(ctx, rc.UserID, item.After, item.BaseSHA256, detail)
-			return id, err
-		}
-		var req model.PricingSettingsReq
-		if err := json.Unmarshal(item.After, &req); err != nil {
-			return 0, err
-		}
-		_, id, err := s.d.Settings.Update(ctx, rc.UserID, req, item.BaseSHA256, detail)
-		return id, err
 	case "model":
 		var after map[string]any
 		if err := json.Unmarshal(item.After, &after); err != nil {

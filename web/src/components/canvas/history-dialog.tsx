@@ -193,7 +193,7 @@ function PendingTile({ title }: { title: string }) {
   );
 }
 
-/** 生成失败的格：原因 + 积分已退回，不可点；失败任务不进历史，关掉弹窗再开、或下一批开始后就不显示了 */
+/** 生成失败的格：原因，不可点；失败任务不进历史，关掉弹窗再开、或下一批开始后就不显示了 */
 function FailedTile({ message }: { message: string }) {
   return (
     <div
@@ -204,7 +204,6 @@ function FailedTile({ message }: { message: string }) {
         <CircleX className="text-destructive size-5" />
         <b className="font-medium">生成失败</b>
         <span className="text-muted-foreground line-clamp-3">{message}</span>
-        <span className="text-muted-foreground">积分已退回</span>
       </div>
     </div>
   );

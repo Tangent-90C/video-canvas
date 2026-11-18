@@ -185,7 +185,7 @@ beforeEach(() => {
       agent: {
         status: "ready",
         loadedAt: Date.now(),
-        models: [{ key: "agent-a", label: "Agent A", vendor: "x" }],
+        models: [{ key: "agent-a", label: "Agent A", vendor: "x", wallet: true }],
       },
     } as never,
   });

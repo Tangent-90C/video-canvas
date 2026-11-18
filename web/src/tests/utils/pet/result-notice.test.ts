@@ -117,7 +117,7 @@ describe("buildResultNotices", () => {
     const events = [ev("n1", view({ id: 1 }), { status: "error", error: "生成结果为空，请重试" })];
     const [n] = buildResultNotices(events, "c1", fresh);
     expect(n).toMatchObject({ level: "error", petOnly: true, nodeIds: ["n1"] });
-    expect(n!.text).toBe("生成失败，积分已退回：生成结果为空，请重试");
+    expect(n!.text).toBe("生成失败：生成结果为空，请重试");
   });
 
   test("整个节点失败：带原因，没有原因给默认文案；过期是「生成超时」", () => {
@@ -126,8 +126,8 @@ describe("buildResultNotices", () => {
     });
     const expired = ev("n2", view({ id: 2, status: "expired" }), { status: "error" });
     const [a, b] = buildResultNotices([failed, expired], "c1", fresh);
-    expect(a!.text).toBe("生成失败，积分已退回：额度不足");
-    expect(b!.text).toBe("生成失败，积分已退回：生成超时");
+    expect(a!.text).toBe("生成失败：额度不足");
+    expect(b!.text).toBe("生成失败：生成超时");
   });
 
   test("钱包余额不足的失败提醒带充值动作标记", () => {
@@ -156,16 +156,16 @@ describe("buildResultNotices", () => {
   });
 
   test("取消：沿用原 toast 文案和 id，不受新鲜度限制，不是仅桌宠", () => {
-    const refunded = ev("n1", view({ id: 5, status: "canceled", charged_credits: null }));
-    const kept = ev("n2", view({ id: 6, status: "canceled", charged_credits: 3 }));
-    const [a, b] = buildResultNotices([refunded, kept], "c1", () => false);
+    const first = ev("n1", view({ id: 5, status: "canceled" }));
+    const second = ev("n2", view({ id: 6, status: "canceled" }));
+    const [a, b] = buildResultNotices([first, second], "c1", () => false);
     expect(a).toMatchObject({
       level: "info",
-      text: "已取消生成，积分已退回",
+      text: "已取消生成，最终费用以 TokenDance 实际账单为准",
       id: "canceled:5",
       petOnly: false,
     });
-    expect(b!.text).toBe("已取消生成，已进入生成的积分不退回");
+    expect(b!.text).toBe("已取消生成，最终费用以 TokenDance 实际账单为准");
   });
 
   test("批次部分失败：沿用原 toast 文案，取第一条原因", () => {
@@ -179,7 +179,7 @@ describe("buildResultNotices", () => {
     expect(notices).toHaveLength(1);
     expect(notices[0]).toMatchObject({
       level: "warning",
-      text: "有 2 张生成失败，积分已退回：审核未通过",
+      text: "有 2 张生成失败：审核未通过",
       id: "batch-failed:n1:7",
       petOnly: false,
       nodeIds: ["n1"],

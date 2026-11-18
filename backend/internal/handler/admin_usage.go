@@ -32,7 +32,7 @@ func (h *AdminUsageHandler) List(c *gin.Context) {
 	response.OK(c, page)
 }
 
-// Summary 返回与列表同一组筛选条件下的任务数与实扣积分（GET /admin/usage/summary）。
+// Summary 返回与列表同一组筛选条件下的任务数（GET /admin/usage/summary）。
 func (h *AdminUsageHandler) Summary(c *gin.Context) {
 	var req model.UsageFilterReq
 	if !BindQuery(c, &req) {

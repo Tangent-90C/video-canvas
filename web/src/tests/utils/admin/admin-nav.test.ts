@@ -3,13 +3,12 @@ import { describe, expect, test } from "bun:test";
 import { ADMIN_NAV, findNav } from "@/pages/admin/admin-nav";
 
 describe("后台导航", () => {
-  test("“系统设置”分组下，存储配置之后依次是图片服务、注册设置、定价设置、邮件服务、公告、登录页展示、版本与升级", () => {
+  test("“系统设置”分组不再提供积分定价设置", () => {
     const group = ADMIN_NAV.find((item) => item.label === "系统设置");
     expect(group?.items.map((item) => [item.to, item.label])).toEqual([
       ["settings/storage", "存储配置"],
       ["settings/image-processor", "图片服务"],
       ["settings/register", "注册设置"],
-      ["settings/pricing", "定价设置"],
       ["settings/email", "邮件服务"],
       ["settings/announcements", "公告"],
       ["settings/showcase", "登录页展示"],
@@ -40,12 +39,8 @@ describe("后台导航", () => {
     expect(findNav("/admin/settings/image-processor")?.item.label).toBe("图片服务");
   });
 
-  test("findNav 能认出定价设置页，图标不与其他菜单项重复", () => {
-    const found = findNav("/admin/settings/pricing");
-    expect(found?.group.label).toBe("系统设置");
-    expect(found?.item.label).toBe("定价设置");
-    const items = ADMIN_NAV.flatMap((group) => group.items);
-    expect(items.filter((item) => item.icon === found?.item.icon)).toHaveLength(1);
+  test("findNav 不再认出定价设置页", () => {
+    expect(findNav("/admin/settings/pricing")).toBeNull();
   });
 
   test("findNav 能认出版本与升级页", () => {
@@ -112,7 +107,6 @@ describe("后台导航", () => {
     const users = ADMIN_NAV.find((item) => item.label === "用户");
     expect(users?.items.map((item) => [item.to, item.label])).toEqual([
       ["users", "用户管理"],
-      ["payment", "支付管理"],
       ["usage", "使用记录"],
     ]);
     const logs = ADMIN_NAV.find((item) => item.label === "日志管理");

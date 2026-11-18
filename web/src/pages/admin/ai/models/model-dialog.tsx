@@ -1,7 +1,6 @@
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import {
   Braces,
-  Coins,
   FlaskConical,
   Info,
   Loader2,
@@ -26,20 +25,16 @@ import { findPathInJson } from "@/utils/admin/json";
 import {
   readModelChannel,
   readModelKind,
-  readModelPricing,
   readModelString,
   readModelStrings,
 } from "@/utils/admin/model-body";
 
 import type { ModelListItem } from "@/api/admin/ai/type.d";
 import { publishBlockReason } from "@/utils/admin/model-channel";
-import { priceLabel } from "@/utils/pricing/quote";
-
 import { ModelBasicForm } from "./model-basic-form";
 import { fieldOfPath, worstLevel, type ModelCheck, type ModelTabId } from "./model-fields";
 import { ModelParamsForm } from "./model-params-form";
-import { PickerPreview, PreviewFrame, PricePreview } from "./model-previews";
-import { ModelPriceForm } from "./model-price-form";
+import { PickerPreview, PreviewFrame } from "./model-previews";
 import { TestNode } from "./test-node";
 import type { ModelCatalog, ModelWorkspace } from "./use-model-workspace";
 
@@ -49,14 +44,13 @@ export type ModelDialogHandle = { locate: (path: string) => void };
 const TABS: Array<{ id: ModelTabId; label: string; icon: LucideIcon }> = [
   { id: "basic", label: "基本信息", icon: Info },
   { id: "params", label: "能力与参数", icon: SlidersHorizontal },
-  { id: "price", label: "积分定价", icon: Coins },
 ];
 
 /** JSON 文本框的行高（与 leading-5 一致），用来把命中行滚到可见位置 */
 const LINE_HEIGHT = 20;
 
 /**
- * 模型编辑弹窗（设计稿样式）：顶部身份与上线状态、三个页签、上线前待办、左表单右预览、底部取消 / 保存。
+ * 模型编辑弹窗：顶部身份与上线状态、两个页签、上线前待办、左表单右预览、底部取消 / 保存。
  * JSON 是事实来源，表单只是对它的读写。
  */
 export function ModelDialog({
@@ -113,7 +107,6 @@ export function ModelDialog({
 
   const label = body ? readModelString(body, "label") : (seed?.label ?? "");
   const kind = body ? readModelKind(body) : "";
-  const pricing = body ? readModelPricing(body) : null;
   const upstream = body ? readModelChannel(body).upstreamModel : "";
   const { checks } = ws;
   const disabled = ws.working || ws.loadingDetail;
@@ -142,7 +135,7 @@ export function ModelDialog({
       kind={kind}
       vendor={readModelString(body, "vendor")}
       tags={readModelStrings(body, "tags")}
-      price={priceLabel(pricing ?? undefined)}
+      price="TokenDance 实际账单"
       hint={readModelString(body, "hint")}
     />
   ) : tab === "params" ? (
@@ -152,7 +145,6 @@ export function ModelDialog({
         vendor={readModelString(body, "vendor")}
         label={label}
         kind={kind}
-        pricing={pricing ?? undefined}
         caps={ws.capabilities}
         params={ws.testParams}
         assets={ws.testAssets}
@@ -163,9 +155,7 @@ export function ModelDialog({
         onRemoveRef={ws.removeTestRef}
       />
     </PreviewFrame>
-  ) : (
-    <PricePreview pricing={pricing} caps={ws.capabilities} />
-  );
+  ) : null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -290,25 +280,12 @@ export function ModelDialog({
                 onChange={ws.editBody}
               />
             ) : (
-              <>
-                {tab === "params" ? (
-                  <ModelParamsForm
-                    body={body}
-                    issues={ws.fieldIssues}
-                    warnings={ws.fieldWarnings}
-                    onChange={ws.editBody}
-                  />
-                ) : (
-                  <ModelPriceForm
-                    body={body}
-                    kind={kind}
-                    caps={ws.capabilities}
-                    issues={ws.fieldIssues}
-                    warnings={ws.fieldWarnings}
-                    onChange={ws.editBody}
-                  />
-                )}
-              </>
+              <ModelParamsForm
+                body={body}
+                issues={ws.fieldIssues}
+                warnings={ws.fieldWarnings}
+                onChange={ws.editBody}
+              />
             )}
           </div>
           <aside className="bg-muted/20 hidden min-h-0 overflow-y-auto border-l p-5 lg:block">

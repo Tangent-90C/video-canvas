@@ -56,7 +56,7 @@ func newViduEnv(t *testing.T) *viduEnv {
 func (e *viduEnv) snapshot(baseURL, upstream string) *provider.Snapshot {
 	return &provider.Snapshot{
 		Model: provider.ModelSnapshot{Key: "m", Kind: "video", UpstreamModel: upstream, Capabilities: promptCaps},
-		Channel: provider.ChannelSnapshot{
+		Channel: provider.ChannelSnapshot{Wallet: true,
 			Key: "vidu-main", PluginKey: "vidu", PluginVersionID: 1, BaseURL: baseURL,
 		},
 		Plugin:          provider.PluginSnapshot{Key: "vidu", Version: e.meta.Version, SHA256: e.sha, Meta: *e.meta},

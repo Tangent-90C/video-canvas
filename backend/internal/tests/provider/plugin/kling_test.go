@@ -62,7 +62,7 @@ func newKlingEnv(t *testing.T, secret string) *klingEnv {
 func (e *klingEnv) snapshot(baseURL, upstream string) *provider.Snapshot {
 	return &provider.Snapshot{
 		Model: provider.ModelSnapshot{Key: "m", Kind: "video", UpstreamModel: upstream, Capabilities: promptCaps},
-		Channel: provider.ChannelSnapshot{
+		Channel: provider.ChannelSnapshot{Wallet: true,
 			Key: "kling-main", PluginKey: "kling", PluginVersionID: 1, BaseURL: baseURL,
 		},
 		Plugin:          provider.PluginSnapshot{Key: "kling", Version: e.meta.Version, SHA256: e.sha, Meta: *e.meta},

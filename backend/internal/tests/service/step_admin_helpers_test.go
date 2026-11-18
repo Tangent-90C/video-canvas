@@ -74,7 +74,7 @@ func newStepEnv(t *testing.T) *stepEnv {
 	e.repo.Actors[stepActor] = "admin-nine"
 	e.lib.Add("tvc", &stepfake.Skill{ID: 7, Title: "TVC 导演", Enabled: true, Active: 1, Versions: map[int]string{1: "旧方法"}})
 	e.repo.SkillNames[7] = "tvc"
-	e.svc = NewStepAdminService(StepAdminDeps{Registry: e.reg, Repo: e.repo, Skills: e.lib, Models: e.models, Credits: stepfake.Policy{Initial: 50},
+	e.svc = NewStepAdminService(StepAdminDeps{Registry: e.reg, Repo: e.repo, Skills: e.lib, Models: e.models,
 		Audit: e.audit, Stats: e.stats, Caller: e.caller, Now: func() time.Time { return e.now }})
 	return e
 }

@@ -32,7 +32,7 @@ func newCoverEnv(mut func(t *model.GenerationTask)) (*GenerationTaskService, *fa
 	svc := NewGenerationTaskService(GenerationTaskDeps{
 		Repo: repo, Registry: &fakeTaskRegistry{snap: fakeTaskSnapshot(model.KindImage, 10)},
 		Executor: &fakeTaskExecutor{}, Assets: &fakeTaskAssets{items: map[uint64]*model.Asset{}},
-		Broadcaster: &fakeTaskBroadcaster{}, Limits: defaultTaskLimits(), Covers: cover,
+		Broadcaster: &fakeTaskBroadcaster{}, Limits: defaultTaskLimits(), Covers: cover, Wallets: connectedWallet{},
 	}, WithTaskClock(func() time.Time { return time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC) }))
 	canvas := uint64(42)
 	tk := model.GenerationTask{UserID: 7, Status: model.TaskFinalizing, Credits: 10, Provider: "p1", CanvasProjectID: &canvas}

@@ -20,7 +20,7 @@ func TestDramaIgnoresTextModels(t *testing.T) {
 	dramaCheckCode(t, err, 67007)
 }
 
-// 模型请求发往快照里的渠道，带解密后的渠道 Key、上游模型名和接口格式。
+// 模型请求发往快照里的渠道，带用户钱包 Key、上游模型名和接口格式。
 func TestDramaCallsAgentChannel(t *testing.T) {
 	r := newDramaMemory()
 	dramaAddEpisode(r, 1, "")
@@ -37,13 +37,13 @@ func TestDramaCallsAgentChannel(t *testing.T) {
 		t.Fatalf("calls=%d", len(e.targets))
 	}
 	got := e.targets[0]
-	if got.ChannelKey != "chan" || got.BaseURL != "https://llm.example" || got.APIKey != "sk-test" || got.UpstreamModel != "upstream-chat" || got.Format != "openai" {
+	if got.ChannelKey != "chan" || got.BaseURL != "https://llm.example" || got.APIKey != "sk-wallet-test" || got.UpstreamModel != "upstream-chat" || got.Format != "openai" {
 		t.Fatalf("target=%+v", got)
 	}
 }
 
-// Agent 模型只按 Token 计费：成功后按上游回报的实际用量结算，多冻结的退回。
-func TestDramaSettlesAgentModelByTokenUsage(t *testing.T) {
+// TokenPay 钱包模型由上游直接计费；平台任务只记录用量语义并保持积分为 0。
+func TestDramaWalletModelKeepsPlatformCreditsAtZero(t *testing.T) {
 	r := newDramaMemory()
 	dramaAddEpisode(r, 1, "")
 	e := &dramaTextStreamer{outputs: []string{`{"script_md":"剧本"}`}, usage: llmgateway.Usage{InputTokens: 1000, OutputTokens: 500}}
@@ -53,19 +53,16 @@ func TestDramaSettlesAgentModelByTokenUsage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.credit.Frozen <= 3 {
-		t.Fatalf("冻结额应按上限预估: %+v", r.credit)
-	}
 	if err := s.HandleDrama(context.Background(), 7, 1, uint64(j.ID)); err != nil {
 		t.Fatal(err)
 	}
-	if r.jobs[0].Status != "succeeded" || r.credit.Balance != 1000-3 || r.credit.Frozen != 0 {
-		t.Fatalf("job=%+v credit=%+v", r.jobs[0], r.credit)
+	if r.jobs[0].Status != "succeeded" || r.jobs[0].Credits != 0 || r.credit.Balance != 1000 || r.credit.Frozen != 0 || len(r.ledger) != 0 {
+		t.Fatalf("钱包计费不应触碰平台积分：job=%+v credit=%+v ledger=%+v", r.jobs[0], r.credit, r.ledger)
 	}
 }
 
-// 渠道 Key 读不到时任务失败并整笔退回，不请求上游。
-func TestDramaFailsWithoutChannelKey(t *testing.T) {
+// 钱包模型不读取渠道的产品方 Key；渠道名变化不影响用户自己的钱包请求。
+func TestDramaWalletModelDoesNotNeedChannelSecret(t *testing.T) {
 	r := newDramaMemory()
 	dramaAddEpisode(r, 1, "")
 	e := &dramaTextStreamer{outputs: []string{`{"script_md":"剧本"}`}}
@@ -78,7 +75,7 @@ func TestDramaFailsWithoutChannelKey(t *testing.T) {
 	if err := s.HandleDrama(context.Background(), 7, 1, uint64(j.ID)); err != nil {
 		t.Fatal(err)
 	}
-	if e.calls != 0 || r.jobs[0].Status != "failed" || r.credit.Balance != 1000 || r.credit.Frozen != 0 {
+	if e.calls != 1 || r.jobs[0].Status != "succeeded" || r.credit.Balance != 1000 || r.credit.Frozen != 0 {
 		t.Fatalf("calls=%d job=%+v credit=%+v", e.calls, r.jobs[0], r.credit)
 	}
 }
@@ -92,7 +89,7 @@ func TestDramaCreateKeepsChosenAgentModel(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newDramaMemory()
 			s, registry := dramaTestService(r, &dramaTextStreamer{}, nil)
-			registry.models = []provider.ModelInfo{{Key: "text", Kind: "agent"}, {Key: "pro", Kind: "agent"}}
+			registry.models = []provider.ModelInfo{{Key: "text", Kind: "agent", Wallet: true}, {Key: "pro", Kind: "agent", Wallet: true}}
 			_, err := s.Create(context.Background(), 7, &model.CreateDramaReq{SourceToken: seedDramaDraft(r, "第一章\n正文"), SourceKind: "novel", StyleKey: "custom", StyleCustom: "写实", TextModel: tc.chosen})
 			if err != nil {
 				t.Fatal(err)

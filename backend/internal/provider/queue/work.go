@@ -33,7 +33,7 @@ const (
 type Handler interface {
 	// Handle 处理任务的“这一步”（提交 / 轮询 / 转存 / 超时）。结果写在任务行里，不返回错误。
 	Handle(ctx context.Context, t model.GenerationTask)
-	// Expire 让一个已经超过截止时间、还没拿到名额的任务走超时流程（置为 expired 并退款）。
+	// Expire 让一个已经超过截止时间、还没拿到名额的任务走超时流程（置为 expired）。
 	Expire(ctx context.Context, t model.GenerationTask)
 }
 
@@ -93,7 +93,7 @@ func (rt *Runtime) work(ctx context.Context, taskID uint64) error {
 // waitForSlot 为 pending 任务申请名额。返回的任务是拿到名额之后的最新行（deadline_at 已重置）；
 // 返回 (nil, nil) 表示这个 job 不用继续处理了；返回 (nil, err) 的 err 可能是 river.JobSnooze（名额还没轮到）。
 //
-//  1. 排队已经超过截止时间：不再申请，直接走超时流程（置为 expired 并退款，文案是“排队超时”）；
+//  1. 排队已经超过截止时间：不再申请，直接走超时流程（置为 expired，文案是“排队超时”）；
 //  2. 拿到名额：重读任务行（要用新的 deadline_at 与 slot_acquired_at）继续；
 //  3. 任务已被取消 / 超时：job 结束；
 //  4. 其它（用户名额满 / 渠道名额满 / 前面还有更早的等待者）：睡一会再来，不消耗重试次数。

@@ -37,14 +37,14 @@ import (
 )
 
 type registry struct{}
-type creditPolicy struct{}
+type connectedWallet struct{}
 
-func (creditPolicy) InitialCredits(context.Context) (int, error) { return 100, nil }
+func (connectedWallet) Connected(context.Context, uint64) (bool, error) { return true, nil }
 func (registry) ListModels(context.Context, string) ([]provider.ModelInfo, error) {
-	return []provider.ModelInfo{{Key: "smoke-text", Kind: "agent"}}, nil
+	return []provider.ModelInfo{{Key: "smoke-text", Kind: "agent", Wallet: true}}, nil
 }
 func (registry) Snapshot(_ context.Context, key string) (*provider.Snapshot, error) {
-	snap := &provider.Snapshot{ModelRevisionID: 1, Channel: provider.ChannelSnapshot{Key: "smoke"}, Model: provider.ModelSnapshot{Key: key, Kind: "agent", Pricing: modelcfg.Pricing{Billing: modelcfg.BillingPerCall, Unit: 1}, Capabilities: modelcfg.Capabilities{Context: &modelcfg.ContextSpec{Window: 128000, Output: 4000}}}}
+	snap := &provider.Snapshot{ModelRevisionID: 1, Channel: provider.ChannelSnapshot{Key: "smoke", Wallet: true}, Model: provider.ModelSnapshot{Key: key, Kind: "agent", Capabilities: modelcfg.Capabilities{Context: &modelcfg.ContextSpec{Window: 128000, Output: 4000}}}}
 	if key == "smoke-video" || key == "smoke-image" {
 		snap.Model.Kind = strings.TrimPrefix(key, "smoke-")
 		snap.Model.Capabilities.Context = nil
@@ -215,10 +215,10 @@ func startServer(ctx context.Context, db *gorm.DB, sqlDB *sql.DB, schema string,
 	assets := service.NewAssetService(repository.NewAssetRepository(db), stores, config.Storage{})
 	exec := executor{db: db, mediaDir: mediaDir}
 	tasksRepo := repository.NewGenerationTaskRepository(db)
-	tasks := service.NewGenerationTaskService(service.GenerationTaskDeps{Repo: tasksRepo, Registry: registry{}, Executor: exec, Assets: assets, Broadcaster: events})
+	tasks := service.NewGenerationTaskService(service.GenerationTaskDeps{Repo: tasksRepo, Registry: registry{}, Executor: exec, Assets: assets, Broadcaster: events, Wallets: connectedWallet{}})
 	segments := service.NewDramaSegmentService(service.DramaSegmentDeps{Repo: repo, Tasks: tasks, Assets: assets, Broadcaster: events})
 	tasks.SetTaskObserver(segments)
-	svc := service.NewDramaService(service.DramaDeps{Repo: repo, Registry: registry{}, Streamer: textStreamer{}, Secrets: smokeSecrets{}, Canvas: service.NewDramaCanvasService(repository.NewDramaCanvasRepository(db), nil), Credits: creditPolicy{}, Segments: segments, CanvasAssets: canvases, Broadcaster: events, Assets: assets, Compose: videoframe.New(videoframe.Options{Timeout: time.Minute})})
+	svc := service.NewDramaService(service.DramaDeps{Repo: repo, Registry: registry{}, Streamer: textStreamer{}, Secrets: smokeSecrets{}, Canvas: service.NewDramaCanvasService(repository.NewDramaCanvasRepository(db), nil), Wallets: connectedWallet{}, Segments: segments, CanvasAssets: canvases, Broadcaster: events, Assets: assets, Compose: videoframe.New(videoframe.Options{Timeout: time.Minute})})
 	rt, e := queue.New(queue.Config{DB: sqlDB, Schema: schema, Repo: repository.NewQueueRepository(db), Drama: svc, Store: tasks, Handler: worker.New(tasks, exec, nil, worker.Options{Logger: zap.NewNop()}), Enabled: true, HardCap: 2, FetchPollInterval: 100 * time.Millisecond, Logger: zap.NewNop()})
 	must(e)
 	repo.SetEnqueuer(rt)

@@ -42,8 +42,6 @@ export type RunHeadInfo = {
   durationMs: number | null;
   /** 步数 */
   steps: number;
-  /** 花掉的积分 */
-  credits: number;
   /** 输入 Token */
   inputTokens: number;
   /** 输出 Token */
@@ -64,7 +62,6 @@ export function runHeadInfo(detail: AgentRunDetail): RunHeadInfo | null {
       endedAt: digest.ended_at,
       durationMs: digest.duration_ms,
       steps: digest.steps,
-      credits: digest.spent_credits,
       inputTokens: digest.input_tokens,
       outputTokens: digest.output_tokens,
     };
@@ -76,7 +73,6 @@ export function runHeadInfo(detail: AgentRunDetail): RunHeadInfo | null {
     endedAt: run.ended_at,
     durationMs: Number.isNaN(span) ? null : span,
     steps: run.steps,
-    credits: run.spent_credits,
     inputTokens: detail.model_calls.reduce((sum, m) => sum + m.input_tokens, 0),
     outputTokens: detail.model_calls.reduce((sum, m) => sum + m.output_tokens, 0),
   };

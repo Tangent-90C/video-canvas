@@ -21,7 +21,7 @@ import type {
   useAgentController as UseAgentController,
 } from "@/hooks/use-agent-controller";
 import type { useAgentStore as UseAgentStore } from "@/store/agent";
-import type { useCreditsStore as UseCreditsStore } from "@/store/credits";
+import type { useWalletStore as UseWalletStore } from "@/store/wallet";
 
 /**
  * useAgentController 的后台助手场景（mode: "admin"）：会话列表 / 新建走后台助手接口，
@@ -53,7 +53,8 @@ let createElement: typeof CreateElement;
 let useEffect: typeof UseEffect;
 let useAgentController: typeof UseAgentController;
 let useAgentStore: typeof UseAgentStore;
-let useCreditsStore: typeof UseCreditsStore;
+let useWalletStore: typeof UseWalletStore;
+let realFetchBalance: () => Promise<void>;
 
 const models: AgentModelDto[] = [
   { key: "m1", name: "助手模型", vision: true, context_window: 1000 } as AgentModelDto,
@@ -154,8 +155,8 @@ beforeAll(async () => {
   createRoot = (await import("react-dom/client")).createRoot;
   useAgentController = (await import("@/hooks/use-agent-controller")).useAgentController;
   useAgentStore = (await import("@/store/agent")).useAgentStore;
-  useCreditsStore = (await import("@/store/credits")).useCreditsStore;
-  realRefresh = useCreditsStore.getState().refresh;
+  useWalletStore = (await import("@/store/wallet")).useWalletStore;
+  realFetchBalance = useWalletStore.getState().fetchBalance;
 });
 
 afterAll(() => {
@@ -166,8 +167,6 @@ afterAll(() => {
   delete g.IS_REACT_ACT_ENVIRONMENT;
 });
 
-/** 积分 store 原来的刷新函数 */
-let realRefresh: () => Promise<void>;
 /** 还没卸载的组件：断言失败时也要卸载，否则它订阅着 store，会在后面的测试文件里报错 */
 const mounted: Array<() => Promise<void>> = [];
 
@@ -180,11 +179,11 @@ beforeEach(() => {
   adminList = [];
   failDecide = false;
   useAgentStore.setState({ sessions: {}, sessionsByCanvas: {} });
-  // 画布发送后会刷新积分，不让它真的发请求（afterEach 还原）
-  useCreditsStore.setState({ refresh: async () => {} });
+  // 画布发送后会刷新 TokenPay 余额，不让它真的发请求（afterEach 还原）
+  useWalletStore.setState({ fetchBalance: async () => {} });
 });
 afterEach(async () => {
-  useCreditsStore.setState({ refresh: realRefresh });
+  useWalletStore.setState({ fetchBalance: realFetchBalance });
   for (const unmount of mounted.splice(0)) {
     try {
       await unmount();

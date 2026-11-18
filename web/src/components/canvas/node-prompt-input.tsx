@@ -1,9 +1,11 @@
 import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import { motion } from "motion/react";
-import { ArrowUp, ChevronDown, Loader2, Maximize2, Sparkle, Wallet } from "lucide-react";
+import { ArrowUp, ChevronDown, Loader2, Maximize2, Wallet } from "lucide-react";
 
+import type { Capabilities, UpstreamPricing } from "@/api/model/type";
 import { VendorAvatar } from "@/components/admin-ui/vendor-avatar";
-import { useWalletCostEstimate } from "@/hooks/use-wallet-cost";
+import { useWalletPriceLabel } from "@/hooks/use-wallet-cost";
+import { useWalletStore } from "@/store/wallet";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import {
   DropdownMenu,
@@ -34,15 +36,13 @@ export const PROMPT_MAX_LENGTH = 16000;
 /** 字数到这个比例开始提醒 */
 const PROMPT_WARN_RATIO = 0.94;
 
-/** 一个可选模型：名字之外还带每次出片要扣的积分 */
+/** 一个可选模型：名字之外还带 TokenDance 公开价目 */
 export type NodeModelOption = {
   /** 模型标识，写回节点数据的就是它 */
   id: string;
   /** 模型显示名 */
   label: string;
-  /** 最低单价（积分） */
-  credits: number;
-  /** 价格文案，如「10 积分」「2 积分/秒起」「按 Token」 */
+  /** TokenDance 公开价目文案 */
   priceLabel?: string;
   /** 下拉里的一行小字，说明擅长什么 */
   hint?: string;
@@ -50,10 +50,16 @@ export type NodeModelOption = {
   vendor?: string;
   /** 展示标签 */
   tags?: readonly string[];
-  /** TokenPay 钱包模型：用用户自己的 TokenDance 额度，不消耗平台积分 */
+  /** TokenPay 钱包模型：用用户自己的 TokenDance 额度支付 */
   wallet?: boolean;
   /** 上游模型名；钱包模型用它匹配 TokenDance 调用记录，算真实花费 */
   upstream_model?: string;
+  /** 原始能力：需要按参数重新报价时保留 */
+  capabilities?: Capabilities;
+  /** 后端模型种类 */
+  kind?: string;
+  /** 钱包模型的上游公开价目 */
+  upstream_pricing?: UpstreamPricing;
 };
 
 /** 面板底栏上的纯文字按钮样式（无描边，只有悬停底色），模型、参数摘要这类按钮共用 */
@@ -69,8 +75,6 @@ export type SecondarySubmit = {
   label: string;
   /** 此刻不能点的原因；可以点为 null */
   blockedReason: string | null;
-  /** 比发送键多花的积分（最低单价），加进这个按钮显示的积分里 */
-  extraCredits: number;
   onSubmit: () => void;
 };
 
@@ -104,16 +108,8 @@ type NodePromptInputProps = {
   modelLabel?: string;
   /** 当前模型有问题（已下线等），触发器用警示色 */
   modelInvalid?: boolean;
-  /** 覆盖发送键上显示的积分：本次提交合计要冻结的积分（所有任务之和） */
-  credits?: number;
-  /** credits 是预估上限（按 Token 计费，完成后按实际用量多退少补） */
-  creditsIsMax?: boolean;
-  /** 合计积分的组成说明，如「5 积分/秒 × 5 秒 × 4 个」，放在悬停提示里 */
-  creditsDetail?: string;
-  /** 生成数量（一次提交拆成几个任务）；钱包模型的预估花费按它乘 */
+  /** 生成数量（一次提交拆成几个任务） */
   count?: number;
-  /** 当前可用积分，放在悬停提示里 */
-  availableCredits?: number | null;
   /** 提示词框禁用（比如提示词由上游连线提供），placeholder 会换成 promptNote */
   promptDisabled?: boolean;
   promptNote?: string;
@@ -141,7 +137,7 @@ type NodePromptInputProps = {
   className?: string;
 };
 
-/** 底栏（提交提示 + 模型 / 参数 / 积分 / 发送）要的数据：面板和放大编辑弹窗共用同一份 */
+/** 底栏（提交提示 + 模型 / 参数 / 公开价目 / 发送）要的数据：面板和放大编辑弹窗共用同一份 */
 type PromptFooterProps = {
   /** 工具栏上方的一行提示，比如提交被拒的原因 */
   notice?: { tone: "error" | "info"; text: string } | null;
@@ -156,14 +152,14 @@ type PromptFooterProps = {
   modelInvalid?: boolean;
   /** 模型选择后面的插槽，放参数摘要、批量 */
   toolbarExtra?: ReactNode;
-  /** 本次提交要冻结的积分；没有价格时显示「—」 */
-  credits?: number;
-  /** credits 是预估上限 */
-  creditsIsMax?: boolean;
-  /** 积分与发送键的悬停说明 */
+  /** 价格与发送键的悬停说明 */
   creditsTitle: string;
-  /** 钱包模型的预估花费（元，如「¥0.22」）；普通渠道模型不传，此时显示平台积分 */
+  /** 钱包模型的公开价目文案；普通渠道模型不传 */
   walletEstimate?: string | null;
+  /** 选择器里有钱包模型，但用户还没连接 TokenPay */
+  walletRequired?: boolean;
+  /** 打开 TokenPay 连接弹窗 */
+  onConnectWallet?: () => void;
   /** 发送键不可点：不能提交，或正在忙 */
   blocked: boolean;
   /** 提交在路上或正在生成：发送键转圈 */
@@ -175,7 +171,7 @@ type PromptFooterProps = {
 };
 
 /**
- * 生成面板的底栏：提交被拒的提示行，其下是模型下拉、参数摘要 / 批量插槽、积分和圆形发送键。
+ * 生成面板的底栏：提交被拒的提示行，其下是模型下拉、参数摘要 / 批量插槽、公开价目和圆形发送键。
  * 面板和「编辑提示词」弹窗各渲染一次，吃同一份 props，所以在弹窗里改模型、参数，面板里同步变。
  */
 function PromptFooter({
@@ -186,10 +182,10 @@ function PromptFooter({
   modelLabel,
   modelInvalid,
   toolbarExtra,
-  credits,
-  creditsIsMax,
   creditsTitle,
   walletEstimate,
+  walletRequired,
+  onConnectWallet,
   blocked,
   busy,
   onSubmit,
@@ -197,6 +193,16 @@ function PromptFooter({
 }: PromptFooterProps) {
   return (
     <div className="flex min-w-0 flex-col gap-3">
+      {walletRequired && onConnectWallet && (
+        <button
+          type="button"
+          onClick={onConnectWallet}
+          className="text-muted-foreground hover:bg-chrome-hover hover:text-foreground focus-visible:ring-node-ring/60 flex items-center gap-1.5 rounded-lg px-2 py-1 text-left text-xs outline-none transition-colors focus-visible:ring-2"
+        >
+          <Wallet className="size-3.5" />
+          连接 TokenPay 钱包后生成
+        </button>
+      )}
       {notice && (
         <p
           role={notice.tone === "error" ? "alert" : undefined}
@@ -257,9 +263,8 @@ function PromptFooter({
                         <span className="text-muted-foreground truncate text-xs">{item.hint}</span>
                       )}
                     </span>
-                    <span className="text-muted-foreground ml-auto text-xs">
-                      {/* 钱包模型不扣平台积分，平台积分价对它没有意义，不显示价格行 */}
-                      {item.wallet ? "" : (item.priceLabel ?? `${item.credits} 积分`)}
+                    <span className="text-muted-foreground ml-auto max-w-44 shrink-0 truncate text-right text-xs">
+                      {item.priceLabel ?? "按 TokenDance 实际账单"}
                     </span>
                   </DropdownMenuRadioItem>
                 ))}
@@ -270,23 +275,20 @@ function PromptFooter({
 
         {toolbarExtra}
 
-        {/* 积分是灰色小字，发送键是独立的实心圆：要花多少一眼看到，不用二次确认 */}
+        {/* TokenPay 价格是灰色小字，发送键是独立的实心圆：模型价目一眼看到 */}
         <span className="ml-auto flex shrink-0 items-center gap-3" title={creditsTitle}>
-          {/* 第二种生成（角色卡的「含音色」）排在前面，和发送键一样是「积分 + 实心键」 */}
+          {/* 第二种生成（角色卡的「含音色」）排在前面，和发送键一样是「费用口径 + 实心键」 */}
           {secondarySubmit && (
             <SubmitPill
               label={secondarySubmit.label}
-              credits={credits === undefined ? undefined : credits + secondarySubmit.extraCredits}
-              creditsIsMax={creditsIsMax}
               walletEstimate={walletEstimate}
               title={
                 busy
                   ? "生成中"
-                  : // 钱包任务不扣平台积分，「X 积分」对它没有意义
+                  : // 钱包任务按 TokenDance 实际账单计费，不展示历史积分金额
                     walletEstimate
-                    ? `${secondarySubmit.blockedReason ?? "生成"} · 约 ${walletEstimate}`
-                    : (secondarySubmit.blockedReason ??
-                      `形象 ${credits ?? "—"} 积分，音色约 ${secondarySubmit.extraCredits} 积分`)
+                    ? `${secondarySubmit.blockedReason ?? "生成"} · ${walletEstimate}`
+                    : (secondarySubmit.blockedReason ?? "按 TokenDance 实际账单")
               }
               blocked={busy || !!secondarySubmit.blockedReason}
               busy={busy}
@@ -300,11 +302,8 @@ function PromptFooter({
             </span>
           ) : (
             <span className="text-muted-foreground flex items-center gap-1 text-[13px] font-medium tabular-nums">
-              <Sparkle
-                className={cn("size-3.5", blocked ? "fill-muted-foreground" : "fill-credit")}
-                strokeWidth={0}
-              />
-              {credits === undefined ? "—" : `${creditsIsMax ? "≤" : ""}${credits}`}
+              <Wallet className="size-3.5" />
+              按 TokenDance 账单
             </span>
           )}
           <motion.button
@@ -331,11 +330,9 @@ function PromptFooter({
   );
 }
 
-/** 第二种生成：灰色积分小字 + 带文字的实心键，长相跟着发送键走 */
+/** 第二种生成：灰色公开价目 + 带文字的实心键，长相跟着发送键走 */
 function SubmitPill({
   label,
-  credits,
-  creditsIsMax,
   title,
   blocked,
   busy,
@@ -343,14 +340,12 @@ function SubmitPill({
   walletEstimate,
 }: {
   label: string;
-  credits?: number;
-  creditsIsMax?: boolean;
-  /** 悬停说明：不能点的原因，或积分明细 */
+  /** 悬停说明：不能点的原因或公开价目 */
   title: string;
   blocked: boolean;
   busy?: boolean;
   onClick: () => void;
-  /** 钱包模型的预估花费（元）；给了就不显示平台积分 */
+  /** TokenDance 公开价目文案 */
   walletEstimate?: string | null;
 }) {
   return (
@@ -363,11 +358,8 @@ function SubmitPill({
         </span>
       ) : (
         <span className="text-muted-foreground flex items-center gap-1 text-[13px] font-medium tabular-nums">
-          <Sparkle
-            className={cn("size-3.5", blocked ? "fill-muted-foreground" : "fill-credit")}
-            strokeWidth={0}
-          />
-          {credits === undefined ? "—" : `${creditsIsMax ? "≤" : ""}${credits}`}
+          <Wallet className="size-3.5" />
+          按 TokenDance 账单
         </span>
       )}
       <motion.button
@@ -395,7 +387,7 @@ function SubmitPill({
 
 /**
  * 浮在节点下方的生成面板（设计稿 6.4）：
- * 生成方式 Tabs → 引用条 → 提示词（可 @ 素材）→ 字数 → 底栏（模型、参数、批量、积分 + 发送）。
+ * 生成方式 Tabs → 引用条 → 提示词（可 @ 素材）→ 字数 → 底栏（模型、参数、批量、公开价目 + 发送）。
  * 右上角可以把提示词放大到对话框里写，对话框里带引用条和同一条底栏（设计稿 10.2）。
  * 只管长相和交互，数据都由调用方决定。
  */
@@ -414,11 +406,6 @@ export function NodePromptInput({
   submitting,
   modelLabel,
   modelInvalid,
-  credits: creditsOverride,
-  creditsIsMax,
-  creditsDetail,
-  count,
-  availableCredits,
   promptDisabled,
   promptNote,
   hidePrompt,
@@ -466,10 +453,11 @@ export function NodePromptInput({
   const model = models.find((item) => item.id === modelId) ?? models[0];
   const canSubmit = canSubmitOverride ?? (!!onSubmit && !running && value.trim().length > 0);
   const busy = running || submitting;
-  const credits = creditsOverride ?? model?.credits;
   const blocked = !canSubmit || busy;
-  // 钱包模型：显示预估花费（元）而不是平台积分——它不扣平台积分，积分价对它没有意义
-  const walletEstimate = useWalletCostEstimate(model?.upstream_model, count ?? 1);
+  // 钱包模型只展示 TokenDance 公开价目；不再显示平台积分或历史均价。
+  const walletEstimate = useWalletPriceLabel(model);
+  const walletConnected = useWalletStore((state) => !!state.view?.connected);
+  const openWalletPrompt = useWalletStore((state) => state.openPrompt);
 
   const submit = () => {
     if (!blocked) onSubmit?.();
@@ -480,14 +468,9 @@ export function NodePromptInput({
   const hint =
     hintOverride ??
     (running ? "生成中" : !onSubmit ? submitHint : value.trim() ? "开始生成" : "先写点提示词");
-  const creditsTitle =
-    credits === undefined
-      ? hint
-      : walletEstimate
-        ? `${hint} · 约 ${walletEstimate}（按你最近的 TokenDance 实际扣费估算）`
-        : `${hint} · ${creditsIsMax ? "最多冻结" : "本次消耗"} ${credits} 积分${creditsDetail ? `（${creditsDetail}）` : ""}${
-            creditsIsMax ? "，完成后按实际用量结算" : ""
-          }${availableCredits == null ? "" : `，当前可用 ${availableCredits}`}`;
+  const creditsTitle = walletEstimate
+    ? `${hint} · ${walletEstimate}（TokenDance 公开价目）`
+    : `${hint} · 按 TokenDance 实际账单`;
   const promptPlaceholder = promptDisabled && promptNote ? promptNote : placeholder;
   const length = promptTextLength(value);
   const nearLimit = length > PROMPT_MAX_LENGTH * PROMPT_WARN_RATIO;
@@ -499,10 +482,10 @@ export function NodePromptInput({
     modelLabel,
     modelInvalid,
     toolbarExtra,
-    credits,
-    creditsIsMax,
     creditsTitle,
     walletEstimate,
+    walletRequired: models.some((item) => item.wallet) && !walletConnected,
+    onConnectWallet: openWalletPrompt,
     blocked: !!blocked,
     busy,
     onSubmit: submit,
@@ -597,7 +580,7 @@ export function NodePromptInput({
                 {length}/{PROMPT_MAX_LENGTH}
               </span>
             </div>
-            {/* 和面板同一条底栏：模型、参数、积分、发送都是同一份状态；点发送与 ⌘↵ 一致，先收起再提交 */}
+            {/* 和面板同一条底栏：模型、参数、公开价目、发送都是同一份状态；点发送与 ⌘↵ 一致，先收起再提交 */}
             <PromptFooter
               {...footer}
               onSubmit={() => {

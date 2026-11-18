@@ -25,6 +25,9 @@ var marketingDependents = map[string][]string{
 // RetryStep 重试一个失败的环节：新建一条运行记录，连同依赖它、没有成功的后续环节一起重跑（重试事实卡等于整轮重试）。
 // 方法用当前绑定，设置用该轮快照。轮次必须已结束（写脚本中返回 68007）；积分不足 40001。
 func (s *MarketingService) RetryStep(ctx context.Context, userID, runID uint64) (*model.MarketingRoundView, error) {
+	if err := s.ensureWallet(ctx, userID); err != nil {
+		return nil, err
+	}
 	run, err := s.repo.Run(ctx, userID, runID, false)
 	if mktNotFound(err) {
 		return nil, errcode.ErrMarketingNotFound
@@ -60,7 +63,7 @@ func (s *MarketingService) RetryStep(ctx context.Context, userID, runID uint64) 
 	return s.viewAndPush(ctx, userID, round.ID)
 }
 
-// requeue 在已锁项目的事务里为一个环节及其未成功的下游新建运行记录、冻结积分、把轮次放回写脚本并入队。
+// requeue 在已锁项目的事务里为一个环节及其未成功的下游新建运行记录，把轮次放回写脚本并入队。
 func (s *MarketingService) requeue(ctx context.Context, tx repository.MarketingTx, userID, roundID uint64, stepKey string, st model.MarketingSettings) error {
 	round, err := tx.Round(ctx, userID, roundID, true)
 	if err != nil {
@@ -86,14 +89,14 @@ func (s *MarketingService) requeue(ctx context.Context, tx repository.MarketingT
 	if err := s.checkRequeueInputs(ctx, tx, round, stepKey); err != nil {
 		return err
 	}
-	runs, total, err := s.newRuns(ctx, userID, round, st, keys)
+	runs, err := s.newRuns(ctx, userID, round, st, keys)
 	if err != nil {
 		return err
 	}
 	if err := s.insertRuns(ctx, tx, userID, runs); err != nil {
 		return err
 	}
-	if err := tx.UpdateRound(ctx, round.ID, map[string]any{"status": model.MarketingRoundScripting, "error": "", "frozen": repository.Add("frozen", total)}); err != nil {
+	if err := tx.UpdateRound(ctx, round.ID, map[string]any{"status": model.MarketingRoundScripting, "error": "", "frozen": 0}); err != nil {
 		return err
 	}
 	if err := s.markRewriting(ctx, tx, round.ID, keys); err != nil {
@@ -122,31 +125,25 @@ func (s *MarketingService) checkRequeueInputs(ctx context.Context, tx repository
 	return nil
 }
 
-// newRuns 为一组环节构造新的运行记录并预估各自的冻结积分。返回记录与冻结合计。
-func (s *MarketingService) newRuns(ctx context.Context, userID uint64, round *model.MarketingRound, st model.MarketingSettings, keys []string) ([]*model.MarketingStepRun, int, error) {
+// newRuns 为一组环节构造新的运行记录；费用由 TokenPay 钱包直接承担。
+func (s *MarketingService) newRuns(ctx context.Context, userID uint64, round *model.MarketingRound, st model.MarketingSettings, keys []string) ([]*model.MarketingStepRun, error) {
 	hasRef := round.RefVideoAssetID != nil
 	createCount, err := planOf(st, hasRef)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
-	costs, err := s.quoteSteps(ctx, st, hasRef, false, createCount)
-	if err != nil {
-		return nil, 0, err
-	}
-	frozen := map[string]int{marketing.StepFacts: costs.facts, marketing.StepReverse: costs.reverse, marketing.StepFollow: costs.follow, marketing.StepCreate: costs.create}
+	_, _ = hasRef, createCount
 	need := map[string]textNeed{marketing.StepFacts: needVision, marketing.StepReverse: needVideo, marketing.StepFollow: needAny, marketing.StepCreate: needAny}
 	var runs []*model.MarketingStepRun
-	total := 0
 	for _, k := range keys {
 		snap, err := s.pickTextModel(ctx, st.TextModel, need[k])
 		if err != nil {
-			return nil, 0, err
+			return nil, err
 		}
 		runs = append(runs, &model.MarketingStepRun{UserID: userID, RoundID: round.ID, StepKey: k, Method: []byte("{}"),
-			TextModelID: snap.Model.Key, Status: model.MarketingRunQueued, Frozen: frozen[k]})
-		total += frozen[k]
+			TextModelID: snap.Model.Key, Status: model.MarketingRunQueued, Frozen: 0})
 	}
-	return runs, total, nil
+	return runs, nil
 }
 
 // markRewriting 重写跟拍（或重试跟拍）时，把已有的跟拍脚本标成重写中，界面据此显示并禁止修改和出片。
@@ -166,9 +163,12 @@ func (s *MarketingService) markRewriting(ctx context.Context, tx repository.Mark
 	return nil
 }
 
-// Refollow 按当前拆解重写跟拍版：只重跑 marketing.follow，按文本模型计费。
-// 没有拆解 68016；跟拍脚本正在出片或重写 68006；项目正在写脚本 68007；积分不足 40001。
+// Refollow 按当前拆解重写跟拍版：只重跑 marketing.follow。
+// 没有拆解 68016；跟拍脚本正在出片或重写 68006；项目正在写脚本 68007。
 func (s *MarketingService) Refollow(ctx context.Context, userID, roundID uint64) (*model.MarketingRoundView, error) {
+	if err := s.ensureWallet(ctx, userID); err != nil {
+		return nil, err
+	}
 	round, err := s.repo.Round(ctx, userID, roundID, false)
 	if mktNotFound(err) {
 		return nil, errcode.ErrMarketingNotFound

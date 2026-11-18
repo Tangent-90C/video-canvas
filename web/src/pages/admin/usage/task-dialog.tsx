@@ -15,7 +15,6 @@ import { agoText, drawerSections, isActiveStatus, kindName } from "@/utils/admin
 import { TraceTimeline } from "../ai/trace/trace-timeline";
 import {
   AdviceHint,
-  CreditBlock,
   FailureDetail,
   OutputsBlock,
   ParamsBlock,
@@ -39,7 +38,7 @@ function TaskBodySkeleton() {
 }
 
 /**
- * 任务详情弹窗（居中，不写进 URL）：结论卡、怎么办提示、提示词、产物、积分、经过、参数、失败原因详情、
+ * 任务详情弹窗（居中，不写进 URL）：结论卡、怎么办提示、提示词、产物、经过、参数、失败原因详情、
  * 任务信息和试跑追踪一律全部显示。点一行的那一刻就打开，头部先用列表里已有的信息，
  * 内容区在接口返回前显示骨架；失败是「加载失败 · 重试」且不关闭弹窗，任务不存在显示「找不到这个任务」。
  * @param taskRef 要看的任务编号；弹窗关闭后保留，等关闭动画播完
@@ -111,9 +110,6 @@ function TaskDialog({
             </div>
             {sections.prompt && <PromptBlock input={detail.input} />}
             {sections.outputs && <OutputsBlock detail={detail} />}
-            {sections.creditSentence && (
-              <CreditBlock detail={detail} ledger={sections.creditLedger} />
-            )}
             {sections.timeline && <TimelineBlock detail={detail} />}
             {sections.params && <ParamsBlock input={detail.input} />}
             {sections.failureDetail && <FailureDetail detail={detail} />}

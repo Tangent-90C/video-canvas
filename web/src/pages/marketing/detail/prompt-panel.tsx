@@ -12,10 +12,10 @@ import {
 } from "@/api/marketing";
 import type { Round, Script, ScriptPrompt } from "@/api/marketing/type";
 import { Button } from "@/components/ui/button";
+import { useWalletStore } from "@/store/wallet";
 import { Textarea } from "@/components/ui/textarea";
 import { SPRING } from "@/lib/motion";
 import { cn } from "@/lib/utils";
-import { useCreditsStore } from "@/store/credits";
 import { reloadMarketingProject } from "@/utils/marketing/events";
 
 type View = "source" | "adapted";
@@ -222,17 +222,16 @@ function AdaptPanel({
     setBusy(true);
     try {
       onChange(await adaptMarketingScript(script.id, videoModel));
-      void useCreditsStore.getState().refresh();
+      void useWalletStore.getState().fetchBalance();
       // 出片报价随转写稿是否有效而变
       void reloadMarketingProject(projectId);
     } catch {
-      // 请求层已提示（积分不足、转写失败）
+      // 请求层已提示（钱包未连接、转写失败等）
     } finally {
       setBusy(false);
     }
   }, [onChange, projectId, script.id, videoModel]);
 
-  const credits = data.adaptCredits > 0 ? `✦${data.adaptCredits}` : "";
   return (
     <div className="grid gap-2.5 p-4">
       <div className="flex flex-wrap items-center gap-2">
@@ -301,7 +300,6 @@ function AdaptPanel({
           >
             {busy ? <Loader2 className="animate-spin" /> : <RefreshCw />}
             重新转写
-            {credits && <span className="tabular-nums opacity-70">{credits}</span>}
           </Button>
         )}
       </div>
@@ -344,7 +342,6 @@ function AdaptPanel({
               onClick={() => void run()}
             >
               转写为 H3
-              {credits && <span className="tabular-nums opacity-70">{credits}</span>}
             </Button>
           )}
         </div>

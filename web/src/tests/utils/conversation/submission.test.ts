@@ -1,14 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
-import type { ModelInfo, Pricing } from "@/api/model/type";
-import { defaultCapabilities, defaultPricing } from "@/utils/admin/model-template";
+import type { ModelInfo } from "@/api/model/type";
+import { defaultCapabilities } from "@/utils/admin/model-template";
 import { evaluateSend, refIdsByKind, type ComposerRef } from "@/utils/conversation/submission";
 
-const model = (kind: "image" | "video", pricing?: Pricing): ModelInfo => ({
+const model = (kind: "image" | "video"): ModelInfo => ({
   key: `${kind}-1`,
   kind,
   label: `${kind} 模型`,
-  pricing: pricing ?? { billing: "per_call", unit: 3 },
   capabilities: defaultCapabilities(kind),
 });
 
@@ -25,35 +24,23 @@ const base = {
   text: "雨夜的城市",
   params: {} as Record<string, unknown>,
   refs: [] as ComposerRef[],
-  available: 100 as number | null,
   sending: false,
 };
 
-describe("evaluateSend：能不能发、为什么、花多少积分", () => {
+describe("evaluateSend：能不能发、为什么、生成多少格", () => {
   test("默认参数：按次计价，数量 1，input 带提示词和开放参数的默认值", () => {
     const state = evaluateSend(base);
     expect(state.canSend).toBe(true);
     expect(state.hint).toBeNull();
     expect(state.count).toBe(1);
-    expect(state.creditsEach).toBe(3);
-    expect(state.creditsTotal).toBe(3);
     expect(state.input.prompt).toBe("雨夜的城市");
     expect(state.input.aspect_ratio).toBe("1:1");
   });
 
-  test("生成数量是模型参数：数量 × 单价，count 与 input 里的数量一致", () => {
+  test("生成数量是模型参数：count 与 input 里的数量一致", () => {
     const state = evaluateSend({ ...base, params: { count: 4 } });
     expect(state.count).toBe(4);
-    expect(state.creditsTotal).toBe(12);
     expect(state.input.count).toBe(4);
-  });
-
-  test("按秒计费的视频：单价随时长变化", () => {
-    const video = model("video", defaultPricing("video"));
-    const short = evaluateSend({ ...base, model: video, params: { duration: 5 } });
-    const long = evaluateSend({ ...base, model: video, params: { duration: 10 } });
-    expect(short.canSend && long.canSend).toBe(true);
-    expect(long.creditsEach).toBe(short.creditsEach * 2);
   });
 
   test("参考图的 asset id 以数字写进 input.images", () => {
@@ -76,15 +63,8 @@ describe("evaluateSend：能不能发、为什么、花多少积分", () => {
     expect(state.hint).toBeNull();
   });
 
-  test("余额不足：禁止发送并写明需要和可用", () => {
-    const state = evaluateSend({ ...base, params: { count: 4 }, available: 5 });
-    expect(state.canSend).toBe(false);
-    expect(state.hint).toBe("余额不足（需 12，可用 5）");
-    expect(state.tone).toBe("bad");
-  });
-
-  test("余额还没拿到：不拦截，由后端兜底", () => {
-    expect(evaluateSend({ ...base, available: null }).canSend).toBe(true);
+  test("平台余额不再参与发送前判断", () => {
+    expect(evaluateSend({ ...base, params: { count: 4 } }).canSend).toBe(true);
   });
 
   test("没有可用模型（清单没回来、加载失败、没配置）：不能发，也不提示（模型按钮自己会写明）", () => {
@@ -135,7 +115,7 @@ describe("evaluateSend：能不能发、为什么、花多少积分", () => {
 });
 
 describe("视频、音频参考（与画布同一套规则：生成方式由用户设，加素材时自动切到收它的方式）", () => {
-  const video = model("video", defaultPricing("video"));
+  const video = model("video");
   const omni = { op: "omni" };
 
   test("各种类的素材 id 分别写进 images / videos / audios", () => {
@@ -168,7 +148,7 @@ describe("视频、音频参考（与画布同一套规则：生成方式由用�
   });
 
   test("模型根本不收这种素材：提示换模型", () => {
-    const noVideo = model("video", defaultPricing("video"));
+    const noVideo = model("video");
     noVideo.capabilities = {
       ...noVideo.capabilities,
       refs: { ...noVideo.capabilities.refs, video: { on: false, max: 0, max_mb: 0 } },

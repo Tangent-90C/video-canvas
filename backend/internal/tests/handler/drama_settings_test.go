@@ -99,7 +99,7 @@ func (r *settingsHTTPRepo) DeletePrompt(_ context.Context, user, id uint64) erro
 
 func settingsRouter() (*gin.Engine, *settingsHTTPRepo) {
 	repo := &settingsHTTPRepo{httpDramaRepo: &httpDramaRepo{credit: model.UserCredit{UserID: 1, Balance: 10000}}, drafts: map[string]model.DramaSourceDraft{}, prompts: map[uint64]model.DramaPrompt{}}
-	h := handler.NewDramaHandler(service.NewDramaService(service.DramaDeps{Repo: repo, Settings: repo, Registry: httpDramaRegistry{}}))
+	h := handler.NewDramaHandler(service.NewDramaService(service.DramaDeps{Repo: repo, Settings: repo, Registry: httpDramaRegistry{}, Wallets: connectedWalletForHandler{}}))
 	r := gin.New()
 	r.Use(func(c *gin.Context) { c.Set(middleware.CtxUserIDKey, uint(1)); c.Next() })
 	r.POST("/dramas", h.Create)

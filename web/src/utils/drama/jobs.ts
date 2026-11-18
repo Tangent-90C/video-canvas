@@ -414,7 +414,7 @@ export function planningRow(
         kind: "paused",
         tone: "error",
         title: "分集规划暂停",
-        reason: "积分不足，充值后继续",
+        reason: "TokenPay 钱包授权或额度需要处理，连接钱包后继续",
         actions: ["resume"],
       };
     case "failed":
@@ -422,7 +422,7 @@ export function planningRow(
         kind: "paused",
         tone: "error",
         title: "分集规划暂停",
-        reason: `${reasonOr("规划失败")} · 失败不扣积分`,
+        reason: reasonOr("规划失败"),
         actions: ["retry"],
       };
     case "context":
@@ -430,7 +430,7 @@ export function planningRow(
         kind: "paused",
         tone: "error",
         title: "分集规划暂停",
-        reason: `${reasonOr("模型上下文不足")} · 失败不扣积分`,
+        reason: reasonOr("模型上下文不足"),
         actions: ["retry"],
       };
     case "custom_prompt":
@@ -438,7 +438,7 @@ export function planningRow(
         kind: "paused",
         tone: "error",
         title: "分集规划暂停",
-        reason: `${reasonOr("自定义提示词导致输出不合格")} · 失败不扣积分`,
+        reason: reasonOr("自定义提示词导致输出不合格"),
         actions: ["retry", "builtin"],
       };
     default:

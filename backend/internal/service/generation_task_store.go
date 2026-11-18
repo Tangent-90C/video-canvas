@@ -228,7 +228,7 @@ func (s *GenerationTaskService) Retry(ctx context.Context, t *model.GenerationTa
 	return applied, err
 }
 
-// Complete 完成转存并结算积分。Token 计费按 usage 结算：扣 min(实际, 冻结)，差额退回；没有 usage 按冻结额扣并记日志。
+// Complete 完成转存。费用已在用户自己的 TokenPay 账户中结算，平台只记录任务状态和用量。
 func (s *GenerationTaskService) Complete(ctx context.Context, t *model.GenerationTask, outputs []model.TaskOutput, usage *modelcfg.Usage) (bool, error) {
 	if outputs == nil {
 		outputs = []model.TaskOutput{}
@@ -237,13 +237,13 @@ func (s *GenerationTaskService) Complete(ctx context.Context, t *model.Generatio
 	if err != nil {
 		return false, err
 	}
-	charge := s.settleAmount(t, usage)
+	_ = usage // 保留参数以兼容 worker 契约；平台积分不再结算。
 	updated, applied, err := s.finish(ctx, t.ID, []string{model.TaskFinalizing}, model.TaskSucceeded, map[string]any{
 		"output_json":     datatypes.JSON(raw),
 		"progress":        100,
 		"error_code":      "",
 		"error_message":   "",
-		"charged_credits": charge,
+		"charged_credits": 0,
 	})
 	if err != nil || !applied {
 		return false, err
@@ -254,7 +254,7 @@ func (s *GenerationTaskService) Complete(ctx context.Context, t *model.Generatio
 }
 
 // writeCanvasCover 任务成功后，把产出里第一张图写成所属画布的封面（画布已有封面则不动，所以封面是画布里第一张图）。
-// 封面只是列表页的装饰：试跑任务、不属于画布、没有图片产出都跳过；写失败只记日志，不能让已经结算的任务算失败。
+// 封面只是列表页的装饰：试跑任务、不属于画布、没有图片产出都跳过；写失败只记日志，不能让已经完成的任务算失败。
 func (s *GenerationTaskService) writeCanvasCover(ctx context.Context, t *model.GenerationTask, outputs []model.TaskOutput) {
 	if s.covers == nil || t.IsTest || t.CanvasProjectID == nil {
 		return
@@ -270,20 +270,7 @@ func (s *GenerationTaskService) writeCanvasCover(ctx context.Context, t *model.G
 	}
 }
 
-// settleAmount 按任务快照里的定价算成功时实际扣的积分（不超过冻结额）。快照解析失败时按冻结额扣，不让用户少付也不多付。
-func (s *GenerationTaskService) settleAmount(t *model.GenerationTask, usage *modelcfg.Usage) int {
-	var snap provider.Snapshot
-	if err := json.Unmarshal(t.ConfigSnapshot, &snap); err != nil {
-		logger.Warn("解析任务快照失败，按冻结额结算", logger.GenRun(t.ID), zap.Error(err))
-		return t.Credits
-	}
-	if snap.Model.Pricing.Billing == modelcfg.BillingToken && usage == nil {
-		logger.Warn("Token 计费的任务没有回传用量，按冻结额结算", logger.GenRun(t.ID), zap.String("model", t.ModelKey))
-	}
-	return max(modelcfg.Settle(snap.Model.Pricing, t.Credits, usage), 0)
-}
-
-// Fail 把非终态任务置为失败并退回积分。
+// Fail 把非终态任务置为失败。平台不冻结、不退款，上游实际费用以 TokenDance 账单为准。
 func (s *GenerationTaskService) Fail(ctx context.Context, t *model.GenerationTask, errorCode, message string) (bool, error) {
 	return s.FailWithUpstream(ctx, t, errorCode, message, "")
 }
@@ -319,7 +306,7 @@ func clipUTF8(s string, n int) string {
 	return s[:cut]
 }
 
-// Expire 把超时任务置为 expired 并退回积分。
+// Expire 把超时任务置为 expired；平台不结算或退款，费用以 TokenDance 实际账单为准。
 func (s *GenerationTaskService) Expire(ctx context.Context, t *model.GenerationTask) (bool, error) {
 	// 从没调用过上游（pending 且没有过提交重试）就超时，说明是在排队：文案要让用户知道不是生成失败
 	msg := taskMsgTimeout
@@ -341,14 +328,13 @@ func (s *GenerationTaskService) Expire(ctx context.Context, t *model.GenerationT
 // taskMsgCancelFinalizing 是任务结果已经拿到、正在转存时用户再取消的文案。
 const taskMsgCancelFinalizing = "结果已生成，正在保存，无法取消"
 
-// Cancel 用户取消任务。还没提交给平台的（pending 且没有提交时间，界面上的「排队中」）取消后全额退回积分；
-// 已经进入生成（同步请求已发出、平台已受理或正在生成）平台会照常产生费用，取消后冻结的积分全额扣除、不退，
-// 并尽力通知平台取消上游任务。转存中结果已经到手，不允许取消，等任务自己出结果。
+// Cancel 用户取消任务。平台只改任务状态，并尽力通知上游取消；用户 TokenDance 账户实际产生的费用以账单为准。
+// 转存中结果已经到手，不允许取消，等任务自己出结果。
 func (s *GenerationTaskService) Cancel(ctx context.Context, userID, id uint64) (*model.GenerationTaskView, error) {
 	return s.cancel(ctx, userID, id, false)
 }
 
-// CancelForced 不受「已提交给平台」的限制：后台封禁用户要取消他全部进行中的任务并退回冻结，走这里。
+// CancelForced 不受「已提交给平台」的限制：后台封禁用户要取消他全部进行中的任务，走这里。
 // 取消成功后尽力通知插件执行器取消上游任务。
 func (s *GenerationTaskService) CancelForced(ctx context.Context, userID, id uint64) (*model.GenerationTaskView, error) {
 	return s.cancel(ctx, userID, id, true)
@@ -365,18 +351,16 @@ func (s *GenerationTaskService) cancel(ctx context.Context, userID, id uint64, f
 	if model.IsTerminalStatus(t.Status) {
 		return nil, errcode.ErrTaskNotCancelable
 	}
-	// 用户取消：转存中不放行；还没提交给平台的退回积分，已进入生成的扣除冻结积分。
+	// 用户取消：转存中不放行；平台积分已停用，所有阶段都只改任务状态。
 	// 状态迁移的前置条件按读到的情况收紧：读到之后任务状态又变了（如进入转存），这次取消不会生效
 	from := model.ActiveTaskStatuses
 	reason := "user_cancel"
-	charged := false
 	if !force {
 		if t.Status == model.TaskFinalizing {
 			return nil, errcode.ErrTaskNotCancelable.WithMsg(taskMsgCancelFinalizing)
 		}
-		charged = t.Status != model.TaskPending || t.SubmittedAt != nil
 		from = []string{model.TaskPending}
-		if charged {
+		if t.Status != model.TaskPending || t.SubmittedAt != nil {
 			from = []string{model.TaskPending, model.TaskQueued, model.TaskRunning}
 		}
 	} else {
@@ -389,10 +373,8 @@ func (s *GenerationTaskService) cancel(ctx context.Context, userID, id uint64, f
 		"error_message":           taskMsgCanceled,
 		repository.EventDetailKey: detail,
 	}
-	if charged {
+	if t.Status != model.TaskPending || t.SubmittedAt != nil {
 		extra["error_message"] = taskMsgCanceledCharged
-		extra["charged_credits"] = t.Credits
-		detail["charged"] = true
 	}
 	updated, applied, err := s.finish(ctx, id, from, model.TaskCanceled, extra)
 	if err != nil {
@@ -406,8 +388,8 @@ func (s *GenerationTaskService) cancel(ctx context.Context, userID, id uint64, f
 	return taskView(updated), nil
 }
 
-// CancelActiveByUser 取消用户全部进行中的正式任务并退还冻结（后台封禁并取消任务用）。
-// 每个任务复用强制取消的完整流程（状态迁移 + 结算 / 退款流水 + 退还冻结在同一事务里、通知上游取消、推送），不另写积分逻辑。
+// CancelActiveByUser 取消用户全部进行中的正式任务（后台封禁并取消任务用）。
+// 每个任务复用强制取消的完整流程（状态迁移、通知上游取消、推送）。
 // 单个任务失败不影响其他任务：失败的 id 放进结果，已成功的不回滚；只有查询进行中任务失败才返回 error。
 func (s *GenerationTaskService) CancelActiveByUser(ctx context.Context, userID uint64) (*CancelActiveResult, error) {
 	// 1. 取该用户全部非终态的正式任务（试跑任务不占积分，不在其中）
@@ -474,15 +456,8 @@ func (s *GenerationTaskService) finish(ctx context.Context, id uint64, from []st
 			return err
 		}
 		updated = t
-		if t.IsTest || t.Wallet {
-			// 试跑任务与钱包任务（上游由用户自己的 TokenDance Key 付费）都不动平台积分
-			return nil
-		}
-		if err := settleLedger(ctx, tx, t, target); err != nil {
-			return err
-		}
-		// Agent 发起的任务：结束的通知和结算同一个事务提交，不会出现“任务结束了但没人通知 Agent”
-		if t.AgentRunID != 0 {
+		// Agent 发起的任务仍要把完成事件交给 Agent，否则审批后的等待流程会一直挂着。
+		if !t.IsTest && t.AgentRunID != 0 {
 			return tx.EnqueueAgentNotify(ctx, t)
 		}
 		return nil
@@ -495,43 +470,6 @@ func (s *GenerationTaskService) finish(ctx context.Context, id uint64, from []st
 	}
 	logGenFinished(ctx, updated, target, extra)
 	return updated, true, nil
-}
-
-// chargeOf 是任务到终态时实扣的积分：成功扣 charged_credits（没有则扣冻结额）；已进入生成的用户取消按 charged_credits 扣；其余为 0。
-func chargeOf(t *model.GenerationTask, target string) int {
-	charge := 0
-	if target == model.TaskSucceeded {
-		charge = t.Credits
-	}
-	if t.ChargedCredits != nil && (target == model.TaskSucceeded || target == model.TaskCanceled) {
-		charge = min(max(*t.ChargedCredits, 0), t.Credits)
-	}
-	return charge
-}
-
-// settleLedger 写结算 / 退款流水并解冻：成功时扣 charged_credits（没有则扣冻结额），多冻结的部分再写一笔 refund；
-// 失败 / 超时全额退回；取消默认全额退回，只有已进入生成的用户取消会带上 charged_credits，按它扣费、不退。
-// 流水 UNIQUE(task_id, type) 保证重复结算只生效一次。
-func settleLedger(ctx context.Context, tx repository.GenerationTaskTx, t *model.GenerationTask, target string) error {
-	frozen, charge := t.Credits, chargeOf(t, target)
-	entries := []model.CreditLedger{}
-	if charge > 0 || target == model.TaskSucceeded {
-		entries = append(entries, model.CreditLedger{UserID: t.UserID, TaskID: model.TaskIDPtr(t.ID), Type: model.LedgerSettle, Amount: charge})
-	}
-	if refund := frozen - charge; refund > 0 || (target != model.TaskSucceeded && charge == 0) {
-		entries = append(entries, model.CreditLedger{UserID: t.UserID, TaskID: model.TaskIDPtr(t.ID), Type: model.LedgerRefund, Amount: refund})
-	}
-	for i := range entries {
-		inserted, err := tx.InsertLedger(ctx, &entries[i])
-		if err != nil {
-			return err
-		}
-		if !inserted {
-			logger.Warn("积分流水已存在，跳过重复结算", logger.GenRun(t.ID), zap.String("type", entries[i].Type))
-			return nil
-		}
-	}
-	return tx.AddCredit(ctx, t.UserID, -charge, -frozen)
 }
 
 func mergeProviderState(raw []byte, next provider.ProviderState) ([]byte, error) {

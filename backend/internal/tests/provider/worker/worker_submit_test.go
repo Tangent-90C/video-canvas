@@ -133,7 +133,7 @@ func TestWorker_Submit_Failures(t *testing.T) {
 		{"审核未通过显示上游原文", &provider.Error{Class: provider.ClassModeration, Message: "上游拒绝请求", Upstream: "image contains nsfw content"}, "moderation", "image contains nsfw content", "", ""},
 		{"上游余额不足显示上游原文并告警", &provider.Error{Class: provider.ClassProviderBalance, Message: "上游余额或额度不足", Upstream: "insufficient balance 0.00"}, "provider_balance", "insufficient balance 0.00", "", "余额不足"},
 		{"上游余额不足且没有原文", &provider.Error{Class: provider.ClassProviderBalance, Message: "raw: insufficient balance 0.00"}, "provider_balance", "服务繁忙，请稍后再试", "balance", "余额不足"},
-		{"提交结果未知", &provider.Error{Class: provider.ClassSubmitUnknown, Message: "raw: read timeout after 30s"}, "submit_unknown", "提交结果未知，积分已退回", "timeout after", ""},
+		{"提交结果未知", &provider.Error{Class: provider.ClassSubmitUnknown, Message: "raw: read timeout after 30s"}, "submit_unknown", "提交结果未知，请核对 TokenDance 账户是否产生了任务", "timeout after", ""},
 		{"上游拒绝显示上游原文并去掉上游请求编号", &provider.Error{Class: provider.ClassTerminal, Code: "http_400", Message: "上游拒绝请求", Upstream: "Unsupported input: prompt (request id: abc123)"}, "provider_error", "Unsupported input: prompt", "abc123", ""},
 		{"上游原文只有请求编号时用固定文案", &provider.Error{Class: provider.ClassTerminal, Code: "http_400", Message: "上游拒绝请求", Upstream: "(request id: abc123)"}, "provider_error", "平台繁忙，请稍后重试", "abc123", ""},
 		{"参数错误显示上游原文", &provider.Error{Class: provider.ClassTerminal, Code: "invalid_param", Message: "raw", Upstream: "ratio must be 9:16 or 16:9"}, "invalid_param", "ratio must be 9:16 or 16:9", "", ""},

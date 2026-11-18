@@ -38,7 +38,7 @@ func (b *AgentBridge) toolInspectImage(ctx context.Context, tc *toolCall) (*tool
 	if total := len(a.NodeIDs) + len(a.AssetIDs); total == 0 || total > maxInspectImages {
 		return nil, fail("nodeIds 和 assetIds 合计需要 1 到 %d 张图片", maxInspectImages)
 	}
-	snap, _, err := b.resolveModel(ctx, tc.sess.modelKey)
+	snap, _, err := b.resolveModel(ctx, tc.sess.modelKey, tc.run.UserID)
 	if err != nil {
 		return nil, err
 	}

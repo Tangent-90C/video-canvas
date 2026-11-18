@@ -751,7 +751,10 @@ export class AgentStore {
    */
   backupTo(path: string): void {
     if (existsSync(path)) throw new Error(`备份文件已存在：${path}`);
-    this.#db.prepare("VACUUM INTO ?").run(path);
+    // Node 的 SQLite 会把 lastInsertRowid 转成 number；库里雪花 ID 已超出安全整数，读完直接丢掉即可。
+    const stmt = this.#db.prepare("VACUUM INTO ?");
+    stmt.setReadBigInts(true);
+    stmt.run(path);
   }
 
   close(): void {

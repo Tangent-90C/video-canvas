@@ -15,7 +15,7 @@ import {
 import { TAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useWalletStore } from "@/store/wallet";
-import { priceLabel } from "@/utils/pricing/quote";
+import { modelPriceLabel } from "@/utils/pricing/model-price";
 
 /** 工具条按钮的公共样式 */
 const BAR_BUTTON =
@@ -123,8 +123,8 @@ export function ModelMenu({
                   <span className="text-muted-foreground text-xs leading-snug">
                     {[
                       model.hint,
-                      // 钱包模型用用户自己的 TokenDance 额度，平台积分价对它没有意义
-                      model.wallet ? "用你自己的 TokenDance 额度" : priceLabel(model.pricing),
+                      // 只展示 TokenDance 公开实时价目
+                      modelPriceLabel(model),
                     ]
                       .filter(Boolean)
                       .join(" · ")}

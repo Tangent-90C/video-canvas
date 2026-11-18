@@ -5,7 +5,6 @@ import {
   CircleCheck,
   Gauge,
   Loader2,
-  Diff,
   RotateCw,
   UserX,
   X,
@@ -14,7 +13,6 @@ import { motion } from "motion/react";
 import { useState } from "react";
 
 import type { UserDetail, UserListItem } from "@/api/admin/users/type.d";
-import { AnimatedNumber } from "@/components/admin-ui/animated-number";
 import { CopyButton } from "@/components/admin-ui/copy-button";
 import { InitialAvatar } from "@/components/admin-ui/initial-avatar";
 import { MotionButton } from "@/components/admin-ui/motion-button";
@@ -43,28 +41,26 @@ import {
   type Actor,
 } from "@/utils/admin/user-rules";
 
-import { CreditPopover } from "./credit-popover";
 import { LimitPopover } from "./limit-popover";
 import type { DetailState, UserTab } from "./use-users";
 import type { UserActions } from "./use-user-actions";
-import { CreditsTab, LoginsTab, OverviewTab, TasksTab } from "./user-dialog-tabs";
+import { LoginsTab, OverviewTab, TasksTab } from "./user-dialog-tabs";
 import { UserRowMenu } from "./user-row-menu";
 
 const TAB_LABEL: Record<UserTab, string> = {
   overview: "概览",
   tasks: "使用记录",
-  credits: "积分",
   logins: "登录",
 };
 
-const TAB_ORDER: UserTab[] = ["overview", "tasks", "credits", "logins"];
+const TAB_ORDER: UserTab[] = ["overview", "tasks", "logins"];
 
 /** 弹窗：固定高度，头部与摘要常驻，页签内容在里面滚动；窄屏左右各留 0.75rem */
 const DIALOG_CLASS =
   "flex h-[min(90svh,880px)] max-w-[calc(100%-1.5rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl";
 
 /**
- * 用户详情弹窗：顶部摘要常驻 + 概览 / 使用记录 / 积分 / 登录四个页签（页签内容独立滚动）。
+ * 用户详情弹窗：顶部摘要常驻 + 概览 / 使用记录 / 登录三个页签（页签内容独立滚动）。
  * 弹窗外框只在打开 / 关闭时缩放淡入，切换用户时只有内容按方向淡入位移 8px。
  * Esc 由页面按层级统一处理（浮层 → 勾选 → 弹窗），所以这里不响应 Base UI 自己的关闭请求。
  */
@@ -138,9 +134,7 @@ function UserDialog({
         <DialogTitle className="sr-only">
           {user ? `${user.username} 的详情` : "用户详情"}
         </DialogTitle>
-        <DialogDescription className="sr-only">
-          查看用户、调整积分与并发、封禁账号
-        </DialogDescription>
+        <DialogDescription className="sr-only">查看用户、调整并发与封禁账号</DialogDescription>
         {shownId !== null && (
           <motion.div
             key={shownId}
@@ -207,20 +201,12 @@ function UserDialog({
                   </TabsList>
                   <TabsContent value="overview" className={PANEL}>
                     <Fade>
-                      <OverviewTab
-                        detail={shownDetail}
-                        onGotoCredits={() => onTabChange("credits")}
-                      />
+                      <OverviewTab detail={shownDetail} />
                     </Fade>
                   </TabsContent>
                   <TabsContent value="tasks" className={PANEL}>
                     <Fade>
                       <TasksTab userId={shownId} refreshKey={refreshKey} />
-                    </Fade>
-                  </TabsContent>
-                  <TabsContent value="credits" className={PANEL}>
-                    <Fade>
-                      <CreditsTab userId={shownId} refreshKey={refreshKey} />
                     </Fade>
                   </TabsContent>
                   <TabsContent value="logins" className={PANEL}>
@@ -374,7 +360,7 @@ function StepButton({
   );
 }
 
-/** 摘要三格（可用积分 / 冻结 / 并发）与操作行（调整积分 / 并发上限 / 封禁·启用 / ⋯） */
+/** 并发摘要与操作行（并发上限 / 封禁·启用 / ⋯） */
 function DialogSummary({
   user,
   actor,
@@ -384,7 +370,6 @@ function DialogSummary({
   actor: Actor | null;
   actions: UserActions;
 }) {
-  const [creditOpen, setCreditOpen] = useState(false);
   const [limitOpen, setLimitOpen] = useState(false);
 
   if (!user) {
@@ -397,7 +382,6 @@ function DialogSummary({
   }
 
   const conc = concurrencyView(user);
-  const creditDeny = denyReason(actor, user, "credit");
   const limitDeny = denyReason(actor, user, "limit");
   const banDeny = denyReason(actor, user, "ban");
   const disabled = user.status === "disabled";
@@ -405,66 +389,18 @@ function DialogSummary({
 
   return (
     <div className="px-5 pt-4">
-      <div className="grid grid-cols-3 overflow-hidden rounded-xl border">
-        <div className="p-3">
-          <div className="text-muted-foreground text-xs">可用积分</div>
-          <AnimatedNumber
-            value={user.available}
-            className="text-credit mt-1 block font-mono text-2xl font-semibold"
-          />
-        </div>
-        <div className="border-l p-3">
-          <div className="text-muted-foreground text-xs">冻结</div>
-          <AnimatedNumber
-            value={user.frozen}
-            className="mt-1 block font-mono text-2xl font-semibold"
-          />
-        </div>
-        <div className="border-l p-3">
-          <div className="text-muted-foreground flex items-center justify-between text-xs">
-            <span>并发</span>
-            <span className="text-[11px]">{conc.custom ? "自定义" : "默认"}</span>
-          </div>
-          <div
-            className={cn(
-              "mt-1 font-mono text-2xl font-semibold tabular-nums",
-              conc.full && "text-status-warning",
-            )}
-          >
+      <div className="flex items-center justify-between rounded-xl border p-4">
+        <div>
+          <div className="text-muted-foreground text-xs">并发</div>
+          <div className="mt-1 font-mono text-2xl font-semibold tabular-nums">
             {conc.active}
             <span className="text-muted-foreground text-base">/{conc.limit}</span>
           </div>
-          <span
-            className="bg-muted mt-1.5 block h-1 w-full overflow-hidden rounded-full"
-            aria-hidden
-          >
-            <motion.span
-              className={cn(
-                "block h-full w-full origin-left rounded-full",
-                conc.full ? "bg-status-warning" : "bg-foreground",
-              )}
-              initial={false}
-              animate={{ scaleX: conc.ratio }}
-              transition={SPRING}
-            />
-          </span>
         </div>
+        <span className="text-muted-foreground text-xs">{conc.custom ? "自定义" : "全局默认"}</span>
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <ReasonTooltip reason={creditDeny}>
-          <CreditPopover
-            user={user}
-            actions={actions}
-            open={creditOpen}
-            onOpenChange={setCreditOpen}
-            align="start"
-            render={<MotionButton variant="outline" disabled={!!creditDeny} />}
-          >
-            <Diff />
-            调整积分
-          </CreditPopover>
-        </ReasonTooltip>
         <ReasonTooltip reason={limitDeny}>
           <LimitPopover
             user={user}

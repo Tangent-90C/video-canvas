@@ -18,7 +18,6 @@ import { DURATION, ms } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import {
   agoText,
-  creditCell,
   durationCell,
   formatFullTime,
   isActiveStatus,
@@ -37,12 +36,6 @@ const KIND_ICON = {
   other: Type,
 } as const;
 
-const CREDIT_CLASS = {
-  success: "text-status-success font-medium",
-  muted: "text-muted-foreground",
-  plain: "",
-} as const;
-
 /** 每格上下两行：主信息 + 次要小字 */
 function Cell({ main, sub }: { main: ReactNode; sub?: ReactNode }) {
   return (
@@ -54,8 +47,8 @@ function Cell({ main, sub }: { main: ReactNode; sub?: ReactNode }) {
 }
 
 /**
- * 使用记录表格：用户 / 类型 / 模型 / 状态 / 积分 / 耗时 / 时间 / 操作，每格上下两行。
- * 类型是彩色小标签，积分成功时用绿色强调，耗时单独成列并对齐数字；进行中的状态点脉动、耗时每秒增长。
+ * 使用记录表格：用户 / 类型 / 模型 / 状态 / 耗时 / 时间 / 操作，每格上下两行。
+ * 类型是彩色小标签，耗时单独成列并对齐数字；进行中的状态点脉动、耗时每秒增长。
  * 整行可点（Enter / Space 同样）打开详情抽屉，最右列「详情」按钮效果相同；点用户名只加入用户筛选。
  * @param loading 首次加载显示骨架行
  * @param activeRef 抽屉里正在看的任务，对应行高亮
@@ -89,7 +82,6 @@ function UsageTable({
           <TableHead>类型</TableHead>
           <TableHead>模型</TableHead>
           <TableHead>状态</TableHead>
-          <TableHead className="text-right">积分</TableHead>
           <TableHead className="text-right">耗时</TableHead>
           <TableHead>时间</TableHead>
           <TableHead className="pr-4 text-right">操作</TableHead>
@@ -97,13 +89,12 @@ function UsageTable({
       </TableHeader>
       <TableBody>
         {loading ? (
-          <TableSkeletonRows columns={8} rows={8} />
+          <TableSkeletonRows columns={7} rows={8} />
         ) : (
           items.map((item) => {
             const status = usageStatusView(item.status);
             const kind = kindTagView(item.kind);
             const KindIcon = KIND_ICON[kind.icon];
-            const credit = creditCell(item);
             const detail = statusDetail(item);
             const modelName = item.model_name || item.model_key;
             return (
@@ -184,14 +175,6 @@ function UsageTable({
                     }
                     sub={detail ? <span className="line-clamp-2 break-words">{detail}</span> : null}
                   />
-                </TableCell>
-                <TableCell
-                  className={cn(
-                    "text-right align-top text-sm whitespace-nowrap tabular-nums",
-                    CREDIT_CLASS[credit.tone],
-                  )}
-                >
-                  {credit.text}
                 </TableCell>
                 <TableCell className="text-right align-top text-sm whitespace-nowrap tabular-nums">
                   {durationCell(item, now)}

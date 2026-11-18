@@ -57,15 +57,15 @@ describe("GenerationStatus：统一任务状态展示", () => {
     expect(canvas).toContain("37%");
   });
 
-  test("失败复用错误、退款和任务编号展示，重试按钮按需出现", () => {
+  test("失败复用错误和任务编号展示，重试按钮按需出现", () => {
     const html = renderToStaticMarkup(
       <GenerationStatus
-        view={{ phase: "failed", message: "平台繁忙", refunded: true, taskRef: "abc" }}
+        view={{ phase: "failed", message: "平台繁忙", taskRef: "abc" }}
         onRetry={() => {}}
       />,
     );
     expect(html).toContain("平台繁忙");
-    expect(html).toContain("积分已退回");
+    expect(html).not.toContain("积分已退回");
     expect(html).toContain("abc");
     expect(html).toContain("重试");
     expect(html).toContain('role="alert"');
@@ -77,7 +77,6 @@ describe("GenerationStatus：统一任务状态展示", () => {
         view={{
           phase: "failed",
           message: "你的 TokenDance 余额不足，请充值后重试",
-          refunded: false,
           taskRef: "abc",
           walletRecharge: true,
         }}
@@ -155,11 +154,10 @@ describe("deriveTaskStatus：沿用公共阶段判断", () => {
     expect(deriveTaskStatus(makeTask({ status: "succeeded" }), NOW).phase).toBe("finalizing");
   });
 
-  test("失败、超时、取消不会被显示成即将完成，取消后按实际扣费显示退款", () => {
+  test("失败、超时、取消不会被显示成即将完成，也不再判断平台退款", () => {
     for (const status of ["failed", "expired", "canceled"] as const) {
-      const view = deriveTaskStatus(makeTask({ status, charged_credits: 5 }), NOW);
+      const view = deriveTaskStatus(makeTask({ status }), NOW);
       expect(view.phase).toBe("failed");
-      if (view.phase === "failed") expect(view.refunded).toBe(false);
     }
   });
 

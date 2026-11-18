@@ -19,7 +19,6 @@ import {
   failureHint,
   isActiveStatus,
   isTaskRef,
-  ledgerRows,
   rangeWindow,
   readUserFilterState,
   timelineRows,
@@ -386,21 +385,6 @@ describe("状态时间线", () => {
     expect(eventNote({ reason: "admin_cancel" })).toBe("管理员取消");
     expect(eventNote({ reason: "deadline" })).toBe("超过截止时间");
     expect(eventNote({ reason: "something_new" })).toBe("reason=something_new");
-  });
-});
-
-describe("积分流水", () => {
-  test("类型中文名，金额带符号", () => {
-    const rows = ledgerRows([
-      { id: 1, type: "freeze", amount: -120, created_at: "2026-10-18T06:00:00Z" },
-      { id: 2, type: "refund", amount: 120, created_at: "2026-10-18T06:02:00Z" },
-      { id: 3, type: "other", amount: 0, created_at: "2026-10-18T06:02:00Z" },
-    ]);
-    expect(rows.map((r) => [r.label, r.amountText])).toEqual([
-      ["冻结", "-120"],
-      ["退款", "+120"],
-      ["other", "0"],
-    ]);
   });
 });
 

@@ -9,7 +9,6 @@ import { useCanvasEditor } from "@/components/canvas-editor/editor-api";
 import { submitNodeById, submitWithVoiceById } from "@/components/canvas-editor/node-actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useRemoteModels } from "@/hooks/use-models";
 import { BottomToolbar } from "@/pages/canvas/chrome/bottom-toolbar";
 import { ViewControls } from "@/pages/canvas/chrome/view-controls";
 import { openShortcuts } from "@/pages/canvas/shortcuts-state";
@@ -29,7 +28,6 @@ import {
   type AssetItem,
 } from "@/utils/drama/assets";
 import { isActiveJob, writingAssetPrompts } from "@/utils/drama/jobs";
-import { lowestUnit } from "@/utils/pricing/quote";
 
 import { AssetCard, TYPE_ICON } from "./asset-card";
 import { useAssetsUi } from "./assets-ui";
@@ -114,24 +112,11 @@ function LibraryFloat({ items }: { items: AssetItem[] }) {
   );
 }
 
-/** 批量生成按钮里的积分估算；估不出来（没有定价）就不显示 */
-function Credits({ value }: { value: number }) {
-  if (value <= 0) return null;
-  return (
-    <>
-      {" · 约 "}
-      <span className="tabular-nums">{value}</span> 积分起
-    </>
-  );
-}
-
 /** 列表视图：类型 tab、资产卡网格（可鼠标框选，已生成的也能选上重新生成）、有选中时底部浮出批量操作栏 */
 function AssetList({ items }: { items: AssetItem[] }) {
   const ui = useAssetsUi();
   const { jobs } = useWorkspace();
   const editor = useCanvasEditor();
-  const imageModels = useRemoteModels("image");
-  const audioModels = useRemoteModels("audio");
   const [batching, setBatching] = useState(false);
 
   const counts = useMemo(() => countByType(items, ui.filter), [items, ui.filter]);
@@ -141,25 +126,7 @@ function AssetList({ items }: { items: AssetItem[] }) {
   const candidates = useMemo(() => generatable(items, ui.type), [items, ui.type]);
   const typeMeta = ASSET_TYPES.find((type) => type.key === ui.type)!;
 
-  /** 估算：每个选中的节点按它的模型（缺省取第一个）最低单价累加 */
-  const unitOf = useCallback(
-    (item: AssetItem) => {
-      const model =
-        imageModels.models.find((m) => m.key === item.data.model) ?? imageModels.models[0];
-      // 钱包模型不扣平台积分，没有积分可估
-      if (model?.wallet) return 0;
-      return lowestUnit(model?.pricing);
-    },
-    [imageModels.models],
-  );
   const selectedItems = candidates.filter((item) => ui.selected.has(item.id));
-  const estimate = selectedItems.reduce((sum, item) => sum + unitOf(item), 0);
-  /** 含音色时再加上每个角色一段音频（取第一个音频模型，和详情页默认一致） */
-  const voiceEstimate =
-    estimate +
-    (audioModels.models[0]?.wallet
-      ? 0
-      : selectedItems.length * lowestUnit(audioModels.models[0]?.pricing));
   /** 能框选、全选的：当前显示出来的可生成卡片 */
   const selectable = useMemo(() => {
     const ids = new Set(candidates.map((item) => item.id));
@@ -399,7 +366,6 @@ function AssetList({ items }: { items: AssetItem[] }) {
                     onClick={() => run(false)}
                   >
                     生成角色图
-                    <Credits value={estimate} />
                   </Button>
                   <Button
                     size="sm"
@@ -408,13 +374,11 @@ function AssetList({ items }: { items: AssetItem[] }) {
                     onClick={() => run(true)}
                   >
                     生成（含音色）
-                    <Credits value={voiceEstimate} />
                   </Button>
                 </>
               ) : (
                 <Button size="sm" disabled={batching} onClick={() => run(false)}>
                   生成 {selectedItems.length} 个
-                  <Credits value={estimate} />
                 </Button>
               )}
             </motion.div>

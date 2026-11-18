@@ -51,8 +51,6 @@ export interface BackendMeStatsDto {
   failed: number;
   /** 近 7 天提交的任务数 */
   last7d: number;
-  /** 累计结算消耗的积分 */
-  spent_credits: number;
   /** 未删除的画布数 */
   canvas_count: number;
 }
@@ -67,8 +65,6 @@ export interface MeStatsDto {
   failed: number;
   /** 近 7 天提交的任务数 */
   last7d: number;
-  /** 累计结算消耗的积分 */
-  spentCredits: number;
   /** 未删除的画布数 */
   canvasCount: number;
 }
@@ -103,75 +99,6 @@ export interface ActivityDto {
   total: number;
   /** 只含 count > 0 的日子，其余日期由前端补齐 */
   days: ActivityDay[];
-}
-
-/** 流水筛选：全部 / 生成任务 / 管理员调整 / 充值 */
-export type LedgerFilter = "all" | "task" | "admin" | "recharge";
-
-/** 流水类型：initial 赠送、freeze 冻结、settle 结算、refund 退款、admin_adjust 管理员调整、recharge 充值 */
-export type LedgerType = "initial" | "freeze" | "settle" | "refund" | "admin_adjust" | "recharge";
-
-/** 每页条数：后端只接受这三档 */
-export type LedgerPageSize = 10 | 20 | 50;
-
-/** 后端返回的一条流水（不含操作人） */
-export interface BackendLedgerItemDto {
-  /** 流水 ID */
-  id: number;
-  /** 流水类型 */
-  type: LedgerType;
-  /** 积分数量：settle / freeze / refund 为正数，admin_adjust 带正负号 */
-  amount: number;
-  /** 关联任务 ID；没有时为 null 或 0 */
-  task_id: number | null;
-  /** 关联的 Agent 对话调用 ID；没有时为 null 或 0 */
-  agent_call_id: number | null;
-  /** 备注：只有管理员调整非空 */
-  note: string;
-  /** 创建时间（ISO） */
-  created_at: string;
-}
-
-/** 后端流水分页响应 */
-export interface BackendLedgerPageDto {
-  /** 当前页的流水；页码超出范围时为空 */
-  items: BackendLedgerItemDto[] | null;
-  /** 当前筛选下的总条数 */
-  total: number;
-  /** 当前页码，从 1 开始 */
-  page: number;
-  /** 每页条数 */
-  page_size: number;
-}
-
-/** 一条积分流水 */
-export interface LedgerItemDto {
-  /** 流水 ID */
-  id: string;
-  /** 流水类型 */
-  type: LedgerType;
-  /** 积分数量：settle / freeze / refund 为正数，admin_adjust 带正负号 */
-  amount: number;
-  /** 关联任务 ID；null 表示没有 */
-  taskId: string | null;
-  /** 关联的 Agent 对话调用 ID；null 表示没有 */
-  agentCallId: string | null;
-  /** 备注：只有管理员调整非空，按纯文本展示 */
-  note: string;
-  /** 创建时间（ISO） */
-  createdAt: string;
-}
-
-/** 一页积分流水 */
-export interface LedgerPageDto {
-  /** 当前页的流水 */
-  items: LedgerItemDto[];
-  /** 当前筛选下的总条数 */
-  total: number;
-  /** 当前页码，从 1 开始 */
-  page: number;
-  /** 每页条数 */
-  pageSize: number;
 }
 
 /** 修改密码的请求体 */

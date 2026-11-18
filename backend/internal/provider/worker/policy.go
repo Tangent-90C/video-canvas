@@ -25,6 +25,7 @@ const (
 	codeTransferFailed  = "transfer_failed"
 	codeInvalidParam    = "invalid_param"
 	codeSecretMissing   = "secret_unavailable" // 宿主判定的「钱包未连接 / Key 失效」或「渠道 Key 未设置」
+	codeWalletRequired  = "wallet_required"    // 历史非钱包任务已禁止回退到产品方渠道 Key
 )
 
 // failureForWallet 在 failureFor 的基础上，为钱包任务把上游的余额 / 授权错误换成本端的可操作提示：
@@ -34,7 +35,7 @@ func failureForWallet(class provider.ErrorClass, platformCode, upstream string, 
 	if !wallet {
 		return failureFor(class, platformCode, upstream)
 	}
-	// 钱包任务不冻结 / 不扣平台积分，宿主固定文案里的「积分已退回」不成立，换成钱包版说法
+	// 钱包任务由用户自己的 TokenDance 额度支付，平台不再冻结、结算或退款积分。
 	switch class {
 	case provider.ClassSubmitUnknown:
 		return codeSubmitUnknown, "提交结果未知，请核对 TokenDance 账户是否产生了任务"
@@ -45,7 +46,7 @@ func failureForWallet(class provider.ErrorClass, platformCode, upstream string, 
 	}
 	switch {
 	case class == provider.ClassProviderBalance:
-		return codeProviderBalance, "你的 TokenDance 余额不足，请充值后重试（钱包任务不消耗平台积分）"
+		return codeProviderBalance, "你的 TokenDance 余额不足，请充值后重试"
 	case class == provider.ClassKeyQuota:
 		return codeProviderError, "你的 TokenDance Key 本周期额度已用完，可等待额度刷新，或到个人中心重新连接新的 Key"
 	case class == provider.ClassSecretUnavailable, platformCode == codeSecretMissing:
@@ -59,13 +60,16 @@ func failureForWallet(class provider.ErrorClass, platformCode, upstream string, 
 // 宿主自己判定的失败（超时、转存失败、提交结果未知）没有上游原文，用固定文案。
 // 插件级失败（异常、超时、结构不合规、runner 崩溃）由调用方传空 upstream，落到“平台繁忙”，用户看不到插件的存在。
 func failureFor(class provider.ErrorClass, platformCode, upstream string) (code, message string) {
+	if platformCode == codeWalletRequired {
+		return codeProviderError, "该历史任务未使用 TokenPay 钱包，已停止执行，请重新提交"
+	}
 	switch class {
 	case provider.ClassSubmitUnknown:
-		return codeSubmitUnknown, "提交结果未知，积分已退回"
+		return codeSubmitUnknown, "提交结果未知，请核对 TokenDance 账户是否产生了任务"
 	case failTimeout:
-		return codeTimeout, "生成超时，积分已退回"
+		return codeTimeout, "生成超时"
 	case failTransfer:
-		return codeTransferFailed, "生成结果保存失败，积分已退回"
+		return codeTransferFailed, "生成结果保存失败"
 	}
 	code, message = codeProviderError, "平台繁忙，请稍后重试"
 	switch {

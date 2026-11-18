@@ -9,7 +9,7 @@ import {
   DialogFooter,
   DialogTitle,
 } from "@/components/admin-ui/dialog";
-import { readModelKind, readModelPricing, readModelString } from "@/utils/admin/model-body";
+import { readModelKind, readModelString } from "@/utils/admin/model-body";
 
 import { ResultPanel } from "../result-panel";
 import { TestNode } from "./test-node";
@@ -17,7 +17,7 @@ import type { ModelWorkspace } from "./use-model-workspace";
 
 /**
  * 测试模型（设计稿的二级弹窗）：左边是模拟画布节点，像在画布上一样选参数、传素材；
- * 右边是结果 / 请求描述 / 追踪 / 日志。用当前配置真实调用一次上游，不扣用户积分，结果不进素材库。
+ * 右边是结果 / 请求描述 / 追踪 / 日志。用当前配置真实调用一次上游，费用由当前管理员 TokenPay 钱包承担，结果不进素材库。
  * 有未保存的修改会先自动保存。
  */
 export function ModelTestDialog({
@@ -67,7 +67,6 @@ export function ModelTestDialog({
               vendor={body ? readModelString(body, "vendor") : ""}
               label={label}
               kind={kind}
-              pricing={body ? (readModelPricing(body) ?? undefined) : undefined}
               caps={ws.capabilities}
               params={ws.testParams}
               assets={ws.testAssets}

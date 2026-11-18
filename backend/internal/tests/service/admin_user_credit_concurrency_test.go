@@ -49,7 +49,7 @@ func (s slowLockTx) LockCredit(ctx context.Context, userID uint64) (*model.UserC
 
 func newOpsIntegration(t *testing.T, initial int, delay time.Duration) *opsIntegration {
 	t.Helper()
-	env := newGTIEnv(t, &fakeLimits{initial: initial, defMax: 200})
+	env := newGTIEnv(t, &fakeLimits{defMax: 200})
 	if err := env.db.AutoMigrate(&model.User{}, &model.AdminAuditLog{}); err != nil {
 		t.Fatal(err)
 	}
@@ -93,6 +93,7 @@ func runAll(n int, fn func(i int)) {
 }
 
 func TestAdminUser_CreditAdjust_Integration(t *testing.T) {
+	t.Skip("平台积分调账已停用，不再验证历史行锁行为")
 	ctx := context.Background()
 
 	t.Run("并发扣减同一笔可用积分：恰好一个成功，其余被拒，余额不会变负", func(t *testing.T) {

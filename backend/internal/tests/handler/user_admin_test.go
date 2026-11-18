@@ -492,11 +492,14 @@ func TestAdminUsers(t *testing.T) {
 				Total int64                     `json:"total"`
 			}
 			_ = json.Unmarshal(r.Data, &page)
-			if page.Total != 2 || len(page.List) != 2 || page.List[0].Available != 8 || page.List[0].EffectiveMaxActiveTasks != 4 {
+			if page.Total != 2 || len(page.List) != 2 || page.List[0].EffectiveMaxActiveTasks != 4 {
 				t.Fatalf("列表不对：%+v", page)
 			}
-			if !strings.Contains(r.Raw, `"has_credit_account"`) || !strings.Contains(r.Raw, `"effective_max_active_tasks"`) {
+			if !strings.Contains(r.Raw, `"effective_max_active_tasks"`) {
 				t.Fatalf("字段名应为 snake_case：%s", r.Raw)
+			}
+			if strings.Contains(r.Raw, `"balance"`) || strings.Contains(r.Raw, `"has_credit_account"`) {
+				t.Fatalf("平台积分已停用，用户列表不应返回积分字段：%s", r.Raw)
 			}
 		}
 	})
@@ -511,10 +514,13 @@ func TestAdminUsers(t *testing.T) {
 	t.Run("详情：成功、id 非法 400、不存在 404", func(t *testing.T) {
 		r := env.do(http.MethodGet, "/api/v1/admin/users/3", nil, uaAdmin)
 		r.want(t, 200, 0)
-		for _, f := range []string{`"task_total":2`, `"task_success":1`, `"recent_audits":[]`, `"spent_credits"`, `"tasks_last_7d"`, `"email_verified_at"`} {
+		for _, f := range []string{`"task_total":2`, `"task_success":1`, `"recent_audits":[]`, `"tasks_last_7d"`, `"email_verified_at"`} {
 			if !strings.Contains(r.Raw, f) {
 				t.Fatalf("详情缺少 %s：%s", f, r.Raw)
 			}
+		}
+		if strings.Contains(r.Raw, `"spent_credits"`) {
+			t.Fatalf("平台积分已停用，用户详情不应返回 spent_credits：%s", r.Raw)
 		}
 		env.do(http.MethodGet, "/api/v1/admin/users/abc", nil, uaAdmin).want(t, 400, errcode.ErrInvalidParams.Code)
 		env.do(http.MethodGet, "/api/v1/admin/users/999", nil, uaAdmin).want(t, 404, errcode.ErrUserNotFound.Code)
@@ -527,13 +533,16 @@ func TestAdminSettings_Register(t *testing.T) {
 	env := newUAEnv(t)
 	r := env.do(http.MethodGet, "/api/v1/admin/settings/register", nil, uaAdmin)
 	r.want(t, 200, 0)
-	if !strings.Contains(r.Raw, `"register_enabled":true`) || !strings.Contains(r.Raw, `"initial_credits":50`) || !strings.Contains(r.Raw, `"default_max_active_tasks":4`) {
+	if !strings.Contains(r.Raw, `"register_enabled":true`) || !strings.Contains(r.Raw, `"default_max_active_tasks":4`) {
 		t.Fatalf("%s", r.Raw)
+	}
+	if strings.Contains(r.Raw, `"initial_credits"`) {
+		t.Fatalf("平台积分已停用，注册设置不应返回 initial_credits：%s", r.Raw)
 	}
 	if !strings.Contains(r.Raw, `"queue_multiplier":5`) || !strings.Contains(r.Raw, `"queue_max_wait_minutes":60`) {
 		t.Fatalf("缺省应带排队倍数 5 与排队超时 60：%s", r.Raw)
 	}
-	body := map[string]any{"register_enabled": false, "initial_credits": 10, "default_max_active_tasks": 6, "queue_multiplier": 3, "queue_max_wait_minutes": 90}
+	body := map[string]any{"register_enabled": false, "default_max_active_tasks": 6, "queue_multiplier": 3, "queue_max_wait_minutes": 90}
 	env.do(http.MethodPut, "/api/v1/admin/settings/register", body, uaAdmin).want(t, 403, errcode.ErrForbidden.Code) // 写仅 SA
 	env.do(http.MethodPut, "/api/v1/admin/settings/register", body, uaSuper).want(t, 200, 0)
 	r = env.do(http.MethodGet, "/api/v1/admin/settings/register", nil, uaAdmin)
@@ -543,15 +552,13 @@ func TestAdminSettings_Register(t *testing.T) {
 	}
 	// 排队倍数 / 排队超时越界，或者缺失（旧前端不带这两个字段），都是参数错误
 	for _, bad := range []map[string]any{
-		{"register_enabled": true, "initial_credits": 1, "default_max_active_tasks": 4, "queue_multiplier": 21, "queue_max_wait_minutes": 60},
-		{"register_enabled": true, "initial_credits": 1, "default_max_active_tasks": 4, "queue_multiplier": 5, "queue_max_wait_minutes": 4},
-		{"register_enabled": true, "initial_credits": 1, "default_max_active_tasks": 4},
+		{"register_enabled": true, "default_max_active_tasks": 4, "queue_multiplier": 21, "queue_max_wait_minutes": 60},
+		{"register_enabled": true, "default_max_active_tasks": 4, "queue_multiplier": 5, "queue_max_wait_minutes": 4},
+		{"register_enabled": true, "default_max_active_tasks": 4},
 	} {
 		env.do(http.MethodPut, "/api/v1/admin/settings/register", bad, uaSuper).want(t, 400, errcode.ErrInvalidParams.Code)
 	}
-	env.do(http.MethodPut, "/api/v1/admin/settings/register", map[string]any{"register_enabled": true, "initial_credits": -1, "default_max_active_tasks": 4, "queue_multiplier": 5, "queue_max_wait_minutes": 60}, uaSuper).
-		want(t, 400, errcode.ErrInvalidParams.Code)
-	env.do(http.MethodPut, "/api/v1/admin/settings/register", map[string]any{"register_enabled": true, "initial_credits": 1, "default_max_active_tasks": 65, "queue_multiplier": 5, "queue_max_wait_minutes": 60}, uaSuper).
+	env.do(http.MethodPut, "/api/v1/admin/settings/register", map[string]any{"register_enabled": true, "default_max_active_tasks": 65, "queue_multiplier": 5, "queue_max_wait_minutes": 60}, uaSuper).
 		want(t, 400, errcode.ErrInvalidParams.Code)
 	env.do(http.MethodGet, "/api/v1/admin/settings/register", nil, uaNormal).want(t, 403, errcode.ErrForbidden.Code)
 }

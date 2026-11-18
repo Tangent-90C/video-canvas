@@ -109,18 +109,12 @@ export function AdminSecretDetail({
   );
 }
 
-/** 试跑输入只展示摘要，估价仅作示意，不从管理员余额扣费 */
+/** 试跑输入只展示摘要；费用由当前管理员 TokenPay 钱包按 TokenDance 实际账单结算 */
 export function AdminTestRunDetail({ payload }: { payload: AdminTestRunPayload }) {
-  const estimate = [
-    payload.estimate.credits !== null ? `${payload.estimate.credits} 积分` : null,
-    payload.estimate.yuan !== null ? `¥${payload.estimate.yuan}` : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
   return (
     <div className="text-muted-foreground flex flex-col gap-1 text-xs wrap-anywhere">
       <p>{payload.input_summary}</p>
-      <p>预估费用（示意）：{estimate || "暂无法估算"}</p>
+      <p>按 TokenDance 实际账单</p>
       <p>
         第 {payload.attempt} 次 / 共 3 次 · 剩余 {payload.attempts_left} 次
       </p>

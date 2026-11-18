@@ -197,6 +197,7 @@ func TestMarketing_Round_StepFailureShowsUpstreamError(t *testing.T) {
 		want string
 	}{
 		{"上游返回错误", &llmgateway.UpstreamError{Status: 400, Message: "Unsupported input: image_url (request id: 2026abc)"}, "Unsupported input: image_url"},
+		{"钱包未连接", errcode.ErrWalletNotConnected, "请先在个人中心连接 TokenPay 钱包"},
 		{"不是上游返回的错误", errors.New("dial tcp: connection refused"), "文本模型暂时不可用，请稍后重试"},
 	}
 	for _, tc := range cases {

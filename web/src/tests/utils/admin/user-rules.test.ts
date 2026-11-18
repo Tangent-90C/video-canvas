@@ -3,9 +3,6 @@ import { describe, expect, test } from "bun:test";
 import {
   batchPlan,
   concurrencyView,
-  creditDelta,
-  creditPreview,
-  creditUndoRequest,
   denyReason,
   formatAbsolute,
   formatDurationMs,
@@ -17,9 +14,7 @@ import {
   loginResultView,
   parseAmount,
   parseUserAgent,
-  stackChip,
   validateLimit,
-  validateNote,
 } from "@/utils/admin/user-rules";
 
 const SA = { id: 1, role: "super_admin" as const };
@@ -31,13 +26,11 @@ const otherSA = { id: 4, role: "super_admin" as const, status: "active" as const
 describe("denyReason 权限禁用原因", () => {
   test("admin 不能操作管理员和超级管理员账号", () => {
     expect(denyReason(ADMIN, otherAdmin, "ban")).toBe("admin 不能操作管理员账号");
-    expect(denyReason(ADMIN, otherSA, "credit")).toBe("admin 不能操作管理员账号");
     expect(denyReason(ADMIN, otherAdmin, "limit")).toBe("admin 不能操作管理员账号");
   });
 
-  test("admin 可以操作普通用户的封禁、积分、并发", () => {
+  test("admin 可以操作普通用户的封禁、并发", () => {
     expect(denyReason(ADMIN, user, "ban")).toBeNull();
-    expect(denyReason(ADMIN, user, "credit")).toBeNull();
     expect(denyReason(ADMIN, user, "limit")).toBeNull();
   });
 
@@ -58,12 +51,6 @@ describe("denyReason 权限禁用原因", () => {
   test("改角色、重置密码只有 super_admin", () => {
     expect(denyReason(ADMIN, user, "role")).toBe("仅超级管理员可用");
     expect(denyReason(ADMIN, user, "reset")).toBe("仅超级管理员可用");
-  });
-
-  test("admin 不能给自己调积分，super_admin 可以", () => {
-    const self = { id: 2, role: "admin" as const };
-    expect(denyReason(ADMIN, self, "credit")).toBe("admin 不能给自己调整积分");
-    expect(denyReason(SA, { id: 1, role: "super_admin" }, "credit")).toBeNull();
   });
 
   test("admin 改自己的并发上限不受「管理员账号」限制", () => {
@@ -92,105 +79,6 @@ describe("parseAmount", () => {
 
   test("过长的数字拒绝，避免超出安全整数", () => {
     expect(parseAmount("1234567890")).toBeNull();
-  });
-});
-
-describe("creditPreview 积分预览", () => {
-  test("增加：可用 + 数值", () => {
-    expect(creditPreview({ mode: "add", amount: 100, available: 24 })).toEqual({
-      after: 124,
-      error: null,
-      valid: true,
-    });
-  });
-
-  test("增加 0 不合法但不报错", () => {
-    expect(creditPreview({ mode: "add", amount: 0, available: 24 })).toEqual({
-      after: 24,
-      error: null,
-      valid: false,
-    });
-  });
-
-  test("扣减超过可用：报「最多可扣」并禁止提交", () => {
-    const r = creditPreview({ mode: "sub", amount: 30, available: 24 });
-    expect(r.error).toBe("最多可扣 24");
-    expect(r.valid).toBe(false);
-  });
-
-  test("扣减恰好等于可用合法", () => {
-    expect(creditPreview({ mode: "sub", amount: 24, available: 24 })).toEqual({
-      after: 0,
-      error: null,
-      valid: true,
-    });
-  });
-
-  test("设为：直接把可用积分设成指定值，允许 0", () => {
-    expect(creditPreview({ mode: "set", amount: 0, available: 24 })).toEqual({
-      after: 0,
-      error: null,
-      valid: true,
-    });
-    expect(creditPreview({ mode: "set", amount: 500, available: 24 }).after).toBe(500);
-  });
-
-  test("没填数值：没有预览结果", () => {
-    expect(creditPreview({ mode: "add", amount: null, available: 24 })).toEqual({
-      after: null,
-      error: null,
-      valid: false,
-    });
-  });
-});
-
-describe("creditDelta", () => {
-  test("add / sub / set 换算成可用积分的变化量", () => {
-    expect(creditDelta("add", 100, 24)).toBe(100);
-    expect(creditDelta("sub", 10, 24)).toBe(-10);
-    expect(creditDelta("set", 5, 24)).toBe(-19);
-    expect(creditDelta("set", 50, 24)).toBe(26);
-  });
-});
-
-describe("creditUndoRequest 撤销 = 反向调整", () => {
-  test("增加的撤销是扣减，备注加「撤销：」前缀", () => {
-    expect(creditUndoRequest(100, "活动补发")).toEqual({
-      mode: "sub",
-      amount: 100,
-      note: "撤销：活动补发",
-    });
-  });
-
-  test("扣减的撤销是增加", () => {
-    expect(creditUndoRequest(-30, "误扣")).toEqual({ mode: "add", amount: 30, note: "撤销：误扣" });
-  });
-
-  test("变化量为 0 没什么可撤销", () => {
-    expect(creditUndoRequest(0, "x")).toBeNull();
-  });
-
-  test("备注总长不超过后端的 100 字", () => {
-    const r = creditUndoRequest(1, "字".repeat(100));
-    expect(r?.note.length).toBe(100);
-    expect(r?.note.startsWith("撤销：")).toBe(true);
-  });
-});
-
-describe("validateNote", () => {
-  test("必填，1 到 100 字", () => {
-    expect(validateNote("")).not.toBeNull();
-    expect(validateNote("   ")).not.toBeNull();
-    expect(validateNote("ok")).toBeNull();
-    expect(validateNote("字".repeat(101))).not.toBeNull();
-  });
-});
-
-describe("stackChip 快捷档累加", () => {
-  test("空值直接填入，已有值累加", () => {
-    expect(stackChip("", 100)).toBe("100");
-    expect(stackChip("100", 100)).toBe("200");
-    expect(stackChip("abc", 50)).toBe("50");
   });
 });
 
@@ -258,12 +146,6 @@ describe("batchPlan 批量跳过规则", () => {
     const plan = batchPlan(SA, withSelf, "ban");
     expect(plan.run.map((u) => u.id)).toEqual([10, 3, 2]);
     expect(plan.skipped.map((s) => s.user.id)).toEqual([1]);
-  });
-
-  test("批量发积分：admin 跳过管理员（含自己，因为不能给自己调积分）", () => {
-    const plan = batchPlan(ADMIN, users, "credit");
-    expect(plan.run.map((u) => u.id)).toEqual([10, 11]);
-    expect(plan.skipped.map((s) => s.user.id)).toEqual([3, 2]);
   });
 
   test("跳过说明：去重原因并写出数量", () => {

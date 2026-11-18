@@ -9,7 +9,6 @@ import {
   MoreHorizontal,
   Settings,
   ShieldCheck,
-  Sparkle,
   Sun,
   User,
   Wallet,
@@ -43,9 +42,6 @@ import { UserAvatar } from "@/components/user-avatar";
 import type { ThemeSetting } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { useSettingsStore } from "@/store";
-import { openPaymentStore } from "@/components/payment/payment-dialog";
-import { useCreditsStore } from "@/store/credits";
-import { useHasPendingOrder, usePaymentEnabled } from "@/store/payment";
 import { useMeStore } from "@/store/me";
 import { useWalletStore } from "@/store/wallet";
 import { openWalletRecharge } from "@/store/wallet-recharge";
@@ -162,9 +158,9 @@ function WalletFace({ showPendingDot }: { showPendingDot: boolean }) {
  * 钱包菜单（不带胶囊）：放进任意 ChromePill 里用。
  * 钱包已连接：显示 TokenDance 余额与已消耗、Key 掩码、连接时间，可断开；
  * 未连接：点了直接弹全局连接弹窗（新标签页授权）；
- * 本站未启用钱包（tokenpay_enabled=false）：回退成原来的积分菜单。
+ * 本站未启用钱包时也明确引导，不回退到任何平台积分。
  */
-export function CreditsMenu() {
+export function WalletMenu() {
   const view = useWalletStore((state) => state.view);
   const status = useWalletStore((state) => state.status);
   const balance = useWalletStore((state) => state.balance);
@@ -185,9 +181,14 @@ export function CreditsMenu() {
     );
   }
 
-  // 未启用钱包的部署：保留原积分行为（积分商城 / 余额小卡片）
+  // 未启用钱包的部署：明确提示，不回退到任何平台积分。
   if (!view?.enabled) {
-    return <LegacyCreditsMenu />;
+    return (
+      <ChromeButton aria-label="TokenPay 钱包未启用" className={WALLET_BUTTON_CLASS} disabled>
+        <Wallet className="size-4.5!" strokeWidth={2} />
+        <span className="text-muted-foreground">钱包未启用</span>
+      </ChromeButton>
+    );
   }
 
   if (view.connected) {
@@ -274,113 +275,15 @@ export function CreditsMenu() {
   );
 }
 
-/** 原来的积分菜单：钱包未启用的部署里保留（积分商城 / 余额小卡片） */
-function LegacyCreditsMenu() {
-  const payEnabled = usePaymentEnabled();
-  const hasPending = useHasPendingOrder();
-  const credits = useCreditsStore((state) => state.credits);
-  const refresh = useCreditsStore((state) => state.refresh);
-  const connection = useWsStore((state) => state.connection);
-  const down = connection === "reconnecting" || connection === "closed";
-
-  if (payEnabled) {
-    return (
-      <ChromeButton
-        aria-label={`积分，点击进入积分商城，${WS_TEXT[connection]}`}
-        className={CREDITS_BUTTON_CLASS}
-        onClick={() => openPaymentStore()}
-      >
-        <CreditsFace showPendingDot={hasPending} />
-      </ChromeButton>
-    );
-  }
-
-  return (
-    <Popover onOpenChange={(open) => open && void refresh()}>
-      <PopoverTrigger
-        render={
-          <ChromeButton
-            aria-label={`积分，${WS_TEXT[connection]}`}
-            className={CREDITS_BUTTON_CLASS}
-          >
-            <CreditsFace showPendingDot={false} />
-          </ChromeButton>
-        }
-      />
-      <PopoverContent align="end" sideOffset={10} className="w-64 gap-0 rounded-xl p-0">
-        <div className="flex items-baseline gap-2 px-4 pt-4 pb-3">
-          <span className="font-mono text-2xl font-semibold tabular-nums">
-            {credits ? <NumberFlow value={credits.available} /> : "—"}
-          </span>
-          <span className="text-muted-foreground text-xs">可用积分</span>
-        </div>
-        <dl className="border-border grid grid-cols-[1fr_auto] gap-y-2 border-t px-4 py-3 text-xs">
-          <dt className="text-muted-foreground">总余额</dt>
-          <dd className="font-mono tabular-nums">{credits?.balance ?? "—"}</dd>
-          <dt className="text-muted-foreground">生成中冻结</dt>
-          <dd className="font-mono tabular-nums">{credits?.frozen ?? "—"}</dd>
-        </dl>
-        <p
-          className={cn(
-            "border-border flex items-center gap-2 border-t px-4 py-2.5 text-xs",
-            down ? "text-status-warning" : "text-muted-foreground",
-          )}
-        >
-          {WS_TEXT[connection]}
-        </p>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-/** 积分按钮里的内容：实时连接状态点 + 积分图标 + 可用积分；有待支付订单时右上角挂一个小圆点 */
-function CreditsFace({ showPendingDot }: { showPendingDot: boolean }) {
-  const credits = useCreditsStore((state) => state.credits);
-  const connection = useWsStore((state) => state.connection);
-  const down = connection === "reconnecting" || connection === "closed";
-  const pending = connection === "connecting" || connection === "idle";
-  return (
-    <>
-      <span
-        title={WS_TEXT[connection]}
-        className={cn(
-          "size-1.5 rounded-full",
-          down
-            ? "bg-status-warning ring-status-warning/20 animate-pulse ring-3"
-            : pending
-              ? "bg-muted-foreground/50"
-              : "bg-status-success ring-status-success/15 ring-3",
-        )}
-      />
-      <Sparkle className="fill-credit text-credit size-4.5!" strokeWidth={0} />
-      {credits ? (
-        <NumberFlow value={credits.available} className="tabular-nums" />
-      ) : (
-        <span className="text-muted-foreground">—</span>
-      )}
-      {showPendingDot ? (
-        <span
-          title="有一笔待支付的充值订单"
-          className="bg-status-warning border-background absolute -top-0.5 -right-0.5 size-2.5 rounded-full border-2"
-        />
-      ) : null}
-    </>
-  );
-}
-
-/** 积分按钮的公共样式 */
-const CREDITS_BUTTON_CLASS =
-  "text-foreground relative h-9 gap-2 pr-3 pl-2.5 font-mono text-sm font-semibold";
-
 /** 钱包按钮的公共样式：余额是元（可能带小数），用等宽数字对齐 */
 const WALLET_BUTTON_CLASS =
   "text-foreground relative h-9 gap-2 pr-3 pl-2.5 font-mono text-sm font-semibold";
 
-/** 积分胶囊：只有积分一个按钮，首页顶栏用；画布右上角把积分和头像合在一个胶囊里 */
-export function CreditsPill() {
+/** 钱包胶囊：只有 TokenPay 钱包一个按钮，首页顶栏用；画布右上角把钱包和头像合在一个胶囊里 */
+export function WalletPill() {
   return (
     <ChromePill>
-      <CreditsMenu />
+      <WalletMenu />
     </ChromePill>
   );
 }
@@ -444,9 +347,9 @@ export function TopRightBar({
         </DropdownMenu>
       </ChromePill>
 
-      {/* 积分和头像合在一个胶囊里，头像 32px，比原来的 40px 小一圈，不抢积分的视线（设计稿 6.15） */}
+      {/* 钱包和头像合在一个胶囊里，头像 32px；钱包余额是唯一计费入口 */}
       <ChromePill>
-        <CreditsMenu />
+        <WalletMenu />
         <ChromeSeparator />
         <DropdownMenu modal={false}>
           <DropdownMenuTrigger

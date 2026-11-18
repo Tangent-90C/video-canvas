@@ -52,7 +52,7 @@ func newDoubaovideoEnv(t *testing.T) *doubaovideoEnv {
 func (e *doubaovideoEnv) snapshot(baseURL, kind, upstream string) *provider.Snapshot {
 	return &provider.Snapshot{
 		Model: provider.ModelSnapshot{Key: "m", Kind: kind, UpstreamModel: upstream, Capabilities: doubaovideoCaps(kind)},
-		Channel: provider.ChannelSnapshot{
+		Channel: provider.ChannelSnapshot{Wallet: true,
 			Key: "doubao-video-main", PluginKey: "doubao-video", PluginVersionID: 1, BaseURL: baseURL,
 		},
 		Plugin:          provider.PluginSnapshot{Key: "doubao-video", Version: e.meta.Version, SHA256: e.sha, Meta: *e.meta},

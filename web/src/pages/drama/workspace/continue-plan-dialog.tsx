@@ -147,9 +147,7 @@ export function ContinueBody({ onClose }: { onClose: () => void }) {
         </span>
         <span className="shrink-0 text-xs tabular-nums">
           {est ? (
-            <>
-              约 <b className="text-credit text-sm">{est.credits.toLocaleString("en-US")}</b> 积分
-            </>
+            <>费用按 TokenDance 实际账单</>
           ) : estimate && "error" in estimate ? (
             <span className="text-destructive">{estimate.error}</span>
           ) : (
@@ -179,7 +177,7 @@ export function ContinueBody({ onClose }: { onClose: () => void }) {
 
 /**
  * 「继续规划」确认框：规划范围完成且还有剩余原文时，在分集栏末尾打开。
- * 选「全部剩余」或「规划到第 N 章」，显示剩余字数、预计集数、规划积分和耗时；确认后扩大范围、规划继续。
+ * 选「全部剩余」或「规划到第 N 章」，显示剩余字数、预计集数和耗时；费用按 TokenDance 实际账单；确认后扩大范围、规划继续。
  */
 export function ContinuePlanDialog({
   open,

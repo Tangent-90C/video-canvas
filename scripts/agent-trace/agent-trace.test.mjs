@@ -299,7 +299,7 @@ test('show：在终端打印 Markdown', async () => {
 })
 
 function statGroup(key, n, extra = {}) {
-  return { key, n, feedback_rate: 0.2, down_rate: 0.1, undo_rate: 0.05, fail_end_rate: 0.1, median_duration_ms: 12000, median_steps: 8, avg_credits: 3.5, ...extra }
+  return { key, n, feedback_rate: 0.2, down_rate: 0.1, undo_rate: 0.05, fail_end_rate: 0.1, median_duration_ms: 12000, median_steps: 8, ...extra }
 }
 
 function writeVerdicts(cwd, rows) {

@@ -56,12 +56,10 @@ export interface ScriptRenderState {
 }
 
 /**
- * 脚本卡「出片 / 重出」按钮能不能点：出片中 / 重写中 → 旁白有问题（改掉才能出片）→ 余额不足。
- * 余额还没拿到（null）不拦，后端 40001 兜底。
+ * 脚本卡「出片 / 重出」按钮能不能点：出片中 / 重写中或旁白有问题时禁用。
  * @param script 脚本
- * @param available 可用积分
  */
-export function scriptRenderState(script: Script, available: number | null): ScriptRenderState {
+export function scriptRenderState(script: Script): ScriptRenderState {
   const again = script.status === "done" || script.status === "failed";
   if (isScriptBusy(script.status)) {
     return {
@@ -71,9 +69,6 @@ export function scriptRenderState(script: Script, available: number | null): Scr
     };
   }
   if (script.flags.length > 0) return { disabled: true, reason: flagReason(script.flags), again };
-  if (available !== null && available < script.renderCredits) {
-    return { disabled: true, reason: "余额不足", again };
-  }
   return { disabled: false, reason: "", again };
 }
 
@@ -89,8 +84,6 @@ export interface RenderAllState {
   show: boolean;
   /** 可出片的份数 */
   count: number;
-  /** 合计积分 */
-  credits: number;
   /** 禁用 */
   disabled: boolean;
   /** 禁用原因 */
@@ -100,21 +93,17 @@ export interface RenderAllState {
 /**
  * 轮次头「全部出片」：只统计可出片的脚本（出片中、重写中、旁白有问题的不算，后端同样会跳过）。
  * @param round 轮次
- * @param available 可用积分
  */
-export function renderAllState(round: Round, available: number | null): RenderAllState {
+export function renderAllState(round: Round): RenderAllState {
   const renderable = round.scripts.filter(
     (script) => !isScriptBusy(script.status) && script.flags.length === 0,
   );
-  const credits = renderable.reduce((sum, script) => sum + script.renderCredits, 0);
   const show = round.status === "ready" && renderable.length > 1;
-  const lack = available !== null && available < credits;
   return {
     show,
     count: renderable.length,
-    credits,
-    disabled: lack,
-    reason: lack ? "余额不足" : "",
+    disabled: false,
+    reason: "",
   };
 }
 

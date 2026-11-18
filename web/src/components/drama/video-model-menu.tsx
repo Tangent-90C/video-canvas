@@ -5,6 +5,7 @@ import { ModelLogo } from "@/components/model-logo";
 import { cn } from "@/lib/utils";
 import { useWalletStore } from "@/store/wallet";
 import { modelSummary, videoModelSupport } from "@/utils/drama/video-models";
+import { modelPriceLabel } from "@/utils/pricing/model-price";
 
 import { ChipPopover } from "./pickers";
 
@@ -98,6 +99,10 @@ export function ModelMenu({
             const active = model?.key === info.key;
             const note = ability.ok ? summary?.(info) : ability.reason;
             const walletLocked = info.wallet && !walletConnected;
+            const price = modelPriceLabel(info);
+            const detail = walletLocked
+              ? `连接 TokenPay 钱包后可用 · ${price}`
+              : [note, price].filter(Boolean).join(" · ");
             return (
               <button
                 key={info.key}
@@ -134,7 +139,7 @@ export function ModelMenu({
                       ))}
                   </span>
                   <span className="text-muted-foreground block truncate text-[11px] font-normal">
-                    {walletLocked ? "连接 TokenPay 钱包后可用（用你自己的额度）" : note}
+                    {detail}
                   </span>
                 </span>
                 {active && <Check className="size-4 shrink-0" />}

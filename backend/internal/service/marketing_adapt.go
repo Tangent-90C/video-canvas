@@ -7,11 +7,9 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"go.uber.org/zap"
 
@@ -78,10 +76,9 @@ func freshAdaptation(sc *model.MarketingScript, promptFormat, hash string) (stri
 	return a.Prompt, true
 }
 
-// ensureAdapted 返回出片用的转写稿：已有且未过期直接用；否则（或 force）调文本模型转写、存下并扣费。
-// reserve 是转写之后还要花的积分（出片费），预检余额时一起算，免得转写完了出不了片。
+// ensureAdapted 返回出片用的转写稿：已有且未过期直接用；否则（或 force）调文本模型转写并保存。
 func (s *MarketingService) ensureAdapted(ctx context.Context, userID uint64, c *scriptCtx, st model.MarketingSettings,
-	video *provider.Snapshot, reserve int, force bool) (string, error) {
+	video *provider.Snapshot, force bool) (string, error) {
 	f := video.Model.Capabilities.PromptFormat
 	in, _, err := s.adaptSource(c, st, video.Model.Capabilities)
 	if err != nil {
@@ -96,32 +93,28 @@ func (s *MarketingService) ensureAdapted(ctx context.Context, userID uint64, c *
 		return "", errcode.ErrMarketingScriptBusy.WithMsg("正在转写这份脚本的提示词，请稍候再试")
 	}
 	defer s.adapting.Delete(key)
-	out, credits, err := s.callAdapt(ctx, userID, st.TextModel, in, reserve)
+	out, err := s.callAdapt(ctx, userID, st.TextModel, in)
 	if err != nil {
 		return "", err
 	}
-	note := "营销出片转写 · H3 · " + clipRunes(c.sc.Title, 40)
-	if err := s.saveAdaptation(ctx, userID, c.sc.ID, f, model.MarketingAdaptation{Prompt: out, SourceHash: hash, UpdatedAt: s.now()}, credits, note); err != nil {
+	if err := s.saveAdaptation(ctx, userID, c.sc.ID, f, model.MarketingAdaptation{Prompt: out, SourceHash: hash, UpdatedAt: s.now()}); err != nil {
 		return "", err
 	}
 	return out, nil
 }
 
-// callAdapt 调文本模型转写，最多两次：第一次不合格时把校验原因交给模型修正；只收通过校验那一次的钱。
-func (s *MarketingService) callAdapt(ctx context.Context, userID uint64, textModel string, in marketing.AdaptInput, reserve int) (string, int, error) {
+// callAdapt 调文本模型转写，最多两次：第一次不合格时把校验原因交给模型修正。
+func (s *MarketingService) callAdapt(ctx context.Context, userID uint64, textModel string, in marketing.AdaptInput) (string, error) {
 	snap, err := s.pickTextModel(ctx, textModel, needAny)
 	if err != nil {
-		return "", 0, err
-	}
-	if err := s.checkAdaptBalance(ctx, userID, snap, in, reserve); err != nil {
-		return "", 0, err
+		return "", err
 	}
 	callCtx, cancel := context.WithTimeout(ctx, adaptTimeout)
 	defer cancel()
 	for range 2 {
 		prompt, err := marketing.AdaptPrompt(in)
 		if err != nil {
-			return "", 0, err
+			return "", err
 		}
 		res, err := s.caller.Complete(callCtx, snap, []llmgateway.Message{{Role: "user", Text: prompt}})
 		if err != nil {
@@ -131,56 +124,30 @@ func (s *MarketingService) callAdapt(ctx context.Context, userID uint64, textMod
 			if up := upstreamText(err); up != "" {
 				msg = up
 			}
-			return "", 0, errcode.ErrMarketingAdaptFailed.WithMsg("转写提示词失败：" + msg)
+			return "", errcode.ErrMarketingAdaptFailed.WithMsg("转写提示词失败：" + msg)
 		}
 		out, err := marketing.DecodeAdapt(res.Text)
 		if err == nil {
 			if err = marketing.ValidateAdapt(in, out); err == nil {
-				return out, adaptCost(snap, utf8.RuneCountInString(prompt), res), nil
+				_ = snap
+				_ = res
+				return out, nil
 			}
 		}
 		in.ValidationError = err.Error()
 	}
-	return "", 0, errcode.ErrMarketingAdaptFailed
+	return "", errcode.ErrMarketingAdaptFailed
 }
 
-// adaptEstimate 按转写提示词字数预估一次转写的积分。
+// adaptEstimate 兼容旧视图字段；平台积分已停用，恒为 0。
 func adaptEstimate(snap *provider.Snapshot, in marketing.AdaptInput) int {
-	prompt, err := marketing.AdaptPrompt(in)
-	if err != nil {
-		return 0
-	}
-	return max(modelcfg.Quote(snap.Model.Pricing, snap.Model.Capabilities, modelcfg.Spec{PromptChars: utf8.RuneCountInString(prompt), Params: map[string]any{}}), 0)
+	_ = snap
+	_ = in
+	return 0
 }
 
-// checkAdaptBalance 调模型前检查可用积分（余额减冻结）够不够「转写预估 + reserve」；不够返回积分不足，不调模型。
-// 没有账户时按新账户初始积分惰性建立。
-func (s *MarketingService) checkAdaptBalance(ctx context.Context, userID uint64, snap *provider.Snapshot, in marketing.AdaptInput, reserve int) error {
-	need := adaptEstimate(snap, in) + reserve
-	if need <= 0 {
-		return nil
-	}
-	initial, err := s.credits.InitialCredits(ctx)
-	if err != nil {
-		return err
-	}
-	return s.repo.WithTx(ctx, func(tx repository.MarketingTx) error {
-		if err := tx.EnsureCredit(ctx, userID, initial); err != nil {
-			return err
-		}
-		credit, err := tx.LockCredit(ctx, userID)
-		if err != nil {
-			return err
-		}
-		if credit.Balance-credit.Frozen < need {
-			return errcode.ErrInsufficientCredits
-		}
-		return nil
-	})
-}
-
-// saveAdaptation 在锁住脚本的事务里存下一份转写稿并扣转写费。
-func (s *MarketingService) saveAdaptation(ctx context.Context, userID, scriptID uint64, promptFormat string, a model.MarketingAdaptation, credits int, note string) error {
+// saveAdaptation 在锁住脚本的事务里存下一份转写稿。
+func (s *MarketingService) saveAdaptation(ctx context.Context, userID, scriptID uint64, promptFormat string, a model.MarketingAdaptation) error {
 	return s.repo.WithTx(ctx, func(tx repository.MarketingTx) error {
 		sc, err := tx.Script(ctx, userID, scriptID, true)
 		if err != nil {
@@ -198,36 +165,11 @@ func (s *MarketingService) saveAdaptation(ctx context.Context, userID, scriptID 
 		if err := tx.UpdateScript(ctx, scriptID, map[string]any{"adaptations": raw}); err != nil {
 			return err
 		}
-		return chargeMarketingAdapt(ctx, tx, userID, scriptID, credits, note)
+		return nil
 	})
 }
 
-// chargeMarketingAdapt 扣转写费：实扣封顶在可用积分，不扣成负数、不动进行中任务冻结的积分；
-// 和短剧转写一样成对写一条冻结流水和一条结算流水，后台对账等式保持成立。应收为 0 或账户不存在时不写。
-func chargeMarketingAdapt(ctx context.Context, tx repository.MarketingTx, userID, scriptID uint64, credits int, note string) error {
-	if credits <= 0 {
-		return nil
-	}
-	credit, err := tx.LockCredit(ctx, userID)
-	if errors.Is(err, repository.ErrNotFound) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	charged := min(credits, max(credit.Balance-credit.Frozen, 0))
-	if charged == 0 {
-		return nil
-	}
-	for _, typ := range []string{model.LedgerFreeze, model.LedgerSettle} {
-		if _, err := tx.InsertLedger(ctx, &model.CreditLedger{UserID: userID, MarketingScriptID: &scriptID, Type: typ, Amount: charged, Note: note}); err != nil {
-			return err
-		}
-	}
-	return tx.AddCredit(ctx, userID, -charged, 0)
-}
-
-// adaptPromptView 组装需要转写的模型的提示词预览：原稿（含是否手改）、转写稿（含是否过期）、转写一次的预估积分。
+// adaptPromptView 组装需要转写的模型的提示词预览；兼容字段 AdaptCredits 恒为 0。
 func (s *MarketingService) adaptPromptView(ctx context.Context, c *scriptCtx, video *provider.Snapshot) (*model.MarketingPrompt, error) {
 	f := video.Model.Capabilities.PromptFormat
 	in, src, err := s.adaptSource(c, c.st, video.Model.Capabilities)
@@ -242,15 +184,16 @@ func (s *MarketingService) adaptPromptView(ctx context.Context, c *scriptCtx, vi
 	if a, ok := all[f]; ok {
 		v.Adaptation = &model.MarketingAdaptationView{Prompt: a.Prompt, Stale: a.SourceHash != marketing.SourceHash(in.Source), Edited: a.Edited, UpdatedAt: a.UpdatedAt}
 	}
-	if text, err := s.pickTextModel(ctx, c.st.TextModel, needAny); err == nil {
-		v.AdaptCredits = adaptEstimate(text, in)
-	}
+	v.AdaptCredits = 0
 	return v, nil
 }
 
 // Adapt 手动转写一份脚本的出片提示词（不传视频模型用本轮的），已有转写稿也重新转写。
-// 模型不需要转写 10001；脚本重写中 68006；积分不足 40001；转写失败 68018。
+// 模型不需要转写 10001；脚本重写中 68006；转写失败 68018。
 func (s *MarketingService) Adapt(ctx context.Context, userID, id uint64, req *model.AdaptMarketingScriptReq) (*model.MarketingPrompt, error) {
+	if err := s.ensureWallet(ctx, userID); err != nil {
+		return nil, err
+	}
 	c, err := s.loadScript(ctx, userID, id)
 	if err != nil {
 		return nil, err
@@ -265,7 +208,7 @@ func (s *MarketingService) Adapt(ctx context.Context, userID, id uint64, req *mo
 	if c.sc.Status == model.MarketingScriptRewriting {
 		return nil, errcode.ErrMarketingScriptBusy
 	}
-	if _, err := s.ensureAdapted(ctx, userID, c, c.st, video, 0, true); err != nil {
+	if _, err := s.ensureAdapted(ctx, userID, c, c.st, video, true); err != nil {
 		return nil, err
 	}
 	return s.Prompt(ctx, userID, id, req.VideoModel)

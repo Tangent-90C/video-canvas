@@ -76,9 +76,9 @@ type AdminUserRow struct {
 	Email            string     `json:"email"`
 	Role             string     `json:"role"`
 	Status           string     `json:"status"`
-	Balance          int        `json:"balance"`
-	Frozen           int        `json:"frozen"`
-	HasCreditAccount bool       `json:"has_credit_account"`
+	Balance          int        `json:"-"` // 历史平台积分字段，不再对外返回
+	Frozen           int        `json:"-"` // 历史平台积分字段，不再对外返回
+	HasCreditAccount bool       `json:"-"` // 历史平台积分字段，不再对外返回
 	MaxActiveTasks   *int       `json:"max_active_tasks"`
 	ActiveTasks      int        `json:"active_tasks"`
 	LastLoginAt      *time.Time `json:"last_login_at"`
@@ -88,7 +88,7 @@ type AdminUserRow struct {
 // AdminUserListItem 是 GET /admin/users 列表项（契约 §3 UserListItem）。
 type AdminUserListItem struct {
 	AdminUserRow
-	Available               int `json:"available"`                  // 可用积分 = 余额 - 冻结
+	Available               int `json:"-"`                          // 历史平台积分字段，不再对外返回
 	EffectiveMaxActiveTasks int `json:"effective_max_active_tasks"` // 实际生效的并发上限
 }
 
@@ -98,7 +98,7 @@ type UserTaskStats struct {
 	Success      int   `json:"task_success"`  // 成功数
 	Failed       int   `json:"task_failed"`   // 失败数（failed + expired）
 	Last7d       int   `json:"tasks_last_7d"` // 近 7 天创建的任务数
-	SpentCredits int64 `json:"spent_credits"` // 已结算（真正扣掉）的积分合计
+	SpentCredits int64 `json:"-"`             // 历史平台积分字段，不再对外返回
 }
 
 // AdminAuditView 是用户详情里展示的审计记录（带操作人用户名）。

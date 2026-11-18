@@ -77,8 +77,8 @@ func (s *AIConfigService) ListModels(ctx context.Context, kind string) ([]provid
 			Key: m.key, Kind: m.cfg.Kind, Label: m.cfg.Label, Hint: m.cfg.Hint,
 			Vendor: m.cfg.Vendor, Tags: nonNilTags(m.cfg.Tags),
 			UpstreamModel: upstreamModelOf(m.cfg),
-			Pricing:       m.cfg.Pricing.Public(), Capabilities: m.cfg.Capabilities.Public(),
-			Wallet: m.rt.Channel.Wallet,
+			Capabilities:  m.cfg.Capabilities.Public(),
+			Wallet:        m.rt.Channel.Wallet,
 		})
 	}
 	return out, nil

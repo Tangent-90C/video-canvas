@@ -1,7 +1,4 @@
-import { useEffect, useState } from "react";
-
-import { quoteMarketing } from "@/api/marketing";
-import type { Project, Round, Script } from "@/api/marketing/type";
+import type { Script } from "@/api/marketing/type";
 import { useMarketingStore } from "@/store/marketing";
 import { useWorkbenchStore } from "@/store/marketing-workbench";
 import { useTasksStore } from "@/store/tasks";
@@ -32,25 +29,6 @@ export function useCurrentShot(shots: readonly { start: number; end: number }[])
   return useWorkbenchStore((state) =>
     state.playing || state.time > 0 ? shotIndexAt(shots, state.time) : -1,
   );
-}
-
-/** 重写跟拍版的积分：拆解有改动时按本轮设置问一次预估，没问到就不显示数字 */
-export function useRefollowCost(project: Project, round: Round): number | null {
-  const [cost, setCost] = useState<number | null>(null);
-  const dirty = round.reverseDirty;
-  useEffect(() => {
-    if (!dirty) return;
-    let alive = true;
-    quoteMarketing({ projectId: project.id, hasRef: true, settings: round.settings })
-      .then((quote) => {
-        if (alive) setCost(quote.steps.find((item) => item.step === "follow")?.credits ?? null);
-      })
-      .catch(() => alive && setCost(null));
-    return () => {
-      alive = false;
-    };
-  }, [dirty, project.id, round.settings]);
-  return dirty ? cost : null;
 }
 
 /** 当前轮次与选中的脚本（选中原片时 script 为 null） */

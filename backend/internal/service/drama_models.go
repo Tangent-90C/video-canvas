@@ -21,7 +21,7 @@ const (
 	storyboardDefaultSeconds  = 15
 )
 
-// checkAssetModel 校验短剧里指定的视频 / 图片模型：空串放行；非空必须是后台已启用且种类匹配的模型。
+// checkAssetModel 校验短剧里指定的视频 / 图片模型：空串放行；非空必须是后台已启用、种类匹配且走 TokenPay 钱包的模型。
 func (s *DramaService) checkAssetModel(ctx context.Context, key, kind, label string) error {
 	if key == "" {
 		return nil
@@ -37,7 +37,7 @@ func (s *DramaService) checkAssetModel(ctx context.Context, key, kind, label str
 	if err != nil {
 		return err
 	}
-	if snap == nil || snap.Model.Kind != kind {
+	if snap == nil || snap.Model.Kind != kind || !snap.Channel.Wallet {
 		return invalid
 	}
 	return nil

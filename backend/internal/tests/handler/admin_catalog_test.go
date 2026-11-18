@@ -22,7 +22,7 @@ type pageResp struct {
 func seedCatalog(t *testing.T, env *aicEnv) {
 	t.Helper()
 	env.seedPlugin(t, "kling", "1.0.0", model.PluginSourceUploaded)
-	env.repo.Channels["a-main"] = &model.AIChannel{Key: "a-main", Name: "主线", BaseURL: "https://a.example.com", Sort: 10, Enabled: true}
+	env.repo.Channels["a-main"] = &model.AIChannel{Key: "a-main", Name: "主线", BaseURL: "https://a.example.com", Sort: 10, Enabled: true, WalletEnabled: true}
 	env.repo.Channels["b-off"] = &model.AIChannel{Key: "b-off", Name: "停用的", BaseURL: "https://b.example.com", Sort: 20, Enabled: false}
 }
 

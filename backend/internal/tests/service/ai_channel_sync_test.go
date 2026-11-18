@@ -59,7 +59,7 @@ func newSyncEnv(t *testing.T, catalogURL string) (*AIConfigService, *aiconfigfak
 	}
 	cfg := NewAIConfigService(repo, repo, repo, "test-master-key")
 	cfg.SetInvalidator(syncInvalidator{notifier})
-	if err := repo.CreateChannel(context.Background(), &model.AIChannel{Key: "main", Name: "主渠道", BaseURL: catalogURL, Enabled: true}); err != nil {
+	if err := repo.CreateChannel(context.Background(), &model.AIChannel{Key: "main", Name: "主渠道", BaseURL: catalogURL, Enabled: true, WalletEnabled: true}); err != nil {
 		t.Fatal(err)
 	}
 	if err := cfg.SetSecret(context.Background(), model.ChannelSecretName("main"), "sk-live-123", 1); err != nil {
@@ -161,6 +161,7 @@ func TestSyncChannelModels(t *testing.T) {
 		Capabilities struct {
 			Params json.RawMessage `json:"params"`
 		} `json:"capabilities"`
+		Pricing json.RawMessage `json:"pricing"`
 	}
 	body, err = repo.GetModelConfig(ctx, byUpstream["seedream-5.0-lite"].Key)
 	if err != nil {
@@ -175,6 +176,9 @@ func TestSyncChannelModels(t *testing.T) {
 	// 画布面板上不该出现 resolution（ark 协议没有这个概念，给了也会被插件忽略）
 	if strings.Contains(string(imageBody.Capabilities.Params), "resolution") {
 		t.Fatalf("图像能力不该带 resolution 参数：%s", imageBody.Capabilities.Params)
+	}
+	if len(imageBody.Pricing) != 0 {
+		t.Fatalf("同步正文不应再写平台积分 pricing：%s", imageBody.Pricing)
 	}
 	if len(notifier.Reasons) != 1 {
 		t.Fatalf("同步后应刷新一次 Registry：%v", notifier.Reasons)

@@ -132,14 +132,17 @@ describe("OutpaintRunner 成功路径", () => {
   test("合成图素材在提交前就写进节点，提交失败后普通重试也有参考图", async () => {
     const t = setup({
       submit: async (request) => [
-        { node_id: request.node_id, error: { status: 402, code: 40001, message: "x" } },
+        {
+          node_id: request.node_id,
+          error: { status: 400, code: 40016, message: "需要连接 TokenPay 钱包" },
+        },
       ],
     });
     const runner = createOutpaintRunner(t.deps);
     await runner.start(job(), t.patch);
     const node = t.data();
     expect(node.status).toBe("error");
-    expect(node.error).toBe("积分不足，无法生成");
+    expect(node.error).toBe("需要连接 TokenPay 钱包");
     expect((node.params as Record<string, unknown>).images).toEqual(["77"]);
     expect(node.taskId).toBeUndefined();
     // 已经有合成图了，不需要也没有扩图重试材料

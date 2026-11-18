@@ -1,22 +1,16 @@
 import service from "@/utils/requests/service";
-import type {
-  PricingSettingsReq,
-  PricingSettingsView,
-  RegisterSettings,
-  SmtpSettings,
-  SmtpUpdateRequest,
-} from "./type";
+import type { RegisterSettings, SmtpSettings, SmtpUpdateRequest } from "./type";
 
 /**
  * 读取注册设置（admin 可读）
- * @returns 开放注册开关、新用户初始积分、默认并发上限、排队倍数、排队超时
+ * @returns 开放注册开关、默认并发上限、排队倍数、排队超时
  */
 export const getRegisterSettings = () =>
   service.get<RegisterSettings>("/admin/settings/register", undefined);
 
 /**
  * 保存注册设置（super_admin）
- * @param body 开关、初始积分（>=0）、默认并发上限（1 到 64）、排队倍数（1 到 20）、排队超时分钟（5 到 1440）
+ * @param body 开关、默认并发上限（1 到 64）、排队倍数（1 到 20）、排队超时分钟（5 到 1440）
  * @returns 保存后的设置
  */
 export const updateRegisterSettings = (body: RegisterSettings) =>
@@ -49,18 +43,3 @@ export const replaceSmtpPassword = (body: { password: string }) =>
  */
 export const sendSmtpTest = (body: { to: string }) =>
   service.post<null>("/admin/settings/smtp/test", body);
-
-/**
- * 读取定价设置（admin 和 super_admin 都可读）：积分换算、默认加价率、汇率覆盖与当前生效汇率
- * @returns 定价设置视图
- */
-export const getPricingSettings = () =>
-  service.get<PricingSettingsView>("/admin/settings/pricing", undefined);
-
-/**
- * 保存定价设置（admin 和 super_admin）；参数越界后端返回 400
- * @param body 积分换算、默认加价率、美元汇率覆盖（null 表示用实时汇率）
- * @returns 保存后的视图
- */
-export const updatePricingSettings = (body: PricingSettingsReq) =>
-  service.put<PricingSettingsView>("/admin/settings/pricing", body);

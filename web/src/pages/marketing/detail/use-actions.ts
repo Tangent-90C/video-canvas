@@ -26,7 +26,6 @@ import type {
   Script,
   UpdateRoundSettingsInput,
 } from "@/api/marketing/type";
-import { useCreditsStore } from "@/store/credits";
 import { useMarketingStore } from "@/store/marketing";
 import { reloadMarketingProject } from "@/utils/marketing/events";
 
@@ -71,21 +70,17 @@ export function useMarketingActions(project: Project) {
       useMarketingStore.getState().applyScript(project.id, script.roundId, script),
     [project.id],
   );
-  const refreshCredits = () => void useCreditsStore.getState().refresh();
-
-  /** 取消写脚本中的轮次，冻结积分退回 */
+  /** 取消写脚本中的轮次 */
   const cancelRound = (round: Round) =>
     run(`cancel:${round.id}`, async () => {
       applyRound(await cancelMarketingRound(round.id));
-      refreshCredits();
-      toast.info("已取消，积分已退回");
+      toast.info("已取消");
     });
 
   /** 重试一个失败的环节，只重跑它 */
   const retryStep = (stepRunId: string) =>
     run(`step:${stepRunId}`, async () => {
       applyRound(await retryMarketingStep(stepRunId));
-      refreshCredits();
     });
 
   /** 保存拆解修改；成功后轮次里 reverseDirty 会变成 true，出现「按拆解重写跟拍版」 */
@@ -103,7 +98,6 @@ export function useMarketingActions(project: Project) {
   const refollow = (round: Round) =>
     run(`refollow:${round.id}`, async () => {
       applyRound(await refollowMarketingRound(round.id));
-      refreshCredits();
     });
 
   /** 保存旁白：服务端重扫问题旁白，返回的脚本带最新 flags */
@@ -125,7 +119,6 @@ export function useMarketingActions(project: Project) {
       const next = await renderMarketingScript(script.id, key);
       delete keys.current[script.id];
       applyScript(next);
-      refreshCredits();
     });
 
   /** 全部出片：被跳过的脚本说明原因 */
@@ -135,7 +128,6 @@ export function useMarketingActions(project: Project) {
       const result = await renderMarketingRound(round.id, key);
       delete keys.current[`round:${round.id}`];
       applyRound(result.round);
-      refreshCredits();
       const started = result.round.scripts.filter((s) => s.status === "rendering").length;
       if (result.skipped.length > 0) {
         toast.warning(
@@ -183,11 +175,10 @@ export function useMarketingActions(project: Project) {
     return result === true;
   };
 
-  /** 按项目当前商品图重新识别外观锚点（在最新一轮重跑事实卡环节，扣积分）；成功返回 true */
+  /** 按项目当前商品图重新识别外观锚点；成功返回 true */
   const refreshFacts = async (): Promise<boolean> => {
     const result = await run("refresh-facts", async () => {
       applyRound(await refreshMarketingFacts(project.id));
-      refreshCredits();
       toast.info("正在按商品图重新识别外观锚点");
       return true;
     });

@@ -14,7 +14,6 @@ import (
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/provider"
 	"video-canvas/internal/provider/modelcfg"
-	"video-canvas/internal/stepkit"
 )
 
 // Options 返回平台与角度预设，以及参考视频时长上限。
@@ -86,7 +85,7 @@ func (s *MarketingService) chatSnapshots(ctx context.Context, want string) ([]*p
 		if err != nil {
 			return nil, err
 		}
-		if snap != nil && (snap.Model.Kind == modelcfg.KindAgent || snap.Model.Kind == modelcfg.KindText) {
+		if snap != nil && snap.Channel.Wallet && (snap.Model.Kind == modelcfg.KindAgent || snap.Model.Kind == modelcfg.KindText) {
 			snaps = append(snaps, snap)
 		}
 	}
@@ -170,89 +169,39 @@ func checkNewPlatform(st model.MarketingSettings) error {
 	return nil
 }
 
-// stepCosts 是写脚本各环节的预估积分（已含重写一次的上限）。
+// stepCosts 是旧接口的积分兼容字段；平台积分已停用，所有值恒为 0。
 type stepCosts struct {
 	facts, reverse, follow, create int
 }
 
 func (c stepCosts) total() int { return c.facts + c.reverse + c.follow + c.create }
 
-// estimateStep 按提示词字数预估一个环节的最高费用。
-func (s *MarketingService) estimateStep(ctx context.Context, key string, snap *provider.Snapshot, in stepkit.Input) (int, error) {
-	step, ok := s.steps.Get(key)
-	if !ok {
-		return 0, errcode.ErrStepNotFound
-	}
-	method, err := s.resolver.Method(ctx, step)
-	if err != nil {
-		return 0, err
-	}
-	return stepkit.Estimate(snap, step, method, in)
-}
-
-// placeholderFacts 是预估时占位的事实卡（只用来估提示词长度）。
-func placeholderFacts() marketing.ProductFacts {
-	return marketing.ProductFacts{Name: "商品", Category: "品类",
-		Anchors:       []string{"外观锚点一", "外观锚点二", "外观锚点三"},
-		SellingPoints: []marketing.SellingPoint{{Text: "卖点一", Proof: "画面证明一", Source: "description"}, {Text: "卖点二", Proof: "画面证明二", Source: "image"}},
-		Prohibited:    []string{"不编造价格、销量、评价、认证与功效"}, Audience: "目标人群", CTA: "行动引导"}
-}
-
-// placeholderReverse 是预估时占位的拆解：按时长摊成若干镜头。
-func placeholderReverse(duration int) marketing.Reverse {
-	const n = 6
-	r := marketing.Reverse{Brands: []string{}, Claims: []string{}}
-	step := float64(duration) / n
-	for i := range n {
-		r.Shots = append(r.Shots, marketing.ReverseShot{ID: i + 1, Start: float64(i) * step, End: float64(i+1) * step, ShotSize: "中景", Camera: "固定",
-			Subject: "主体", Action: "主体做出一个动作并展示商品", Scene: "场景", Lighting: "自然光", ProductInFrame: "商品居中", ProductRole: marketing.RoleDynamic, KeyColors: []string{"白色"}})
-	}
-	return r
-}
-
-// quoteSteps 预估本次设置要跑的各环节积分：无参考 facts、create；有参考再加 reverse、follow。
-// hasFacts 为真（项目已有事实卡）时 facts 为 0 但仍列出。
+// quoteSteps 只校验本次设置需要的文本模型；积分字段恒为 0。
 func (s *MarketingService) quoteSteps(ctx context.Context, st model.MarketingSettings, hasRef, hasFacts bool, createCount int) (stepCosts, error) {
 	var c stepCosts
-	brief := briefOf(st)
-	vision, err := s.pickTextModel(ctx, st.TextModel, needVision)
+	_, err := s.pickTextModel(ctx, st.TextModel, needVision)
 	if err != nil {
 		return c, err
 	}
-	if !hasFacts {
-		if c.facts, err = s.estimateStep(ctx, marketing.StepFacts, vision, marketing.FactsInput(brief, nil)); err != nil {
-			return c, err
-		}
-	}
-	anyModel, err := s.pickTextModel(ctx, st.TextModel, needAny)
+	_, err = s.pickTextModel(ctx, st.TextModel, needAny)
 	if err != nil {
 		return c, err
 	}
-	facts, rev := placeholderFacts(), placeholderReverse(brief.Duration)
 	if hasRef {
-		vid, err := s.pickTextModel(ctx, st.TextModel, needVideo)
+		_, err := s.pickTextModel(ctx, st.TextModel, needVideo)
 		if err != nil {
 			return c, err
 		}
-		if c.reverse, err = s.estimateStep(ctx, marketing.StepReverse, vid, marketing.ReverseInput(brief, float64(brief.Duration), nil, nil, nil)); err != nil {
-			return c, err
-		}
-		if c.follow, err = s.estimateStep(ctx, marketing.StepFollow, anyModel, marketing.FollowInput(brief, facts, rev, marketing.AssetNote{ProductImages: 1})); err != nil {
-			return c, err
-		}
 	}
-	var revIn *marketing.Reverse
-	if hasRef {
-		revIn = &rev
-	}
-	if createCount > 0 || !hasRef {
-		c.create, err = s.estimateStep(ctx, marketing.StepCreate, anyModel, marketing.CreateInput(brief, facts, st.Angles, max(createCount, 1), revIn))
-	}
-	return c, err
+	_, _, _ = hasFacts, createCount, c
+	return c, nil
 }
 
-// Quote 预估写脚本的积分：steps 列出本次会跑的全部环节（项目已有事实卡时 facts 为 0）。
+// Quote 保留旧报价接口形状；TokenPay 统一计费后所有积分字段恒为 0。
 func (s *MarketingService) Quote(ctx context.Context, userID uint64, req *model.MarketingQuoteReq) (*model.MarketingQuote, error) {
+	if err := s.ensureWallet(ctx, userID); err != nil {
+		return nil, err
+	}
 	st := normalizeSettings(req.Settings)
 	createCount, err := planOf(st, req.HasRef)
 	if err != nil {
@@ -290,6 +239,9 @@ func (s *MarketingService) checkVideoModel(ctx context.Context, key string, para
 	}
 	if err != nil {
 		return nil, err
+	}
+	if !snap.Channel.Wallet {
+		return nil, errcode.ErrMarketingVideoModel.WithMsg("该视频模型未接入 TokenPay 钱包")
 	}
 	caps := snap.Model.Capabilities
 	switch {

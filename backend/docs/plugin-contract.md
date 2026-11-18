@@ -1,5 +1,7 @@
 # 协议插件契约 v1（apiVersion: 1）
 
+> **计费状态（2026-11-18）**：平台积分体系已停用。本文涉及积分、冻结、结算、退款、充值、商城、后台调账或平台定价的内容均为历史设计；当前统一使用用户自己的 TokenPay 钱包，详见 `docs/design/TokenPay钱包/TokenPay钱包.md`。
+
 > 本文是 [协议插件设计](../../docs/design/协议插件设计.md) 6.2–6.4 的落地细节，也是写插件的人的参考。设计文档讲“为什么”，本文讲“每个 JSON 长什么样”。
 > 宿主（`internal/provider/plugin`）、runner（`internal/provider/pluginrunner`）、内置插件（`backend/plugins/*.js`）都以本文为准；改契约先改本文。
 
@@ -177,7 +179,7 @@ meta: {
   "outputs": [                                      // succeeded 时必填且非空
     { "type": "url",  "url": "https://...", "media_type": "video", "mime": "video/mp4" },
     { "type": "text", "text": "...",                // 文本正文，≤256KB
-      "usage": { "input_tokens": 120, "output_tokens": 800 } },   // 可选：实际 Token 用量。按 Token 计费的模型据此结算（扣 min(实际, 冻结)），不填按冻结额扣
+      "usage": { "input_tokens": 120, "output_tokens": 800 } },   // 可选：实际 Token 用量，只用于观测、对账与 TokenDance 账单核对
     { "type": "asset" }                             // 二进制响应已由宿主落库
   ],
   "error": { "class": "moderation", "code": "...", "message": "..." },   // failed 时必填；class 只能是 retryable / terminal / moderation / provider_balance
@@ -237,12 +239,12 @@ meta: {
 
 | 场景                                                  | 处理                                                                                                                                                                                                                             |
 | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 钩子抛异常 / 超时被中断 / 返回值不合规 / 请求描述非法 | `terminal`，插件级失败，退积分；异常信息进追踪与告警，不给用户看                                                                                                                                                                 |
+| 钩子抛异常 / 超时被中断 / 返回值不合规 / 请求描述非法 | `terminal`，插件级失败；异常信息进追踪与告警，不给用户看                                                                                                                                                                 |
 | runner 连不上                                         | `retryable`，错误码 `plugin_runner_unavailable`；任务保持 pending 直到恢复（不消耗重试次数）                                                                                                                                     |
-| 调用进行中 runner 崩溃                                | `retryable`，错误码 `plugin_runner_crashed`；任务重试一次，再次崩溃就失败退积分                                                                                                                                                  |
+| 调用进行中 runner 崩溃                                | `retryable`，错误码 `plugin_runner_crashed`；任务重试一次，再次崩溃就失败                                                                                                                                                  |
 | 上游非 2xx                                            | 先 `classifyError`；没实现或返回 null 则用默认规则：响应文本（小写）含 `balance` / `insufficient` / `quota` / `credit` / `余额` / `额度` → `provider_balance`；429 与 5xx → `retryable`；404 / 410 → `terminal`；其余 `terminal` |
 | 网络错误 / 连不上上游                                 | `retryable`                                                                                                                                                                                                                      |
-| 提交请求已发出但没收到完整响应（读超时等）            | `submit_unknown`（失败并退积分，告警人工核对）                                                                                                                                                                                   |
+| 提交请求已发出但没收到完整响应（读超时等）            | `submit_unknown`（失败并告警人工核对；实际费用以 TokenDance 账单为准）                                                                                                                                                                                   |
 | 请求被 SSRF 防护拒绝                                  | `terminal`，错误码 `ssrf_blocked`                                                                                                                                                                                                |
 | 渠道 Key 未设置                                       | `terminal`，错误码 `secret_unavailable`                                                                                                                                                                                          |
 

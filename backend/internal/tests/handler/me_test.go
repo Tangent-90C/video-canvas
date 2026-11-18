@@ -321,10 +321,13 @@ func TestMeHandler_StatsActivityLedger(t *testing.T) {
 	r.want(t, 200, 0)
 	var st map[string]any
 	_ = json.Unmarshal(r.Data, &st)
-	for _, k := range []string{"total", "success", "failed", "last7d", "spent_credits", "canvas_count"} {
+	for _, k := range []string{"total", "success", "failed", "last7d", "canvas_count"} {
 		if _, ok := st[k]; !ok {
 			t.Fatalf("stats 缺字段 %s：%s", k, r.Raw)
 		}
+	}
+	if _, ok := st["spent_credits"]; ok {
+		t.Fatalf("平台积分已停用，stats 不应返回 spent_credits：%s", r.Raw)
 	}
 
 	r = e.json(http.MethodGet, "/api/v1/me/activity?tz=Asia/Shanghai", nil, e.token)
@@ -338,25 +341,6 @@ func TestMeHandler_StatsActivityLedger(t *testing.T) {
 	e.json(http.MethodGet, "/api/v1/me/activity?year=1999", nil, e.token).want(t, 400, errcode.ErrInvalidParams.Code)
 	e.json(http.MethodGet, "/api/v1/me/activity?year=abc", nil, e.token).want(t, 400, errcode.ErrInvalidParams.Code)
 
-	for i := range 25 {
-		e.repo.ledger = append(e.repo.ledger, model.MeLedgerItem{ID: uint64(100 - i), Type: model.LedgerSettle, Amount: 1})
-	}
-	r = e.json(http.MethodGet, "/api/v1/me/credits/ledger?type=all&page=2&page_size=20", nil, e.token)
-	r.want(t, 200, 0)
-	var page model.MeLedgerPage
-	_ = json.Unmarshal(r.Data, &page)
-	if page.Total != 25 || page.Page != 2 || page.PageSize != 20 || len(page.Items) != 5 || page.Items[0].Amount != -1 {
-		t.Fatalf("%s", r.Raw)
-	}
-	if strings.Contains(r.Raw, "operator_id") {
-		t.Fatalf("不应返回 operator_id：%s", r.Raw)
-	}
-	r = e.json(http.MethodGet, "/api/v1/me/credits/ledger?page=9", nil, e.token)
-	r.want(t, 200, 0)
-	if !strings.Contains(r.Raw, `"items":[]`) || !strings.Contains(r.Raw, `"total":25`) {
-		t.Fatalf("超范围应返回空 items + 真实 total：%s", r.Raw)
-	}
-	e.json(http.MethodGet, "/api/v1/me/credits/ledger?page_size=30", nil, e.token).want(t, 400, errcode.ErrInvalidParams.Code)
-	e.json(http.MethodGet, "/api/v1/me/credits/ledger?page=0", nil, e.token).want(t, 400, errcode.ErrInvalidParams.Code)
-	e.json(http.MethodGet, "/api/v1/me/credits/ledger?type=bogus", nil, e.token).want(t, 400, errcode.ErrInvalidParams.Code)
+	// 平台积分流水接口已停用；历史数据保留在库内供后台兼容。
+	e.json(http.MethodGet, "/api/v1/me/credits/ledger", nil, e.token).want(t, 404, errcode.ErrNotFound.Code)
 }

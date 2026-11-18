@@ -53,7 +53,7 @@ ctx = {
   now      // Unix 秒
 }
 - ctx.input 由宿主按运营配置的模型能力校验后传入：prompt（提示词）、op（生成方式 t2v / i2v / omni / t2i / i2i，仅视频和图片）、运营起了名字的生成参数（如 duration、aspect_ratio、resolution，已按类型规范化）、参考素材数组 images / videos / audios（每项是文件引用字符串 "input:images.0"）；文本模型另有 system 与 max_tokens。没开放、没填的可选键没有。请在文件顶部注释里列出读取了哪些键、对应上游的哪个字段。
-- 模型上没有别的配置：插件需要的一切，要么来自 ctx.input（面板配置的输入），要么是写在插件代码里的固定行为。积分、并发、生成数量都由宿主处理：插件不要处理积分、不要自己限流排队，也不要让上游一次出多个结果（一个任务只对应一个结果）。按秒计费的视频模型有个 duration 参数（秒），传给上游的时长字段即可。
+- 模型上没有别的配置：插件需要的一切，要么来自 ctx.input（面板配置的输入），要么是写在插件代码里的固定行为。并发、生成数量与费用结算都由宿主处理：插件不要处理费用、不要自己限流排队，也不要让上游一次出多个结果（一个任务只对应一个结果）。按秒计费的视频模型有个 duration 参数（秒），传给上游的时长字段即可。
 
 # 五、请求描述（build* 的返回值）
 {
@@ -77,9 +77,9 @@ ctx = {
   失败：{ status: "failed", error: "给用户看的失败原因" }
   进行中：{ status: "running" }（或 "queued"，可带 progress: 0–100）
 - outputs 里写结果文件的 URL 字符串（文本模型写正文字符串），文件可以放在任意公网域名，不需要声明域名；完整对象写法是 { type: "url", url, media_type: "video", mime: "video/mp4" }。只支持 URL 产物，上游只给 base64 时返回 failed 并说明原因。
-- 文本模型请带上实际 Token 用量：{ type: "text", text: "...", usage: { input_tokens: 120, output_tokens: 800 } }（OpenAI 风格取 usage.prompt_tokens / completion_tokens），按 Token 计费的模型据此多退少补，不带就按冻结额全扣。
+- 文本模型请带上实际 Token 用量：{ type: "text", text: "...", usage: { input_tokens: 120, output_tokens: 800 } }（OpenAI 风格取 usage.prompt_tokens / completion_tokens），这些用量只用于观测和对账，实际费用始终以 TokenDance 账单为准。
 - error 写字符串即可，默认当作终止失败；要区分类型时写 { class, code?, message }，class 只能是 retryable / terminal / moderation / provider_balance。
-    - 上游因为“并发已满 / 系统繁忙 / 限流”拒绝提交，一定要用 retryable：宿主会退避重试；用 terminal 会让任务直接失败并退款。
+    - 上游因为“并发已满 / 系统繁忙 / 限流”拒绝提交，一定要用 retryable：宿主会退避重试；用 terminal 会让任务直接失败。
   - 参数错误、鉴权失败才用 terminal；内容审核不通过用 moderation，余额不足用 provider_balance。
 - async：未知的中间状态当 queued 或 running 继续等待，不要当失败；上游明确返回“失败/取消/过期”才返回 failed，并带上上游给的原因。
 - 写了就要写对：status 只能是 queued / running / succeeded / failed（不要写 SUCCESS、completed），class 只能是上面四个之一。

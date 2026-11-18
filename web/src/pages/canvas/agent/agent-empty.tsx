@@ -33,7 +33,7 @@ const STARTERS: ReadonlyArray<{ icon: LucideIcon; text: string }> = [
 
 const DEFAULT_COPY: AgentEmptyCopy = {
   title: "让 Agent 帮你把想法搭成分镜",
-  subtitle: "读懂画布、搭建节点、整理布局；花积分和删除前都会先问你",
+  subtitle: "读懂画布、搭建节点、整理布局；产生费用和删除前都会先问你",
   starters: STARTERS,
   hint: (
     <>

@@ -26,14 +26,13 @@ import { useRegisterSettings } from "./use-settings";
 
 const toValues = (settings: RegisterSettings): RegisterSettingsValues => ({
   register_enabled: settings.register_enabled,
-  initial_credits: String(settings.initial_credits),
   default_max_active_tasks: String(settings.default_max_active_tasks),
   queue_multiplier: String(settings.queue_multiplier),
   queue_max_wait_minutes: String(settings.queue_max_wait_minutes),
 });
 
 /**
- * 注册设置表单：开放注册开关、新用户初始积分、默认并发上限，以及排队倍数与排队超时（任务队列的用户侧限流）。
+ * 注册设置表单：开放注册开关、默认并发上限，以及排队倍数与排队超时（任务队列的用户侧限流）。
  * @param settings 已保存的设置
  * @param canWrite 是否可写（super_admin）
  * @param onSaved 保存成功后带回服务端返回的设置
@@ -60,7 +59,6 @@ function RegisterForm({
     try {
       const next = await updateRegisterSettings({
         register_enabled: values.register_enabled,
-        initial_credits: Number(values.initial_credits),
         default_max_active_tasks: Number(values.default_max_active_tasks),
         queue_multiplier: Number(values.queue_multiplier),
         queue_max_wait_minutes: Number(values.queue_max_wait_minutes),
@@ -101,22 +99,6 @@ function RegisterForm({
             />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <FormField
-              label="新用户初始积分"
-              htmlFor="register-credits"
-              error={errors.initial_credits}
-            >
-              <Input
-                id="register-credits"
-                inputMode="numeric"
-                value={values.initial_credits}
-                disabled={!canWrite || saving}
-                aria-invalid={!!errors.initial_credits}
-                onChange={(event) =>
-                  setValues((prev) => ({ ...prev, initial_credits: event.target.value }))
-                }
-              />
-            </FormField>
             <FormField
               label="默认并发上限"
               htmlFor="register-limit"

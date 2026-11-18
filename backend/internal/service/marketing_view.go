@@ -12,7 +12,6 @@ import (
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/pkg/ws"
-	"video-canvas/internal/provider/modelcfg"
 	"video-canvas/internal/stepkit"
 )
 
@@ -62,27 +61,13 @@ func (s *MarketingService) loadViewData(ctx context.Context, p *model.MarketingP
 	return vd, nil
 }
 
-// renderCredits 按轮次的视频模型和参数预估一次出片的积分；模型不可用或参数不合法时为 0。
+// renderCredits 兼容旧视图字段；平台积分已停用，恒为 0。
 func (s *MarketingService) renderCredits(ctx context.Context, st model.MarketingSettings, images int, hasRef bool) int {
-	snap, err := s.models.Snapshot(ctx, st.VideoModel)
-	if err != nil || snap == nil {
-		return 0
-	}
-	input := map[string]any{"prompt": "预估", "op": modelcfg.OpOmni}
-	for k, v := range st.Params {
-		input[k] = v
-	}
-	if hasRef {
-		input["videos"] = []any{"1"}
-	}
-	norm, errs := modelcfg.ValidateInput(modelcfg.KindVideo, snap.Model.Capabilities, input)
-	if len(errs) > 0 {
-		return 0
-	}
-	if images > 0 {
-		norm["images"] = []any{"1"}
-	}
-	return max(modelcfg.Quote(snap.Model.Pricing, snap.Model.Capabilities, modelcfg.SpecFromInput(norm, "")), 0)
+	_ = ctx
+	_ = st
+	_ = images
+	_ = hasRef
+	return 0
 }
 
 // roundViews 把若干轮次转成视图（输入顺序不变）。
@@ -105,7 +90,7 @@ func (s *MarketingService) roundView(ctx context.Context, vd *viewData, r *model
 		return nil, err
 	}
 	v := &model.MarketingRoundView{ID: hexID(r.ID), No: r.No, Status: r.Status, Settings: st, PlanCount: r.PlanCount,
-		ReverseRevision: r.ReverseRevision, Frozen: r.Frozen, Charged: r.Charged, CreatedAt: r.CreatedAt, Error: r.Error,
+		ReverseRevision: r.ReverseRevision, Frozen: 0, Charged: 0, CreatedAt: r.CreatedAt, Error: r.Error,
 		Warnings: []string{}, Steps: []model.MarketingStepRunView{}, Scripts: []model.MarketingScriptView{}}
 	if len(r.Warnings) > 0 {
 		_ = json.Unmarshal(r.Warnings, &v.Warnings)
@@ -219,7 +204,7 @@ func methodViewOf(raw []byte) *model.MarketingMethodView {
 // runView 把环节运行转成视图。
 func runView(r model.MarketingStepRun) model.MarketingStepRunView {
 	return model.MarketingStepRunView{ID: hexID(r.ID), Step: stepNameOf(r.StepKey), Status: r.Status, Method: methodViewOf(r.Method),
-		TextModel: r.TextModelID, Error: r.Error, Attempts: r.Attempts, Charged: r.Charged}
+		TextModel: r.TextModelID, Error: r.Error, Attempts: r.Attempts, Charged: 0}
 }
 
 // stageOf 按环节状态给出写脚本阶段文案（不落库，每次由状态算出）。

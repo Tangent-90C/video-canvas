@@ -32,7 +32,7 @@ export type ModelChannelInfo = {
   authType: string | null;
   /** 渠道 API Key 是否已设置；没选渠道为 false */
   secretSet: boolean;
-  /** 需要 Key 却没设置（Agent 一定需要；其他模型看协议版本的鉴权）：启用会被后端拦（50015），前端提前提示 */
+  /** 产品方渠道 Key 缺失；钱包渠道运行时使用用户 Key，所以恒为 false（该 Key 只用于目录同步） */
   keyMissing: boolean;
   /** 协议版本的 endpoints 里是否有该模型的 kind；Agent、没选协议或协议信息未知为 null */
   supportsKind: boolean | null;
@@ -68,8 +68,12 @@ export function resolveModelChannel(
     supportsKind: null,
     protocolProblem: null,
   };
-  // Agent 由宿主网关直接用渠道 Key 请求，不看协议；带了协议是正文校验问题
-  if (kind === "agent") return { ...base, keyMissing: !!channel && !channel.secret_set };
+  // Agent 不看协议，带了协议是正文校验问题；钱包渠道运行时不要求产品方 Key。
+  if (kind === "agent")
+    return {
+      ...base,
+      keyMissing: !!channel && !channel.wallet_enabled && !channel.secret_set,
+    };
   if (!protocol) return { ...base, protocolProblem: kind ? NO_PROTOCOL : null };
 
   const plugin = plugins.find((item) => item.key === protocol.plugin);
@@ -95,7 +99,12 @@ export function resolveModelChannel(
     sha8: shortSha(found?.sha256),
     authLabel: meta ? describeAuth(meta.auth) : "",
     authType,
-    keyMissing: !!channel && authType !== null && authType !== "none" && !channel.secret_set,
+    keyMissing:
+      !!channel &&
+      !channel.wallet_enabled &&
+      authType !== null &&
+      authType !== "none" &&
+      !channel.secret_set,
     supportsKind: meta && kind ? metaSupportsKind(meta, kind) : null,
     protocolProblem: problem,
   };
@@ -103,8 +112,8 @@ export function resolveModelChannel(
 
 /**
  * 模型启用被拦的原因；可以启用返回 null。
- * 镜像后端的启用检查链（文案一致）：正文校验（能力、渠道）→ 渠道存在且启用 → Agent 只看渠道 Key →
- * 协议已选 → 插件存在且启用 → 固定版本存在 → 版本支持该能力 → 协议设置合法 → 版本鉴权非 none 时渠道 Key 已设置。
+ * 镜像后端的启用检查链（文案一致）：正文校验（能力、渠道）→ 渠道存在且启用 → 必须是 TokenPay 钱包渠道 →
+ * 协议已选 → 插件存在且启用 → 固定版本存在 → 版本支持该能力 → 协议设置合法。
  * 其余正文校验（价格、参数等）由后端校验接口给出，这里不重复。
  * 渠道与插件清单还没加载好（ready=false）时不下结论。
  */
@@ -116,8 +125,8 @@ export function publishBlockReason(info: ModelChannelInfo, ready: boolean): stri
   if (!info.channelKey) return "还没有选择渠道";
   if (!info.channel) return `渠道 ${info.channelKey} 不存在`;
   if (!info.channel.enabled) return `渠道 ${info.channel.name} 已停用`;
+  if (!info.channel.wallet_enabled)
+    return `渠道 ${info.channel.name} 不是 TokenPay 钱包渠道，请改绑 TokenPay 钱包渠道`;
   if (info.protocolProblem) return info.protocolProblem;
-  if (info.keyMissing)
-    return `渠道 ${info.channel.name} 的 Key 尚未设置，请联系超级管理员设置后再试`;
   return null;
 }

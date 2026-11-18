@@ -135,7 +135,7 @@ func TestAdminLayer_BuiltinPluginEndToEnd(t *testing.T) {
 
 	// 2. 建渠道（只有连接信息，没有协议；上游是本机 httptest，回环地址由宿主选项 IPAllowed 放行），设 Key
 	view, err := e.channels.Create(ctx, ChannelCreateInput{
-		Key: "openai-main", Name: "OpenAI 渠道", BaseURL: e.upstream.URL, Enabled: true, ActorID: 1,
+		Key: "openai-main", Name: "OpenAI 渠道", BaseURL: e.upstream.URL, Enabled: true, WalletEnabled: true, ActorID: 1,
 	})
 	if err != nil || view.SecretSet {
 		t.Fatalf("建渠道失败：%+v %v", view, err)
@@ -169,7 +169,7 @@ func TestAdminLayer_BuiltinPluginEndToEnd(t *testing.T) {
 	}
 
 	// 5. 在模型里选协议（openai@内置版本，Chat Completions）并保存 → 启用 → 出现在清单里
-	body := `{"key":"gpt-4o","kind":"text","label":"GPT","enabled":true,"pricing":{"billing":"token","token":{"in":2,"out":8}},` +
+	body := `{"key":"gpt-4o","kind":"text","label":"GPT","enabled":true,` +
 		`"channels":[{"channel":"openai-main","upstream_model":"gpt-4o",` +
 		`"protocol":{"plugin":"openai","version":"` + openai.Versions[0].Version + `","settings":{"api":"chat_completions"}}}],` +
 		`"capabilities":{"prompt":{"max_length":8000},"context":{"window":128000,"output":4096},"system":"保密的系统提示"}}`

@@ -7,12 +7,12 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useAnnouncements } from "@/hooks/use-announcements";
 import { cn } from "@/lib/utils";
-import { CreditsMenu } from "@/pages/canvas/chrome/top-right-bar";
+import { WalletMenu } from "@/pages/canvas/chrome/top-right-bar";
 
 /**
  * 首页与所有画布页的顶栏：吸顶、半透明，滚动后多一条底边。
  * 左边是侧栏开关（桌面端收起 / 展开，窄屏打开抽屉，和后台顶栏一致），
- * 右边是一颗半透明胶囊：主题切换 | 积分；账号相关的都在侧栏底部的账号菜单里。
+ * 右边是一颗半透明胶囊：主题切换 | TokenPay 钱包；账号相关的都在侧栏底部的账号菜单里。
  * 正中留一个挂载点（SITE_HEADER_CENTER_ID），给各页面放收起后的工具条。
  * 正中还悬浮着公告胶囊（设计稿 docs/design/公告），不占布局；挂载点被工具条占用时它自动隐藏（index.css），
  * 窄屏中间放不下，改浮在顶栏下方。画布编辑器、短剧工作台不用这个顶栏，所以不显示公告。
@@ -52,7 +52,7 @@ export function SiteHeader() {
       <ChromePill>
         <ThemeToggle />
         <ChromeSeparator />
-        <CreditsMenu />
+        <WalletMenu />
       </ChromePill>
     </header>
   );

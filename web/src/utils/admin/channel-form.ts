@@ -51,7 +51,7 @@ export type ChannelFormState = {
   headers: HeaderRow[];
   /** 是否启用 */
   enabled: boolean;
-  /** 钱包渠道：任务用发起用户自己的 TokenDance Key 支付，不扣平台积分 */
+  /** 钱包渠道：任务用发起用户自己的 TokenDance Key 支付 */
   walletEnabled: boolean;
   /** 每秒请求数，空表示不限 */
   rps: string;

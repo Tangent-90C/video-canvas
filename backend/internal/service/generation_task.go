@@ -17,9 +17,10 @@ import (
 	"video-canvas/internal/repository"
 )
 
-// GenerationTaskRepo 是生成任务与积分的数据访问接口（真实实现是 repository.GenerationTaskRepository）。
-// 事务内可用的原语来自 repository.GenerationTaskTx；WithTx 把它们绑定到同一个数据库事务，
-// 状态迁移与积分变更的组合逻辑（业务规则）全部写在本层。
+// GenerationTaskRepo 是生成任务的数据访问接口（真实实现是 repository.GenerationTaskRepository）。
+// 历史积分字段和旧事务原语仍保留在仓储契约里，只用于读取旧任务/后台兼容，不再参与新任务计费。
+// 事务内可用的原语来自 repository.GenerationTaskTx；WithTx 把它们绑定到同一个数据库事务。
+// 新任务的计费由 TokenDance 钱包在上游直接完成；平台只维护任务状态。
 type GenerationTaskRepo interface {
 	repository.GenerationTaskTx
 	// WithTx 在一个事务里执行 fn，fn 返回错误则整体回滚。
@@ -32,8 +33,6 @@ type GenerationTaskRepo interface {
 	ListActive(ctx context.Context, userID uint64) ([]model.GenerationTask, error)
 	// ListByNode 查询该用户在某张画布某个节点上的正式任务（排除 is_test），新的在前，最多 limit 个。
 	ListByNode(ctx context.Context, userID, canvasID uint64, nodeID string, limit int) ([]model.GenerationTask, error)
-	// GetCredit 读取积分账户，不存在返回 repository.ErrNotFound。
-	GetCredit(ctx context.Context, userID uint64) (*model.UserCredit, error)
 	// GetByIDAny 只按 id 查询，供系统内部（队列 worker）使用，不做归属过滤。不存在返回 repository.ErrNotFound。
 	GetByIDAny(ctx context.Context, id uint64) (*model.GenerationTask, error)
 	// AcquireSlot 为 pending 任务申请用户名额与渠道名额（见 repository.SlotRequest）。
@@ -47,12 +46,12 @@ const (
 	TaskErrCanceled = "canceled"
 	TaskErrTimeout  = "timeout"
 
-	taskMsgCanceled = "已取消，积分已退回"
-	// 已进入生成后用户取消：平台已经产生费用，冻结的积分照扣
-	taskMsgCanceledCharged = "已取消，已进入生成的积分不退回"
-	taskMsgTimeout         = "生成超时，积分已退回"
+	taskMsgCanceled = "已取消"
+	// 已进入生成后用户取消：上游可能已经产生费用，最终以 TokenDance 账单为准。
+	taskMsgCanceledCharged = "已取消，最终费用以 TokenDance 实际账单为准"
+	taskMsgTimeout         = "生成超时"
 	// taskMsgQueueTimeout 用于一直在排队、从没调用过上游就超时的任务（渠道同时生成数已满，排了很久）
-	taskMsgQueueTimeout = "排队超时，积分已退回"
+	taskMsgQueueTimeout = "排队超时"
 )
 
 const (
@@ -78,7 +77,7 @@ type CanvasCoverSetter interface {
 	SetCoverIfEmpty(ctx context.Context, userID, canvasID, assetID uint64) error
 }
 
-// GenerationTaskObserver 在任务提交后更新关联业务投影，不参与任务积分结算。
+// GenerationTaskObserver 在任务提交后更新关联业务投影，不参与 TokenPay 上游计费。
 type GenerationTaskObserver interface {
 	// OnTaskChanged 根据已持久化的任务更新关联业务数据。
 	OnTaskChanged(context.Context, *model.GenerationTask) error
@@ -203,14 +202,6 @@ func (s *GenerationTaskService) defaultMaxActiveTasks(ctx context.Context) (int,
 	return DefaultMaxActiveTasks, nil
 }
 
-// initialCredits 返回新积分账户的初始积分：系统设置优先，没有注入 limits 时用 DefaultInitialCredits。
-func (s *GenerationTaskService) initialCredits(ctx context.Context) (int, error) {
-	if s.limits != nil {
-		return s.limits.InitialCredits(ctx)
-	}
-	return DefaultInitialCredits, nil
-}
-
 // publish 在事务提交之后向任务所属用户推送最新快照；is_test 任务不推送。
 func (s *GenerationTaskService) publish(ctx context.Context, t *model.GenerationTask) {
 	if t == nil || t.IsTest {
@@ -224,7 +215,7 @@ func (s *GenerationTaskService) publish(ctx context.Context, t *model.Generation
 	})
 	if s.observer != nil {
 		if err := s.observer.OnTaskChanged(ctx, t); err != nil {
-			// 任务与积分已提交，不能回滚或重标为失败；关联业务读取时按任务表重新对账。
+			// 任务已提交，不能回滚或重标为失败；关联业务读取时按任务表重新对账。
 			logger.Warn("更新任务关联业务失败，读取时重新对账", logger.GenRun(t.ID), zap.Error(err))
 		}
 	}

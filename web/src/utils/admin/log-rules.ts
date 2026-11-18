@@ -4,7 +4,6 @@ import type {
   UsageQuery,
   UsageEvent,
   UsageKind,
-  UsageLedger,
   UsageOutput,
   UsageStatus,
   UsageStatusFilter,
@@ -452,19 +451,6 @@ export function timelineRows(events: UsageEvent[]): TimelineRow[] {
   });
 }
 
-const LEDGER_LABEL: Record<string, string> = { freeze: "冻结", settle: "结算", refund: "退款" };
-
-/** 积分流水行：类型中文名，金额带正负号 */
-export function ledgerRows(ledger: UsageLedger[]) {
-  return ledger.map((row) => ({
-    id: row.id,
-    label: LEDGER_LABEL[row.type] ?? row.type,
-    amount: row.amount,
-    amountText: row.amount > 0 ? `+${row.amount}` : String(row.amount),
-    createdAt: row.created_at,
-  }));
-}
-
 // ---------------------------------------------------------------- 从用户管理进入
 
 /**
@@ -757,8 +743,6 @@ export function humanDuration(ms: number | null | undefined): string {
 export type TaskLike = {
   kind: string;
   status: string;
-  credits: number;
-  charged_credits: number | null;
   is_test: boolean;
   error_message: string;
   model_key: string;
@@ -803,51 +787,23 @@ export function taskHeadline(item: Pick<TaskLike, "kind" | "status">): string {
   }
 }
 
-/** 积分一句话：试跑不扣；进行中已冻结；成功用了多少；其余已退回 */
-export function creditSentence(
-  item: Pick<TaskLike, "status" | "credits" | "charged_credits" | "is_test">,
-): string {
-  if (item.is_test) return "不扣积分";
-  if (isActiveStatus(item.status)) return `已冻结 ${item.credits} 积分`;
-  if (item.status === "succeeded") return `用了 ${item.charged_credits ?? item.credits} 积分`;
-  return "积分已退回";
-}
-
-/** 抽屉里的积分说明：冻结多少、最后扣多少、退回多少 */
-export function creditPlain(
-  item: Pick<TaskLike, "status" | "credits" | "charged_credits" | "is_test">,
-): string {
-  if (item.is_test) return "试跑任务不扣积分。";
-  if (isActiveStatus(item.status)) return `已冻结 ${item.credits} 积分，完成后按实际扣。`;
-  if (item.status === "succeeded") {
-    const charged = item.charged_credits ?? item.credits;
-    const back = item.credits - charged;
-    return `冻结了 ${item.credits}，最后扣了 ${charged}${back > 0 ? `，多的 ${back} 已退回` : ""}。`;
-  }
-  return `冻结了 ${item.credits}，已全部退回，没有扣费。`;
-}
-
 /** 进行中任务已经过去的毫秒数（以传入的当前时间为准） */
 const elapsed = (item: Pick<TaskLike, "created_at">, now: number) =>
   Math.max(0, now - Date.parse(item.created_at));
 
 /**
- * 卡片第二行：模型展示名 · 积分一句话 · 用时 / 原因 / 已等多久
+ * 卡片第二行：模型展示名 · 用时 / 原因 / 已等多久
  * @param now 当前时间戳（毫秒）；进行中的「已 N」据此算，每秒刷新由界面负责
  */
 export function taskSubline(item: TaskLike, now: number): string {
   const parts = [item.model_name || item.model_key];
   if (item.status === "succeeded") {
-    parts.push(creditSentence(item));
     if (item.duration_ms !== null) parts.push(`用时 ${humanDuration(item.duration_ms)}`);
   } else if (FAILED_LIKE.includes(item.status)) {
-    const credit = creditSentence(item);
     if (item.status === "failed" && item.error_message) {
       parts.push(item.error_message);
-      if (!item.error_message.includes(credit)) parts.push(credit);
     } else {
       if (item.status === "expired") parts.push("等太久没出结果");
-      parts.push(credit);
     }
   } else {
     const waited = humanDuration(elapsed(item, now));
@@ -870,7 +826,7 @@ export type TaskVerdict = {
 };
 
 /**
- * 结论卡：状态点颜色、一句结论、用时 / 原因 / 积分
+ * 结论卡：状态点颜色、一句结论、用时或原因
  * @param now 当前时间戳（毫秒）
  */
 export function taskVerdict(item: TaskLike, now: number): TaskVerdict {
@@ -879,10 +835,7 @@ export function taskVerdict(item: TaskLike, now: number): TaskVerdict {
       return {
         tone: "success",
         title: "生成成功",
-        sub: [
-          item.duration_ms !== null ? `用时 ${humanDuration(item.duration_ms)}` : "",
-          creditSentence(item),
-        ]
+        sub: [item.duration_ms !== null ? `用时 ${humanDuration(item.duration_ms)}` : ""]
           .filter(Boolean)
           .join(" · "),
         pulse: false,
@@ -891,19 +844,19 @@ export function taskVerdict(item: TaskLike, now: number): TaskVerdict {
       return {
         tone: "danger",
         title: "生成失败",
-        sub: item.error_message || "积分已退回",
+        sub: item.error_message || "生成失败",
         pulse: false,
       };
     case "expired":
-      return { tone: "warning", title: "等太久，已超时", sub: "积分已退回", pulse: false };
+      return { tone: "warning", title: "等太久，已超时", sub: "等太久没出结果", pulse: false };
     case "canceled":
-      return { tone: "neutral", title: "已取消", sub: "积分已退回", pulse: false };
+      return { tone: "neutral", title: "已取消", sub: "已取消生成", pulse: false };
     default: {
       const queued = item.status === "pending" || item.status === "queued";
       return {
         tone: "info",
         title: queued ? "排队中" : "正在生成",
-        sub: `已 ${humanDuration(elapsed(item, now))} · ${creditSentence(item)}`,
+        sub: `已 ${humanDuration(elapsed(item, now))}`,
         pulse: true,
       };
     }
@@ -920,12 +873,15 @@ export function failureAdvice(
   status: string,
 ): { title: string; text: string } | null {
   if (status === "canceled") {
-    return { title: "已取消", text: "用户或管理员取消了这个任务，积分已退回，无需处理。" };
+    return {
+      title: "已取消",
+      text: "用户或管理员取消了这个任务，最终费用以 TokenDance 实际账单为准。",
+    };
   }
   if (status === "expired" || (status === "failed" && code === "timeout")) {
     return {
       title: "等太久，已超时",
-      text: "任务在规定时间内没出结果，积分已自动退回，可以让用户重试。",
+      text: "任务在规定时间内没出结果，可以让用户重试；费用以 TokenDance 实际账单为准。",
     };
   }
   if (status !== "failed") return null;
@@ -937,14 +893,14 @@ export function failureAdvice(
     case "provider_balance":
       return {
         title: "需要运维处理",
-        text: "上游账户余额不足，请联系运维充值；用户的积分已退回。",
+        text: "上游账户余额不足，请联系运维充值；费用以 TokenDance 实际账单为准。",
       };
     case "submit_unknown":
       return { title: "建议核对", text: "提交结果不确定，上游可能已经扣费，建议让运维核对一下。" };
     default:
       return {
         title: "可以先让用户重试",
-        text: "平台暂时出了问题，积分已退回；如果反复出现，请找运维（切到「详细」看原因）。",
+        text: "平台暂时出了问题；如果反复出现，请找运维（切到「详细」看原因）。",
       };
   }
 }
@@ -959,8 +915,6 @@ export type DrawerSections = Record<
   | "advice"
   | "prompt"
   | "outputs"
-  | "creditSentence"
-  | "creditLedger"
   | "timeline"
   | "params"
   | "failureDetail"
@@ -979,8 +933,6 @@ export function drawerSections(opts: { hasTrace: boolean }): DrawerSections {
     advice: true,
     prompt: true,
     outputs: true,
-    creditSentence: true,
-    creditLedger: true,
     timeline: true,
     params: true,
     failureDetail: true,
@@ -1099,18 +1051,6 @@ export function statusDetail(item: Pick<TaskLike, "status" | "error_message">): 
   if (item.status === "failed") return item.error_message;
   if (item.status === "expired") return "等太久没出结果";
   return "";
-}
-
-/** 积分格：成功是绿色数字（实扣），失败类「已退回」，进行中「已冻结 N」，试跑「不扣积分」 */
-export function creditCell(
-  item: Pick<TaskLike, "status" | "credits" | "charged_credits" | "is_test">,
-): { text: string; tone: "success" | "muted" | "plain" } {
-  if (item.is_test) return { text: "不扣积分", tone: "muted" };
-  if (isActiveStatus(item.status)) return { text: `已冻结 ${item.credits}`, tone: "plain" };
-  if (item.status === "succeeded") {
-    return { text: String(item.charged_credits ?? item.credits), tone: "success" };
-  }
-  return { text: "已退回", tone: "muted" };
 }
 
 /**

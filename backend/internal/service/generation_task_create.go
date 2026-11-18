@@ -21,10 +21,10 @@ import (
 	"video-canvas/internal/repository"
 )
 
-// Create 提交生成任务：冻结快照 → 校验输入与素材 → 按定价算出每个任务的积分 → 按节点顺序逐个创建任务。
+// Create 提交生成任务：冻结快照 → 校验输入与素材 → 校验用户 TokenPay 钱包 → 按节点顺序逐个创建任务。
 // 选了生成数量 N（fanout 参数）时，一次请求拆成 N 个独立任务，第 i 个任务绑定 node_ids[i]；
 // node_ids 允许重复：N 个任务可以都绑同一个节点（多个结果归并到一个节点，见 docs/design/多结果归并），响应按下标逐项对应；
-// 每个任务各自一个事务、各自冻结，某个失败（积分不足、并发已满……）只让这个节点得到错误，不回滚已创建的任务。
+// 每个任务各自一个事务，某个失败（钱包未连接、并发已满……）只让这个节点得到错误，不回滚已创建的任务。
 // 请求级错误（参数不合法、模型不可用、输入校验失败）整体返回 error，一个任务也不创建。
 // idempotencyKey 非空时，第 i 个任务用 key（i=0）或 key#i 去重：重复提交返回已创建的任务，失败的节点会重新尝试。
 func (s *GenerationTaskService) Create(ctx context.Context, userID uint64, idempotencyKey string, req *model.CreateGenerationTaskReq) (*model.CreateGenerationTaskResp, error) {
@@ -59,25 +59,22 @@ func (s *GenerationTaskService) Create(ctx context.Context, userID uint64, idemp
 		return nil, err
 	}
 
-	// 5. 生成数量必须与节点数一致；计价（每个任务的积分）在拆分前算，生成数量参数本身不交给插件
+	// 5. 生成数量必须与节点数一致；生成数量参数本身不交给插件
 	caps := snap.Model.Capabilities
 	n := modelcfg.FanoutCount(caps, input)
 	if n != len(nodes) {
 		return nil, errcode.ErrInvalidParams.WithMsg(fmt.Sprintf("node_ids 的数量（%d）必须等于生成数量（%d）", len(nodes), n))
 	}
-	one := max(modelcfg.Quote(snap.Model.Pricing, caps, modelcfg.SpecFromInput(input, caps.System)), 0)
-	// 5b. 钱包渠道：模型由发起用户自己的 TokenPay 钱包 Key 支付上游，平台不冻结 / 不扣积分（运营者通过分润结算）。
-	// 用户必须先在个人中心连接钱包，否则整体不创建任务。
-	wallet := snap.Channel.Wallet
-	if wallet {
-		connected, err := s.walletConnected(ctx, userID)
-		if err != nil {
-			return nil, err
-		}
-		if !connected {
-			return nil, errcode.ErrWalletNotConnected
-		}
-		one = 0
+	// 5b. 本站只支持 TokenPay 钱包计费：模型必须绑定钱包渠道，且发起用户已经连接钱包。
+	if !snap.Channel.Wallet {
+		return nil, errcode.ErrWalletNotConnected.WithMsg("该模型未接入 TokenPay 钱包，请选择钱包模型")
+	}
+	connected, err := s.walletConnected(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !connected {
+		return nil, errcode.ErrWalletNotConnected
 	}
 	if name := modelcfg.FanoutParam(caps); name != "" {
 		delete(input, name)
@@ -85,7 +82,7 @@ func (s *GenerationTaskService) Create(ctx context.Context, userID uint64, idemp
 
 	// 6. 按节点顺序逐个创建
 	errs, err := s.createAll(ctx, userID, idempotencyKey, nodes, existing, func() *model.GenerationTask {
-		return &model.GenerationTask{UserID: userID, Credits: one, Wallet: wallet}
+		return &model.GenerationTask{UserID: userID, Wallet: true, Credits: 0}
 	}, req, snap, input, n)
 	if err != nil {
 		return nil, err
@@ -93,7 +90,7 @@ func (s *GenerationTaskService) Create(ctx context.Context, userID uint64, idemp
 	return taskItems(nodes, existing, errs), nil
 }
 
-// walletConnected 查询用户是否已连接 TokenPay 钱包。未注入钱包服务（nil）时视为未连接。
+// walletConnected 查询用户是否已连接 TokenPay 钱包。未注入钱包服务时拒绝，不存在积分回退路径。
 func (s *GenerationTaskService) walletConnected(ctx context.Context, userID uint64) (bool, error) {
 	if s.wallets == nil {
 		return false, nil
@@ -101,8 +98,8 @@ func (s *GenerationTaskService) walletConnected(ctx context.Context, userID uint
 	return s.wallets.Connected(ctx, userID)
 }
 
-// createAll 按节点顺序逐个创建任务，结果写回 existing：已存在的原样保留，其余各自冻结。
-// 业务错误（积分不足、并发已满……）只落在这个节点上；基础设施故障（数据库等）不再继续创建：
+// createAll 按节点顺序逐个创建任务，结果写回 existing：已存在的原样保留，其余各自创建。
+// 业务错误（钱包未连接、并发已满……）只落在这个节点上；基础设施故障（数据库等）不再继续创建：
 // 一个任务都还没有时整体返回错误，否则剩下的节点按内部错误返回。
 func (s *GenerationTaskService) createAll(ctx context.Context, userID uint64, key string, nodes []string, existing []*model.GenerationTask,
 	newTask func() *model.GenerationTask, req *model.CreateGenerationTaskReq, snap *provider.Snapshot, input map[string]any, n int) ([]error, error) {
@@ -138,7 +135,7 @@ func anyFound(tasks []*model.GenerationTask) bool {
 	return false
 }
 
-// createOne 创建一个任务：组装 → 单个事务冻结积分、插入并入队 → 推送。命中幂等键时返回已存在的任务。
+// createOne 创建一个任务：组装 → 单个事务插入并入队 → 推送。命中幂等键时返回已存在的任务。
 func (s *GenerationTaskService) createOne(ctx context.Context, task *model.GenerationTask, req *model.CreateGenerationTaskReq, snap *provider.Snapshot, input map[string]any) (*model.GenerationTask, error) {
 	if req.CanvasID > 0 {
 		canvasID := uint64(req.CanvasID)
@@ -152,7 +149,7 @@ func (s *GenerationTaskService) createOne(ctx context.Context, task *model.Gener
 	if err := s.fillTask(task, snap, input, queueWait); err != nil {
 		return nil, err
 	}
-	existing, err := s.insertAndFreeze(ctx, task)
+	existing, err := s.insertAndEnqueue(ctx, task)
 	if err != nil || existing != nil {
 		return existing, err
 	}
@@ -227,7 +224,7 @@ func taskItems(nodes []string, tasks []*model.GenerationTask, errs []error) *mod
 	return &model.CreateGenerationTaskResp{Items: items}
 }
 
-// SubmitTest 创建运营试跑任务（管理端 test-run 用）：is_test=true，不冻结也不扣积分，
+// SubmitTest 创建运营试跑任务（管理端 test-run 用）：is_test=true，费用由发起管理员自己的 TokenPay 钱包承担，
 // 不校验并发上限，状态变化也不推送给普通用户。快照由调用者传入，这样可以用未发布的草稿配置试跑。
 func (s *GenerationTaskService) SubmitTest(ctx context.Context, userID uint64, snap *provider.Snapshot, input map[string]any) (*model.GenerationTaskView, error) {
 	key, _ := ctx.Value(testRunKey{}).(string)
@@ -239,6 +236,16 @@ func (s *GenerationTaskService) SubmitTest(ctx context.Context, userID uint64, s
 	// 1. 快照必须有效
 	if snap == nil {
 		return nil, errcode.ErrInvalidParams.WithMsg("缺少试跑配置")
+	}
+	if !snap.Channel.Wallet {
+		return nil, errcode.ErrWalletNotConnected.WithMsg("该模型未接入 TokenPay 钱包，请选择钱包模型")
+	}
+	connected, err := s.walletConnected(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !connected {
+		return nil, errcode.ErrWalletNotConnected
 	}
 
 	// 2. 与正式提交同样的输入校验与素材归属校验（素材必须属于发起试跑的管理员）
@@ -252,7 +259,7 @@ func (s *GenerationTaskService) SubmitTest(ctx context.Context, userID uint64, s
 	if err != nil {
 		return nil, err
 	}
-	task := &model.GenerationTask{UserID: userID, IsTest: true, IdempotencyKey: key}
+	task := &model.GenerationTask{UserID: userID, IsTest: true, Wallet: true, IdempotencyKey: key}
 	if err := s.fillTask(task, snap, normalized, queueWait); err != nil {
 		return nil, err
 	}
@@ -337,16 +344,10 @@ func (s *GenerationTaskService) fillTask(task *model.GenerationTask, snap *provi
 	return nil
 }
 
-// insertAndFreeze 在单个事务里：锁账户 → 幂等复查 → 校验余额与排队上限 → 插入任务 → 冻结积分 → 写 freeze 流水 → 入队。
-// 任何一步失败整体回滚，不会出现“积分冻结了但任务没创建”。命中幂等键（事务内复查或唯一索引冲突）时返回已存在的任务。
-// 钱包任务（wallet=true）不动平台积分：跳过账户锁、余额校验与冻结，只保留幂等复查、排队上限与入队。
-func (s *GenerationTaskService) insertAndFreeze(ctx context.Context, task *model.GenerationTask) (*model.GenerationTask, error) {
-	userID, key, credits := task.UserID, task.IdempotencyKey, task.Credits
-	// 事务外先读初始积分与并发上限：它们是设置读取，不属于积分事务，也避免在持有账户行锁时多做查询
-	initial, err := s.initialCredits(ctx)
-	if err != nil {
-		return nil, err
-	}
+// insertAndEnqueue 在单个事务里完成幂等复查、排队上限校验、插入任务和入队。
+// 新任务统一走用户 TokenPay 钱包，不锁平台积分账户、不冻结、不写积分流水。
+func (s *GenerationTaskService) insertAndEnqueue(ctx context.Context, task *model.GenerationTask) (*model.GenerationTask, error) {
+	userID, key := task.UserID, task.IdempotencyKey
 	maxActive, err := s.maxActiveTasks(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -357,74 +358,15 @@ func (s *GenerationTaskService) insertAndFreeze(ctx context.Context, task *model
 	}
 	var existing *model.GenerationTask
 	err = s.repo.WithTx(ctx, func(tx repository.GenerationTaskTx) error {
-		// 0. 片段媒体先锁短剧项目，再锁账户；与短剧任务采用同一顺序，防止片段与同集分镜、合成并发穿透以及死锁。
-		if strings.HasPrefix(task.NodeID, "seg:") {
-			if existing, err = s.findIdempotent(ctx, tx, userID, key); err != nil || existing != nil {
-				return err
-			}
-			if err := guardDramaGeneration(ctx, tx, task); err != nil {
-				return err
-			}
+		// 0. 片段与营销脚本先按业务锁顺序做幂等复查和关联行检查。
+		if existing, err = s.guardNodeInsert(ctx, tx, task); err != nil || existing != nil {
+			return err
 		}
-		// 0b. 营销脚本出片：先看幂等，再锁营销项目与脚本行（校验归属、没有在出片或重写、旁白无问题），顺序同删除项目与改脚本。
-		if strings.HasPrefix(task.NodeID, model.MarketingNodePrefix) {
-			if existing, err = s.findIdempotent(ctx, tx, userID, key); err != nil || existing != nil {
-				return err
-			}
-			if err := GuardMarketingGeneration(ctx, tx, task); err != nil {
-				return err
-			}
-		}
-		// 1. 惰性创建积分账户（初始积分来自系统设置，缺省 config；真正建出新账户时仓储会在同一事务补写 initial 流水），
-		//    再对账户行加锁：同一个用户的并发提交在这里被串行化，余额与并发数的检查因此不会被并发穿透。
-		//    钱包任务不动积分账户，跳过这一步（幂等复查改由任务表唯一索引兜底）
-		var acc *model.UserCredit
-		if !task.Wallet {
-			if err := tx.EnsureCredit(ctx, userID, initial); err != nil {
-				return err
-			}
-			acc, err = tx.LockCredit(ctx, userID)
-			if err != nil {
-				return err
-			}
-		}
-		// 2. 加锁后再查一次幂等键：快速路径到这里之间可能已有同 key 的请求提交成功，命中就直接返回它，不冻结积分
+		// 1. 幂等复查：快速路径到这里之间可能已有同 key 的请求提交成功，命中就直接返回它。
 		if existing, err = s.findIdempotent(ctx, tx, userID, key); err != nil || existing != nil {
 			return err
 		}
-		// 3. 可用余额 = 余额 - 冻结，不足返回 402；未完成的任务数（含排队等名额的）不能超过“并发上限 × 排队倍数”，超过返回 429。
-		//    并发上限本身不在这里拦：超出并发的任务照常创建、排队，等前面的完成后才拿到用户名额（见 AcquireSlot）。
-		//    钱包任务没有冻结，不做余额校验，只保留排队上限
-		if !task.Wallet && acc.Balance-acc.Frozen < credits {
-			return errcode.ErrInsufficientCredits
-		}
-		active, err := tx.CountActive(ctx, userID)
-		if err != nil {
-			return err
-		}
-		if active >= int64(maxActive)*int64(multiplier) {
-			return errcode.ErrTooManyTasks
-		}
-		// 4. 插入任务。即使前面的复查漏掉了（理论上不会），(user_id, idempotency_key) 唯一索引也会拦住：
-		//    inserted=false 时回滚整个事务（此时还没动积分），由外层去取已存在的任务
-		inserted, err := tx.InsertTask(ctx, task)
-		if err != nil {
-			return err
-		}
-		if !inserted {
-			return errIdempotentConflict
-		}
-		// 5. 冻结积分并写 freeze 流水（流水需要任务 id，所以在插入任务之后）。钱包任务不冻结
-		if !task.Wallet {
-			if err := tx.AddCredit(ctx, userID, 0, credits); err != nil {
-				return err
-			}
-			if _, err = tx.InsertLedger(ctx, &model.CreditLedger{UserID: userID, TaskID: model.TaskIDPtr(task.ID), Type: model.LedgerFreeze, Amount: credits}); err != nil {
-				return err
-			}
-		}
-		// 6. 在同一个事务里入队：任务、积分冻结、队列里的 job 要么一起成功，要么一起回滚，不会出现有任务没有 job
-		return tx.EnqueueTask(ctx, task)
+		return s.insertWithinCapacity(ctx, tx, task, maxActive, multiplier)
 	})
 	// 7. 幂等冲突：事务已回滚，取赢家的任务返回；其它错误原样返回（errcode 直接透传给前端）
 	if errors.Is(err, errIdempotentConflict) {
@@ -434,6 +376,44 @@ func (s *GenerationTaskService) insertAndFreeze(ctx context.Context, task *model
 		return nil, err
 	}
 	return existing, nil
+}
+
+// guardNodeInsert 为短剧片段和营销出片按既有业务锁顺序做幂等复查与关联行检查。
+func (s *GenerationTaskService) guardNodeInsert(ctx context.Context, tx repository.GenerationTaskTx, task *model.GenerationTask) (*model.GenerationTask, error) {
+	seg := strings.HasPrefix(task.NodeID, "seg:")
+	marketing := strings.HasPrefix(task.NodeID, model.MarketingNodePrefix)
+	if !seg && !marketing {
+		return nil, nil
+	}
+	existing, err := s.findIdempotent(ctx, tx, task.UserID, task.IdempotencyKey)
+	if err != nil || existing != nil {
+		return existing, err
+	}
+	if seg {
+		err = guardDramaGeneration(ctx, tx, task)
+	} else {
+		err = GuardMarketingGeneration(ctx, tx, task)
+	}
+	return nil, err
+}
+
+// insertWithinCapacity 检查排队上限后插入任务并入队；任务与 job 在同一事务里提交或回滚。
+func (s *GenerationTaskService) insertWithinCapacity(ctx context.Context, tx repository.GenerationTaskTx, task *model.GenerationTask, maxActive, multiplier int) error {
+	active, err := tx.CountActive(ctx, task.UserID)
+	if err != nil {
+		return err
+	}
+	if active >= int64(maxActive)*int64(multiplier) {
+		return errcode.ErrTooManyTasks
+	}
+	inserted, err := tx.InsertTask(ctx, task)
+	if err != nil {
+		return err
+	}
+	if !inserted {
+		return errIdempotentConflict
+	}
+	return tx.EnqueueTask(ctx, task)
 }
 
 // prepareInput 校验并规范化输入，补上宿主注入的文本参数，并确认参考素材都属于该用户、种类与大小合规。

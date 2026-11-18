@@ -35,7 +35,7 @@ func TestListUpstreamModels_成功(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ch := provider.ChannelSnapshot{Key: "c1", BaseURL: srv.URL, Headers: map[string]string{"X-Biz": "canvas"}}
+	ch := provider.ChannelSnapshot{Wallet: true, Key: "c1", BaseURL: srv.URL, Headers: map[string]string{"X-Biz": "canvas"}}
 	got, err := pullExecutor(func() bool { return true }).ListUpstreamModels(context.Background(), ch, "sk-test")
 	if err != nil {
 		t.Fatal(err)
@@ -57,7 +57,7 @@ func TestListUpstreamModels_baseURL已带v1不重复拼接(t *testing.T) {
 		_, _ = w.Write([]byte(`{"data":[]}`))
 	}))
 	defer srv.Close()
-	got, err := pullExecutor(func() bool { return true }).ListUpstreamModels(context.Background(), provider.ChannelSnapshot{Key: "c1", BaseURL: srv.URL + "/v1/"}, "k")
+	got, err := pullExecutor(func() bool { return true }).ListUpstreamModels(context.Background(), provider.ChannelSnapshot{Wallet: true, Key: "c1", BaseURL: srv.URL + "/v1/"}, "k")
 	if err != nil || len(got) != 0 {
 		t.Fatalf("空列表不是错误：%v %v", got, err)
 	}
@@ -84,7 +84,7 @@ func TestListUpstreamModels_baseURL末段是版本号只补models(t *testing.T) 
 				_, _ = w.Write([]byte(`{"data":[]}`))
 			}))
 			defer srv.Close()
-			if _, err := pullExecutor(func() bool { return true }).ListUpstreamModels(context.Background(), provider.ChannelSnapshot{Key: "c1", BaseURL: srv.URL + tc.base}, "k"); err != nil {
+			if _, err := pullExecutor(func() bool { return true }).ListUpstreamModels(context.Background(), provider.ChannelSnapshot{Wallet: true, Key: "c1", BaseURL: srv.URL + tc.base}, "k"); err != nil {
 				t.Fatal(err)
 			}
 			if gotPath != tc.want {
@@ -117,7 +117,7 @@ func TestListUpstreamModels_失败分类(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			srv := httptest.NewServer(tt.handle)
 			defer srv.Close()
-			_, err := pullExecutor(func() bool { return true }).ListUpstreamModels(context.Background(), provider.ChannelSnapshot{Key: "c1", BaseURL: srv.URL}, "sk-secret")
+			_, err := pullExecutor(func() bool { return true }).ListUpstreamModels(context.Background(), provider.ChannelSnapshot{Wallet: true, Key: "c1", BaseURL: srv.URL}, "sk-secret")
 			var pe *provider.PullError
 			if !errors.As(err, &pe) || pe.Reason != tt.reason {
 				t.Fatalf("错误 = %v，期望原因 %q", err, tt.reason)
@@ -145,7 +145,7 @@ func TestListUpstreamModels_模型数超限(t *testing.T) {
 	sb.WriteString(`]}`)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(sb.String())) }))
 	defer srv.Close()
-	_, err := pullExecutor(func() bool { return true }).ListUpstreamModels(context.Background(), provider.ChannelSnapshot{Key: "c1", BaseURL: srv.URL}, "k")
+	_, err := pullExecutor(func() bool { return true }).ListUpstreamModels(context.Background(), provider.ChannelSnapshot{Wallet: true, Key: "c1", BaseURL: srv.URL}, "k")
 	var pe *provider.PullError
 	if !errors.As(err, &pe) || pe.Reason != provider.PullTooLarge {
 		t.Fatalf("超过 %d 个应按过大处理：%v", provider.MaxPullModels, err)
@@ -156,7 +156,7 @@ func TestListUpstreamModels_模型数超限(t *testing.T) {
 func TestListUpstreamModels_拦截内网地址(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`{"data":[]}`)) }))
 	defer srv.Close()
-	_, err := pullExecutor(nil).ListUpstreamModels(context.Background(), provider.ChannelSnapshot{Key: "c1", BaseURL: srv.URL}, "k")
+	_, err := pullExecutor(nil).ListUpstreamModels(context.Background(), provider.ChannelSnapshot{Wallet: true, Key: "c1", BaseURL: srv.URL}, "k")
 	var pe *provider.PullError
 	if !errors.As(err, &pe) || pe.Reason != provider.PullUnreachable {
 		t.Fatalf("内网地址应被拦截并报不可达：%v", err)
@@ -170,7 +170,7 @@ func TestListUpstreamModels_格式不符带响应片段(t *testing.T) {
 		_, _ = w.Write([]byte("<html><title>console sk-secret</title></html>"))
 	}))
 	defer srv.Close()
-	_, err := pullExecutor(func() bool { return true }).ListUpstreamModels(context.Background(), provider.ChannelSnapshot{Key: "c1", BaseURL: srv.URL}, "sk-secret")
+	_, err := pullExecutor(func() bool { return true }).ListUpstreamModels(context.Background(), provider.ChannelSnapshot{Wallet: true, Key: "c1", BaseURL: srv.URL}, "sk-secret")
 	var pe *provider.PullError
 	if !errors.As(err, &pe) || pe.Reason != provider.PullFormat {
 		t.Fatalf("错误 = %v，期望格式错误", err)

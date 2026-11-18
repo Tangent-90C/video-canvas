@@ -28,12 +28,9 @@ import {
 } from "@/components/admin-ui/timeline";
 import { cn } from "@/lib/utils";
 import {
-  creditPlain,
   failureAdvice,
   failureHint,
-  formatDateTimeSec,
   humanDuration,
-  ledgerRows,
   NO_TIMELINE_TEXT,
   outputCaption,
   outputRender,
@@ -74,8 +71,6 @@ export function taskLike(detail: UsageDetail): TaskLike {
   return {
     kind: task.kind,
     status: task.status,
-    credits: task.credits,
-    charged_credits: task.charged_credits,
     is_test: task.is_test,
     error_message: error.message || task.error_message,
     model_key: task.model_key,
@@ -85,7 +80,7 @@ export function taskLike(detail: UsageDetail): TaskLike {
   };
 }
 
-/** 结论卡：抽屉第一屏，状态点 + 一句结论 + 用时 / 原因 / 积分，按状态着色；进行中带进度条 */
+/** 结论卡：抽屉第一屏，状态点 + 一句结论 + 用时或原因，按状态着色；进行中带进度条 */
 function VerdictCard({ detail, now }: { detail: UsageDetail; now: number }) {
   const verdict = taskVerdict(taskLike(detail), now);
   const progress = detail.task.progress;
@@ -166,42 +161,6 @@ function PromptBlock({ input }: { input: Record<string, unknown> }) {
         >
           {open ? "收起" : "展开"}
         </button>
-      )}
-    </Section>
-  );
-}
-
-/** 积分：一句话，再列 freeze / settle / refund 流水 */
-function CreditBlock({ detail, ledger }: { detail: UsageDetail; ledger: boolean }) {
-  const rows = ledgerRows(detail.ledger);
-  return (
-    <Section title="积分">
-      <p className="text-sm">{creditPlain(taskLike(detail))}</p>
-      {ledger && rows.length > 0 && (
-        <div className="rounded-lg border">
-          {rows.map((row) => (
-            <div
-              key={row.id}
-              className="flex items-center justify-between border-b px-3 py-2 text-xs last:border-b-0"
-            >
-              <span>
-                {row.label}{" "}
-                <span className="text-muted-foreground font-mono tabular-nums">
-                  {formatDateTimeSec(row.createdAt)}
-                </span>
-              </span>
-              <span
-                className={cn(
-                  "font-mono tabular-nums",
-                  row.amount > 0 && "text-status-success",
-                  row.amount < 0 && "text-destructive",
-                )}
-              >
-                {row.amountText}
-              </span>
-            </div>
-          ))}
-        </div>
       )}
     </Section>
   );
@@ -456,7 +415,6 @@ function OutputsBlock({ detail }: { detail: UsageDetail }) {
 
 export {
   AdviceHint,
-  CreditBlock,
   FailureDetail,
   OutputsBlock,
   ParamsBlock,

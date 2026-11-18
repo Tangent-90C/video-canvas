@@ -46,7 +46,7 @@ func TestOpenAIImageRealAssetService(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	snap := &provider.Snapshot{Model: provider.ModelSnapshot{Key: "image", Kind: "image", UpstreamModel: "gpt-image-1", Capabilities: modelcfg.Capabilities{Prompt: modelcfg.PromptSpec{MaxLength: 1000}}}, Channel: provider.ChannelSnapshot{Key: "channel", PluginKey: "openai-image", PluginVersionID: 1, BaseURL: upstream.URL}, Plugin: provider.PluginSnapshot{Key: "openai-image", SHA256: pre.SHA256, Meta: *meta}, ModelRevisionID: 1}
+	snap := &provider.Snapshot{Model: provider.ModelSnapshot{Key: "image", Kind: "image", UpstreamModel: "gpt-image-1", Capabilities: modelcfg.Capabilities{Prompt: modelcfg.PromptSpec{MaxLength: 1000}}}, Channel: provider.ChannelSnapshot{Key: "channel", PluginKey: "openai-image", PluginVersionID: 1, BaseURL: upstream.URL, Wallet: true}, Plugin: provider.PluginSnapshot{Key: "openai-image", SHA256: pre.SHA256, Meta: *meta}, ModelRevisionID: 1}
 	for _, tc := range []struct {
 		name     string
 		limit    int64
@@ -55,7 +55,7 @@ func TestOpenAIImageRealAssetService(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			saver, repo, _ := newAssetTestService(config.Storage{MaxResult: tc.limit})
 			exec := plugin.New(plugin.Options{Runner: runner, Codes: imagePluginCode(src), Secrets: imagePluginSecret{}, Saver: saver, IPAllowed: func(ip net.IP) bool { return ip.IsLoopback() }})
-			sub, err := exec.Submit(context.Background(), snap, provider.SubmitInput{Task: provider.TaskRef{ID: 42, UserID: 3}, Input: map[string]any{"prompt": "test"}})
+			sub, err := exec.Submit(context.Background(), snap, provider.SubmitInput{Task: provider.TaskRef{ID: 42, UserID: 3, Wallet: true}, Input: map[string]any{"prompt": "test"}})
 			if !tc.succeeds {
 				if err == nil || len(repo.rows) != 0 {
 					t.Fatalf("超过管理员上限时不得保存：%v", err)

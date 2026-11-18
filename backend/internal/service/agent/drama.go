@@ -21,7 +21,7 @@ type AgentDramaService interface {
 	UpdateEpisode(context.Context, uint64, uint64, int, *model.UpdateDramaEpisodeReq) (*model.DramaEpisodeView, error)
 	// Estimate 复用提交任务的预检和积分估价。
 	Estimate(context.Context, uint64, uint64, *model.DramaJobReq) (int, error)
-	// CreateAgentJob 以用户与审批ID持久去重，原子提交任务和冻结积分。
+	// CreateAgentJob 以用户与审批ID持久去重，原子提交任务。
 	CreateAgentJob(context.Context, uint64, uint64, uint64, *model.DramaJobReq) (*model.DramaJobView, error)
 }
 

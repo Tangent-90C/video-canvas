@@ -62,7 +62,7 @@ describe("分镜图格的状态（设计 §6.5 的 6 种）", () => {
     expect(
       shotImageState(
         shot({ imageNodeId: "i1" }),
-        view({ phase: "failed", message: "积分不足", refunded: true, taskRef: null }),
+        view({ phase: "failed", message: "积分不足", taskRef: null }),
       ),
     ).toEqual({ kind: "node", phase: "failed", message: "积分不足" });
   });
@@ -100,7 +100,7 @@ describe("批量生成分镜图挑哪些行", () => {
       ],
       [
         shot({ id: "failed", imageNodeId: "i4" }),
-        view({ phase: "failed", message: "x", refunded: true, taskRef: null }),
+        view({ phase: "failed", message: "x", taskRef: null }),
       ],
       [shot({ id: "idle", imageNodeId: "i5" }), view({ phase: "idle" })],
       [shot({ id: "deleted", imageNodeId: "gone" }), MISSING],

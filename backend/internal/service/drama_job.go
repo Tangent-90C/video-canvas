@@ -5,9 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
-	"unicode/utf8"
 
-	"video-canvas/internal/drama"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/logger"
@@ -20,6 +18,11 @@ import (
 
 // Estimate 使用现有模型定价及相同请求范围估价，不冻结积分。
 func (s *DramaService) Estimate(ctx context.Context, userID, id uint64, req *model.DramaJobReq) (int, error) {
+	if req.Step != "compose" {
+		if err := s.ensureWallet(ctx, userID); err != nil {
+			return 0, err
+		}
+	}
 	if req.Step == "compose" {
 		return s.estimateCompose(ctx, userID, id, req)
 	}
@@ -66,6 +69,11 @@ func (s *DramaService) CreateJob(ctx context.Context, userID, id uint64, req *mo
 
 // createDramaJob 统一普通提交和审批提交，审批ID与任务在同一事务登记。
 func (s *DramaService) createDramaJob(ctx context.Context, userID, id uint64, approvalID *uint64, req *model.DramaJobReq) (*model.DramaJobView, error) {
+	if req.Step != "compose" {
+		if err := s.ensureWallet(ctx, userID); err != nil {
+			return nil, err
+		}
+	}
 	if req.Step == "analyze" || req.Step == "outline" || req.Step == "plan" {
 		return nil, errcode.ErrInvalidParams.WithMsg("研读与规划由系统自动发起")
 	}
@@ -92,14 +100,14 @@ func (s *DramaService) createDramaJob(ctx context.Context, userID, id uint64, ap
 		resolved.MaxSeconds = seconds
 		req = &resolved
 	}
-	snap, initial, err := s.jobFreeze(ctx, p, req)
+	snap, err := s.jobFreeze(ctx, p, req)
 	if err != nil {
 		return nil, err
 	}
 	var job *model.DramaJob
 	err = s.repo.WithTx(ctx, func(tx repository.DramaTx) error {
 		var e error
-		job, e = s.insertDramaJob(ctx, tx, userID, id, approvalID, req, snap, initial)
+		job, e = s.insertDramaJob(ctx, tx, userID, id, approvalID, req, snap)
 		return e
 	})
 	if err != nil {
@@ -111,21 +119,23 @@ func (s *DramaService) createDramaJob(ctx context.Context, userID, id uint64, ap
 	return &v, nil
 }
 
-// jobFreeze 事务外冻结模型配置和起始积分；合成不调模型，两者为空。
-func (s *DramaService) jobFreeze(ctx context.Context, p *model.DramaProject, req *model.DramaJobReq) (*provider.Snapshot, int, error) {
+// jobFreeze 冻结模型配置；合成不调模型，返回空快照。
+func (s *DramaService) jobFreeze(ctx context.Context, p *model.DramaProject, req *model.DramaJobReq) (*provider.Snapshot, error) {
 	if req.Step == "compose" {
-		return nil, 0, nil
+		return nil, nil
 	}
 	snap, err := s.resolveModel(ctx, p.TextModel)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
-	initial, err := s.dramaInitialCredits(ctx)
-	return snap, initial, err
+	if !snap.Channel.Wallet {
+		return nil, errcode.ErrWalletNotConnected.WithMsg("该模型未接入 TokenPay 钱包")
+	}
+	return snap, nil
 }
 
 // insertDramaJob 在项目锁内恢复审批已建任务，否则校验并入队。
-func (s *DramaService) insertDramaJob(ctx context.Context, tx repository.DramaTx, userID, id uint64, approvalID *uint64, req *model.DramaJobReq, snap *provider.Snapshot, initial int) (*model.DramaJob, error) {
+func (s *DramaService) insertDramaJob(ctx context.Context, tx repository.DramaTx, userID, id uint64, approvalID *uint64, req *model.DramaJobReq, snap *provider.Snapshot) (*model.DramaJob, error) {
 	current, err := tx.Project(ctx, userID, id, true)
 	if err != nil {
 		return nil, err
@@ -149,7 +159,7 @@ func (s *DramaService) insertDramaJob(ctx context.Context, tx repository.DramaTx
 	if req.Step == "compose" {
 		return enqueueCompose(ctx, tx, current, req, selected, approvalID)
 	}
-	return s.enqueue(ctx, tx, current, req, snap, selected, initial, approvalID)
+	return s.enqueue(ctx, tx, current, req, snap, selected, approvalID)
 }
 
 // prepareDramaJob 在项目锁内校验并发、前置条件与比例。
@@ -202,7 +212,7 @@ func (s *DramaService) ListJobs(ctx context.Context, userID, id uint64, active b
 	return out, nil
 }
 
-// CancelJob 幂等取消任务并释放冻结积分。
+// CancelJob 幂等取消任务；费用以 TokenDance 实际账单为准。
 func (s *DramaService) CancelJob(ctx context.Context, userID, dramaID, jobID uint64) (*model.DramaJobView, error) {
 	// 1. 按project→job→credit顺序加锁，取消和完成只有一个能结算。
 	var job *model.DramaJob
@@ -235,13 +245,28 @@ func (s *DramaService) CancelJob(ctx context.Context, userID, dramaID, jobID uin
 	s.publish(ctx, job)
 	if canceled {
 		_, run := dramaJobRun(ctx, job)
-		run.End(logger.StatusCanceled, append(dramaFields(job), zap.String("by", "user"), zap.Int("credits", job.Credits), zap.Int("refunded", job.FrozenCredits-job.Credits))...)
+		run.End(logger.StatusCanceled, append(dramaFields(job), zap.String("by", "user"))...)
 	}
 	v := jobView(*job)
 	return &v, nil
 }
 
-// resolveModel 跟随后台 Agent 模型排序；失效的选择回落至第一个仍启用的模型。
+// ensureWallet 要求短剧用户已连接 TokenPay 钱包；未注入检查器时拒绝，不存在积分回退。
+func (s *DramaService) ensureWallet(ctx context.Context, userID uint64) error {
+	if s.wallets == nil {
+		return errcode.ErrWalletNotConnected
+	}
+	connected, err := s.wallets.Connected(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if !connected {
+		return errcode.ErrWalletNotConnected
+	}
+	return nil
+}
+
+// resolveModel 跟随后台 Agent 钱包模型排序；失效的选择回落至第一个仍启用的钱包模型。
 func (s *DramaService) resolveModel(ctx context.Context, key string) (*provider.Snapshot, error) {
 	if s.registry == nil {
 		return nil, errcode.ErrDramaNoTextModel
@@ -252,12 +277,12 @@ func (s *DramaService) resolveModel(ctx context.Context, key string) (*provider.
 	}
 	keys := make([]string, 0, len(models))
 	for _, m := range models {
-		if m.Key == key {
+		if m.Wallet && m.Key == key {
 			keys = append(keys, key)
 		}
 	}
 	for _, m := range models {
-		if m.Key != key {
+		if m.Wallet && m.Key != key {
 			keys = append(keys, m.Key)
 		}
 	}
@@ -269,20 +294,20 @@ func (s *DramaService) resolveModel(ctx context.Context, key string) (*provider.
 		if e != nil {
 			return nil, e
 		}
-		if snap != nil && snap.Model.Kind == modelcfg.KindAgent {
+		if snap != nil && snap.Model.Kind == modelcfg.KindAgent && snap.Channel.Wallet {
 			return snap, nil
 		}
 	}
 	return nil, errcode.ErrDramaNoTextModel
 }
 
-// enqueue 冻结费用并同事务创建业务任务与River job。
-func (s *DramaService) enqueue(ctx context.Context, tx repository.DramaTx, p *model.DramaProject, req *model.DramaJobReq, snap *provider.Snapshot, eps []model.DramaEpisode, initial int, approvalID *uint64) (*model.DramaJob, error) {
+// enqueue 同事务创建业务任务与 River job；费用由用户 TokenPay 钱包直接承担。
+func (s *DramaService) enqueue(ctx context.Context, tx repository.DramaTx, p *model.DramaProject, req *model.DramaJobReq, snap *provider.Snapshot, eps []model.DramaEpisode, approvalID *uint64) (*model.DramaJob, error) {
 	scope := []int{}
 	for _, ep := range eps {
 		scope = append(scope, ep.No)
 	}
-	j := &model.DramaJob{UserID: p.UserID, DramaID: p.ID, Step: req.Step, Episodes: scope, Status: "queued", FrozenCredits: dramaQuote(p, req.Step, eps, snap), Lane: "user", InputJSON: []byte(`{}`), Output: []byte(`{}`), ModelID: snap.ModelRevisionID}
+	j := &model.DramaJob{UserID: p.UserID, DramaID: p.ID, Step: req.Step, Episodes: scope, Status: "queued", Credits: 0, FrozenCredits: 0, Lane: "user", InputJSON: []byte(`{}`), Output: []byte(`{}`), ModelID: snap.ModelRevisionID}
 	j.ApprovalID = approvalID
 	if req.Step == "analyze" || req.Step == "plan" || req.Step == "outline" {
 		j.Lane = "pipeline"
@@ -300,7 +325,7 @@ func (s *DramaService) enqueue(ctx context.Context, tx repository.DramaTx, p *mo
 			return nil, e
 		}
 	}
-	if e := s.freezeDrama(ctx, tx, j, initial); e != nil {
+	if e := tx.InsertJob(ctx, j); e != nil {
 		return nil, e
 	}
 	status := p.Status
@@ -341,28 +366,6 @@ func dramaEpisodeNumbers(eps []model.DramaEpisode) []int {
 		scope = append(scope, ep.No)
 	}
 	return scope
-}
-
-// freezeDrama 在账户锁内检查余额并创建冻结流水。
-func (s *DramaService) freezeDrama(ctx context.Context, tx repository.DramaTx, j *model.DramaJob, initial int) error {
-	if e := tx.EnsureCredit(ctx, j.UserID, initial); e != nil {
-		return e
-	}
-	credit, e := tx.LockCredit(ctx, j.UserID)
-	if e != nil {
-		return e
-	}
-	if credit.Balance-credit.Frozen < j.FrozenCredits {
-		return errcode.ErrInsufficientCredits
-	}
-	if e := tx.InsertJob(ctx, j); e != nil {
-		return e
-	}
-	if e := tx.AddCredit(ctx, j.UserID, 0, j.FrozenCredits); e != nil {
-		return e
-	}
-	_, e = tx.InsertLedger(ctx, &model.CreditLedger{UserID: j.UserID, DramaJobID: &j.ID, Type: model.LedgerFreeze, Amount: j.FrozenCredits})
-	return e
 }
 
 // selectDramaEpisodes 统一估价与提交的步骤前置条件。
@@ -445,36 +448,7 @@ func checkDramaEpisodeStep(ep model.DramaEpisode, step string) error {
 	return nil
 }
 
-// dramaQuote 复用现有定价，脚本逐集计费、研读按上下文分块计费。
-func dramaQuote(p *model.DramaProject, step string, eps []model.DramaEpisode, snap *provider.Snapshot) int {
-	requests := 1
-	chars := utf8.RuneCountInString(p.SourceSummary) + utf8.RuneCountInString(p.OutlineMD) + 4096
-	switch step {
-	case "scripts":
-		requests = max(1, len(eps))
-	case "analyze":
-		chars = min(40000, min(max(p.SourceChars, utf8.RuneCountInString(p.SourceText)), dramaContextLimit(snap))) + 2048
-	case "plan":
-		chars += min(30000, p.SourceChars)
-	case "breakdown":
-		units := make([]drama.Unit, 0, len(eps))
-		for _, ep := range eps {
-			units = append(units, drama.Unit{Chars: utf8.RuneCountInString(ep.ScriptMD)})
-		}
-		total := 0
-		for _, batch := range drama.ScriptBatches(units) {
-			size := chars
-			for _, u := range batch {
-				size += u.Chars
-			}
-			// 每批一次拆解，再为这批新资产写一次提示词
-			total += 2 * modelcfg.Quote(snap.Model.Pricing, snap.Model.Capabilities, modelcfg.Spec{PromptChars: size, Params: map[string]any{}})
-		}
-		return total
-	case "storyboard":
-		for _, ep := range eps {
-			chars += utf8.RuneCountInString(ep.ScriptMD)
-		}
-	}
-	return requests * modelcfg.Quote(snap.Model.Pricing, snap.Model.Capabilities, modelcfg.Spec{PromptChars: chars, Params: map[string]any{}})
+// dramaQuote 只保留兼容返回 0；费用由用户自己的 TokenPay 钱包在上游按实际用量结算。
+func dramaQuote(_ *model.DramaProject, _ string, _ []model.DramaEpisode, _ *provider.Snapshot) int {
+	return 0
 }

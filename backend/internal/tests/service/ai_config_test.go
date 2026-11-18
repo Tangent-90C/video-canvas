@@ -77,7 +77,7 @@ func aicSeedChannel(t *testing.T, svc *AIConfigService, repo *aiconfigfake.MemRe
 	}
 	repo.Channels[key] = &model.AIChannel{
 		Key: key, Name: key, BaseURL: "https://gw.example.com",
-		HeadersJSON: model.JSONText(`{}`), RateLimitJSON: model.JSONText(`{}`), Sort: 100, Enabled: true,
+		HeadersJSON: model.JSONText(`{}`), RateLimitJSON: model.JSONText(`{}`), Sort: 100, Enabled: true, WalletEnabled: true,
 	}
 	if withSecret {
 		if err := svc.SetSecret(ctx, model.ChannelSecretName(key), "sk-"+key, 1); err != nil {
@@ -376,10 +376,15 @@ func TestAIConfigService_SetModelEnabled_Checks(t *testing.T) {
 			body := aicWithKind(string(aicModelBody("m1", "c1", "")), "image")
 			_, _ = aicSave(s, "", true, json.RawMessage(body))
 		}, "m1", errcode.ErrConfigInvalid.Code},
-		{"需要鉴权而渠道 Key 未设置（50015）", func(t *testing.T, s *AIConfigService, r *aiconfigfake.MemRepo) {
+		{"钱包模型不要求产品方渠道 Key", func(t *testing.T, s *AIConfigService, r *aiconfigfake.MemRepo) {
 			aicSeedChannel(t, s, r, "c1", false)
 			_, _ = aicSave(s, "", true, aicModelBody("m1", "c1", ""))
-		}, "m1", errcode.ErrChannelSecretUnset.Code},
+		}, "m1", 0},
+		{"非钱包渠道不能启用", func(t *testing.T, s *AIConfigService, r *aiconfigfake.MemRepo) {
+			aicSeedChannel(t, s, r, "c1", true)
+			r.Channels["c1"].WalletEnabled = false
+			_, _ = aicSave(s, "", true, aicModelBody("m1", "c1", ""))
+		}, "m1", errcode.ErrConfigInvalid.Code},
 		{"渠道 Key 已设置，启用成功", func(t *testing.T, s *AIConfigService, r *aiconfigfake.MemRepo) {
 			aicSeedChannel(t, s, r, "c1", true)
 			_, _ = aicSave(s, "", true, aicModelBody("m1", "c1", ""))
@@ -395,10 +400,10 @@ func TestAIConfigService_SetModelEnabled_Checks(t *testing.T) {
 			aicSeedChannel(t, s, r, "c1", true)
 			_, _ = aicSave(s, "", true, aicAgentBody("m1", "c1"))
 		}, "m1", 0},
-		{"Agent 模型：渠道 Key 未设置（50015）", func(t *testing.T, s *AIConfigService, r *aiconfigfake.MemRepo) {
+		{"Agent 钱包模型不要求产品方渠道 Key", func(t *testing.T, s *AIConfigService, r *aiconfigfake.MemRepo) {
 			aicSeedChannel(t, s, r, "c1", false)
 			_, _ = aicSave(s, "", true, aicAgentBody("m1", "c1"))
-		}, "m1", errcode.ErrChannelSecretUnset.Code},
+		}, "m1", 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

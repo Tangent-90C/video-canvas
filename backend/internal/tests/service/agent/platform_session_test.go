@@ -74,6 +74,7 @@ func TestCheckMessage_Rules(t *testing.T) {
 	for name, c := range map[string]struct{ msg, want string }{
 		"节点不存在":    {"拆 @[幽灵](node:ghost)", "幽灵"},
 		"模型没发布":    {"用 @[某模型](model:nope)", "某模型"},
+		"旧渠道模型":    {"用 @[旧模型](model:legacy-image)", "旧模型"},
 		"agent 模型": {"用 @[Claude](model:claude)", "Claude"},
 		"技能不存在":    {"参考 @[瞎编](skill:made-up)", "瞎编"},
 		"附件暂不支持":   {"看 @[图](asset:1)", "附件"},

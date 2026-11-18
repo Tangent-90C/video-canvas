@@ -51,7 +51,7 @@ func TestDramaHandler_Storyboard(t *testing.T) {
 				ep.LockedAt = &now
 			}
 			repo := &storyboardHTTPRepo{httpDramaRepo: &httpDramaRepo{project: &model.DramaProject{BaseModel: model.BaseModel{ID: 7}, UserID: 1, Revision: 1, Ratio: "9:16"}, episode: ep, credit: model.UserCredit{UserID: 1, Balance: 100}}, hasTakes: tc.takes}
-			h := handler.NewDramaHandler(service.NewDramaService(service.DramaDeps{Repo: repo, Registry: httpDramaRegistry{}}))
+			h := handler.NewDramaHandler(service.NewDramaService(service.DramaDeps{Repo: repo, Registry: httpDramaRegistry{}, Wallets: connectedWalletForHandler{}}))
 			r := gin.New()
 			r.Use(func(c *gin.Context) { c.Set(middleware.CtxUserIDKey, uint(1)); c.Next() })
 			r.POST("/dramas/:id/jobs", h.CreateJob)
@@ -60,7 +60,7 @@ func TestDramaHandler_Storyboard(t *testing.T) {
 				t.Fatalf("status=%d body=%+v", status, body)
 			}
 			if tc.code == 0 {
-				if len(repo.jobs) != 1 || repo.jobs[0].Step != "storyboard" || repo.episode.StoryboardStatus != "generating" || repo.credit.Frozen <= 0 {
+				if len(repo.jobs) != 1 || repo.jobs[0].Step != "storyboard" || repo.episode.StoryboardStatus != "generating" || repo.credit.Frozen != 0 || repo.jobs[0].Credits != 0 {
 					t.Fatalf("分镜提交未持久化: jobs=%+v ep=%+v credit=%+v", repo.jobs, repo.episode, repo.credit)
 				}
 			} else if len(repo.jobs) != 0 || repo.credit.Frozen != 0 {

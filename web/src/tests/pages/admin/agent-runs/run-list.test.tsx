@@ -50,23 +50,21 @@ describe("运行列表：各状态", () => {
 });
 
 describe("运行列表：有数据", () => {
-  test("九列表头", () => {
+  test("八列表头（平台积分列已移除）", () => {
     const out = list("ready");
-    for (const head of ["时间", "用户", "请求首句", "状态", "步数", "积分", "反馈", "撤销", "版本"])
+    for (const head of ["时间", "用户", "请求首句", "状态", "步数", "反馈", "撤销", "版本"])
       expect(out).toContain(`>${head}</th>`);
   });
 
-  test("一行的内容：时间、#用户 ID、请求首句（title 是完整文字）、状态 Tag、步数、积分、版本", () => {
-    const out = list("ready", [
-      digest({ request_head: "把第三个镜头改成夜景", steps: 7, spent_credits: 12 }),
-    ]);
+  test("一行的内容：时间、#用户 ID、请求首句（title 是完整文字）、状态 Tag、步数、版本", () => {
+    const out = list("ready", [digest({ request_head: "把第三个镜头改成夜景", steps: 7 })]);
     expect(out).toContain("10-22");
     expect(out).toContain("#42");
     expect(out).toContain('title="把第三个镜头改成夜景"');
     expect(out).toContain('data-tone="success"');
     expect(out).toContain("成功");
     expect(out).toContain(">7<");
-    expect(out).toContain(">12<");
+    expect(out).not.toContain(">积分</th>");
     expect(out).toContain("v10");
     expect(out).toContain('title="v10 · a1b2c3"');
   });

@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Layers, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { estimateJob, submitJob } from "@/api/drama";
+import { submitJob } from "@/api/drama";
 import { dramaErrorMessage } from "@/api/drama/errors";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,72 +22,6 @@ import {
 
 import { useWorkspace } from "./context";
 import { EpisodeGrid, RangeSelect } from "./episode-pick";
-
-/** 估价同时在途的请求数：分镜接口一次只估一集，集多时别一下把几十个请求全打出去 */
-const ESTIMATE_CONCURRENCY = 6;
-
-type BatchEstimate =
-  | { status: "idle" | "loading" }
-  | { status: "ready"; credits: number }
-  | { status: "error"; message: string };
-
-/**
- * 选中的集分别估价再加总（分镜接口一次只能估一集）。输入停 250ms 才请求，旧结果作废；
- * 任一集估不出来就显示那一集的原因。
- */
-function useBatchEstimate(dramaId: string, episodes: readonly number[], maxSeconds: number) {
-  const key = `${episodes.join(",")}|${maxSeconds}`;
-  const [result, setResult] = useState<{ key: string; value: BatchEstimate } | null>(null);
-  /** 每集的估价，按「集号|时长上限」缓存在这次打开的弹窗里：勾选增减时只估新加的集 */
-  const [estimateCache] = useState(() => new Map<string, Promise<number>>());
-
-  useEffect(() => {
-    if (episodes.length === 0) return;
-    let active = true;
-    const estimateOne = (no: number) => {
-      const cacheKey = `${no}|${maxSeconds}`;
-      let hit = estimateCache.get(cacheKey);
-      if (!hit) {
-        hit = estimateJob(dramaId, { step: "storyboard", episodes: [no], maxSeconds });
-        // 失败的不缓存，下次重新估
-        hit.catch(() => estimateCache.delete(cacheKey));
-        estimateCache.set(cacheKey, hit);
-      }
-      return hit.catch((error: unknown) => {
-        throw new Error(`第 ${no} 集：${dramaErrorMessage(error, "估算失败")}`);
-      });
-    };
-    const timer = setTimeout(async () => {
-      const queue = [...episodes];
-      let total = 0;
-      try {
-        await Promise.all(
-          Array.from({ length: Math.min(ESTIMATE_CONCURRENCY, queue.length) }, async () => {
-            for (let no = queue.shift(); no !== undefined; no = queue.shift()) {
-              // 先等结果再累加：写成 total += await … 会在等待前读走 total，几路并发时互相覆盖
-              const credits = await estimateOne(no);
-              total += credits;
-            }
-          }),
-        );
-        if (active) setResult({ key, value: { status: "ready", credits: total } });
-      } catch (error) {
-        if (active) {
-          setResult({ key, value: { status: "error", message: (error as Error).message } });
-        }
-      }
-    }, 250);
-    return () => {
-      active = false;
-      clearTimeout(timer);
-    };
-    // episodes 的内容已编码进 key
-    // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [dramaId, key]);
-
-  if (episodes.length === 0) return { status: "idle" } as BatchEstimate;
-  return result?.key === key ? result.value : ({ status: "loading" } as BatchEstimate);
-}
 
 /**
  * 对话框主体：每次打开重新挂载，预选当前这一集。
@@ -115,7 +49,6 @@ export function StoryboardBatchBody({
   const [error, setError] = useState<string | null>(null);
 
   const submit = storyboardBatchSubmit(selected);
-  const estimate = useBatchEstimate(drama.id, submit.ok ? selected : [], maxSeconds);
 
   const toggle = (no: number) =>
     setSelected((prev) =>
@@ -193,17 +126,7 @@ export function StoryboardBatchBody({
         <div className="min-w-0 flex-1">
           生成 <b className="tabular-nums">{selected.length}</b> 集，同时开始
         </div>
-        <div className="shrink-0 text-xs tabular-nums">
-          {estimate.status === "ready" ? (
-            <>
-              约 <b className="text-credit text-sm">{estimate.credits}</b> 积分
-            </>
-          ) : estimate.status === "loading" ? (
-            <span className="text-muted-foreground">估算中…</span>
-          ) : estimate.status === "error" ? (
-            <span className="text-destructive">{estimate.message}</span>
-          ) : null}
-        </div>
+        <div className="shrink-0 text-xs tabular-nums">费用按 TokenDance 实际账单</div>
       </div>
 
       {error && (

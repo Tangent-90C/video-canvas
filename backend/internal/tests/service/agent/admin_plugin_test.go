@@ -379,6 +379,7 @@ func TestAdminCreateDependenciesAndManualRollback(t *testing.T) {
 	var body map[string]any
 	_ = json.Unmarshal(f.bodies["a"], &body)
 	body["key"] = "new"
+	delete(body, "pricing")
 	items := []AdminChangeInput{{Target: "model_create", Key: "new", Patch: body, DependsOn: []int{1, 2}}, {Target: "plugin", Key: "phase-two", Patch: map[string]any{"code": phaseTwoCode}}, {Target: "channel", Key: "new-channel", Patch: map[string]any{"name": "新渠道", "base_url": "https://example.invalid"}, DependsOn: []int{1}}}
 	proposal, payload := proposeAdmin(t, b, rc, items...)
 	if payload.Items[0].RequiredRole != "admin" || payload.Items[1].RequiredRole != "super_admin" || payload.Items[2].RequiredRole != "super_admin" {

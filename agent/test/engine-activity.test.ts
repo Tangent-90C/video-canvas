@@ -156,14 +156,14 @@ test("关闭活动说明（activitySummary: false）时不发请求", () =>
     { activitySummary: false },
   ));
 
-test("说明调用和会话命名一样照常结算计费（计入用量），不让运行失败", () =>
+test("说明调用不影响运行成功，平台积分字段保持 0", () =>
   withEngine(
     { turns: twoTools, tools: twoToolReplies, activity: "读了画布并排好布局" },
     async (e) => {
       const run = await e.start();
       await e.engine.idle();
       assert.ok(e.go.callLog.some((c) => c.purpose === "activity"));
-      assert.ok(e.run(run.id).spentCredits >= 3, "两次对话调用 + 一次说明调用");
+      assert.equal(e.run(run.id).spentCredits, 0);
     },
     ON,
   ));

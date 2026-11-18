@@ -95,8 +95,9 @@ func TestDramaService_ScriptEpisodeEvents(t *testing.T) {
 			}}
 			s := service.NewDramaService(service.DramaDeps{
 				Repo: r, Registry: registry, Streamer: e,
-				Secrets:     dramaSecrets{model.ChannelSecretName("chan"): "sk-test"},
+				Secrets:     dramaSecrets{model.WalletSecretName(7): "sk-wallet-test"},
 				Broadcaster: bc,
+				Wallets:     connectedWallet{},
 			})
 			ctx := context.Background()
 			job, err := s.CreateJob(ctx, 7, 1, &model.DramaJobReq{Step: "scripts"})

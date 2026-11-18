@@ -55,9 +55,9 @@ function ModelList({
                 <span className="text-muted-foreground block truncate text-xs">{m.hint}</span>
               )}
             </span>
-            {m.priceLabel && !m.wallet && (
-              <span className="text-credit shrink-0 text-xs tabular-nums">{m.priceLabel}</span>
-            )}
+            <span className="text-credit max-w-40 shrink-0 truncate text-right text-xs tabular-nums">
+              {m.priceLabel || "按 TokenDance 实际账单"}
+            </span>
             <Plus className="text-muted-foreground size-4 shrink-0" />
           </button>
         </li>

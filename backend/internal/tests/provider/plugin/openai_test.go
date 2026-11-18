@@ -55,7 +55,7 @@ func (e *openaiEnv) snapshot(baseURL, api string, caps modelcfg.Capabilities) *p
 	}
 	return &provider.Snapshot{
 		Model: provider.ModelSnapshot{Key: "m", Kind: "text", UpstreamModel: "gpt-test", Capabilities: caps},
-		Channel: provider.ChannelSnapshot{
+		Channel: provider.ChannelSnapshot{Wallet: true,
 			Key: "openai-main", PluginKey: "openai", PluginVersionID: 1, BaseURL: baseURL, Settings: settings,
 		},
 		Plugin:          provider.PluginSnapshot{Key: "openai", Version: e.meta.Version, SHA256: e.sha, Meta: *e.meta},

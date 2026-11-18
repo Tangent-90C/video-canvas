@@ -29,12 +29,11 @@ type ChangePasswordReq struct {
 
 // MeStatsView 是 GET /me/stats 的响应：口径与后台 TaskStats 一致（排除试跑）。
 type MeStatsView struct {
-	Total        int   `json:"total"`         // 正式任务总数
-	Success      int   `json:"success"`       // 成功数
-	Failed       int   `json:"failed"`        // 失败数（failed + expired）
-	Last7d       int   `json:"last7d"`        // 近 7 天创建的任务数
-	SpentCredits int64 `json:"spent_credits"` // 已结算的积分合计
-	CanvasCount  int64 `json:"canvas_count"`  // 未删除的画布数
+	Total       int   `json:"total"`        // 正式任务总数
+	Success     int   `json:"success"`      // 成功数
+	Failed      int   `json:"failed"`       // 失败数（failed + expired）
+	Last7d      int   `json:"last7d"`       // 近 7 天创建的任务数
+	CanvasCount int64 `json:"canvas_count"` // 未删除的画布数
 }
 
 // MeActivityReq 是 GET /me/activity 的查询参数。

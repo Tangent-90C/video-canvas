@@ -80,10 +80,9 @@ export function PendingPlaceholder({
 }
 
 /**
- * 生成失败的占位：失败原因、退款说明、可复制的任务编号和重试按钮。
+ * 生成失败的占位：失败原因、可复制的任务编号和重试按钮。
  * 画布节点和首页结果格子共用，纯展示。
  * @param message 给用户看的失败原因
- * @param refunded 是否提示「积分已退回」
  * @param taskRef 任务编号，到后端日志里定位用；没有就不显示
  * @param onRetry 重新提交一个新任务；不传就不显示按钮
  * @param retryDisabled 重试按钮是否禁用
@@ -92,7 +91,6 @@ export function PendingPlaceholder({
  */
 export function FailedPlaceholder({
   message,
-  refunded,
   taskRef,
   onRetry,
   onRecharge,
@@ -102,7 +100,6 @@ export function FailedPlaceholder({
   style,
 }: PlaceholderBoxProps & {
   message: string;
-  refunded?: boolean;
   taskRef?: string | null;
   onRetry?: () => void;
   onRecharge?: () => void;
@@ -121,7 +118,6 @@ export function FailedPlaceholder({
     >
       <TriangleAlert className="size-4 shrink-0" />
       <p className="line-clamp-3 break-words">{message}</p>
-      {refunded && <p className="text-muted-foreground">积分已退回</p>}
       <TaskIdTag id={taskRef} className="nodrag nowheel" />
       {onRecharge && (
         <Button variant="outline" size="xs" className="nodrag" onClick={onRecharge}>

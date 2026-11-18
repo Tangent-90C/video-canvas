@@ -28,6 +28,7 @@ import {
   resolutionOptions,
   type ComposerDraft,
 } from "@/utils/marketing/composer";
+import { modelPriceLabel } from "@/utils/pricing/model-price";
 
 /** 工具条按钮的公共样式 */
 export const BAR_BUTTON =
@@ -442,9 +443,12 @@ export function ParamsMenu({
                 <span className="grid gap-0.5">
                   <span className="text-[13px]">{item.label}</span>
                   <span className="text-muted-foreground text-xs">
-                    {item.capabilities.video
-                      ? "能看图 · 能看视频"
-                      : "能看图；拆参考片时改用能看视频的模型"}
+                    {[
+                      item.capabilities.video
+                        ? "能看图 · 能看视频"
+                        : "能看图；拆参考片时改用能看视频的模型",
+                      modelPriceLabel(item),
+                    ].join(" · ")}
                   </span>
                 </span>
               </MenuRow>

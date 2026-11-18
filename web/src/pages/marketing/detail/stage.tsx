@@ -33,17 +33,15 @@ function StateCard({ children }: { children: React.ReactNode }) {
 function ScriptState({
   script,
   aspect,
-  available,
   actions,
 }: {
   script: Script;
   /** 成片画幅（宽、高）：出片中的画框按它画 */
   aspect: [number, number];
-  available: number | null;
   actions: MarketingActions;
 }) {
   const progress = useRenderProgress(script);
-  const render = scriptRenderState(script, available);
+  const render = scriptRenderState(script);
   const rendering = actions.busy[`render:${script.id}`];
   const renderButton = (label: string, icon: React.ReactNode) => (
     <button
@@ -55,7 +53,6 @@ function ScriptState({
     >
       {rendering ? <Loader2 className="size-4 animate-spin" /> : icon}
       {label}
-      <span className="tabular-nums opacity-65">✦{script.renderCredits}</span>
     </button>
   );
 
@@ -144,15 +141,7 @@ function ScriptState({
  * 选中项不能播放时显示状态卡（待出片 / 出片中 / 重写中 / 失败；轮次失败、写脚本中）。
  * 向 store 注册播放控制，检查器、时间轴和快捷键都通过它跳转。
  */
-export function Stage({
-  project,
-  available,
-  actions,
-}: {
-  project: Project;
-  available: number | null;
-  actions: MarketingActions;
-}) {
+export function Stage({ project, actions }: { project: Project; actions: MarketingActions }) {
   const { round, selection, script } = useWorkbenchTarget(project.id);
   const takeIndex = useWorkbenchStore((state) => state.take);
   const { angles } = useMarketingOptions();
@@ -297,7 +286,7 @@ export function Stage({
           )}
         />
         <b>{round.status === "failed" ? round.error || "写脚本失败" : "已取消"}</b>
-        <span className="text-muted-foreground">积分已退回</span>
+        <span className="text-muted-foreground">费用以 TokenDance 实际账单为准</span>
         {round.status === "failed" && failedStep && (
           <button
             type="button"
@@ -312,10 +301,7 @@ export function Stage({
       </StateCard>
     );
   } else if (!mainSrc) {
-    if (script)
-      view = (
-        <ScriptState script={script} aspect={[w, h]} available={available} actions={actions} />
-      );
+    if (script) view = <ScriptState script={script} aspect={[w, h]} actions={actions} />;
     else if (round.status === "scripting") {
       view = (
         <StateCard>

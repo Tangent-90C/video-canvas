@@ -1,4 +1,4 @@
-import type { Capabilities, Pricing, RefSpec } from "@/api/model/type";
+import type { Capabilities, RefSpec } from "@/api/model/type";
 
 const REF_OFF: RefSpec = { on: false, max: 0, max_mb: 0 };
 
@@ -133,43 +133,8 @@ export function defaultDeadline(kind: string): string {
 }
 
 /**
- * 新建模型时按种类预填的定价（运营可改）：视频按秒、按清晰度与音频分档；图片按次、按清晰度分档；
- * 文本按 Token；音频按次。数值只是起点，和能力模板里的参数名对应。
- */
-export function defaultPricing(kind: string): Pricing {
-  switch (kind) {
-    case "video":
-      return {
-        billing: "per_second",
-        per_second: 2,
-        tiers: [
-          { on: true, when: { generate_audio: true }, unit: 3 },
-          { on: true, when: { resolution: "1080P" }, unit: 4 },
-          { on: true, when: { resolution: "1080P", generate_audio: true }, unit: 5 },
-          { on: true, when: { resolution: "4K" }, unit: 8 },
-        ],
-      };
-    case "image":
-      return {
-        billing: "per_call",
-        unit: 4,
-        tiers: [
-          { on: true, when: { resolution: "2K" }, unit: 8 },
-          { on: true, when: { resolution: "4K" }, unit: 16 },
-        ],
-      };
-    case "text":
-      return { billing: "token", token: { in: 2, out: 8 } };
-    case "agent":
-      return { billing: "token", token: { in: 3, out: 15 } };
-    default:
-      return { billing: "per_call", unit: 2 };
-  }
-}
-
-/**
  * 手动新增模型时编辑器里的起始正文：“待配置”的半成品。
- * 能力、协议、能力与参数、定价都留空，运营在弹窗里选了能力后才按种类预填（见 withModelKind）。
+ * 能力、协议、能力与参数都留空，运营在弹窗里选了能力后才按种类预填（见 withModelKind）。
  * @param channelKey 预选的所属渠道（当前渠道）；没有传空串
  * @param upstreamModel 预填的上游模型标识
  */

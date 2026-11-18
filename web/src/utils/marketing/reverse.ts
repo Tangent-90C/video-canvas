@@ -40,23 +40,16 @@ export function reverseEditable(round: Round): boolean {
 }
 
 /**
- * 「按拆解重写跟拍版」按钮的状态：跟拍版重写 / 出片中 → 没有改动 → 余额不足。
+ * 「按拆解重写跟拍版」按钮的状态：跟拍版重写 / 出片中或没有改动时禁用。
  * @param round 轮次
  * @param draft 本地草稿
- * @param available 可用积分；还没拿到为 null
- * @param cost 重写跟拍版的积分；还没算出来为 null
  */
 export function refollowState(
   round: Round,
   draft: Reverse | null,
-  available: number | null,
-  cost: number | null,
 ): { disabled: boolean; reason: string } {
   if (!reverseEditable(round)) return { disabled: true, reason: "跟拍版正在生成或出片" };
   if (!isReverseDirty(round, draft)) return { disabled: true, reason: "拆解没有改动" };
-  if (available !== null && cost !== null && available < cost) {
-    return { disabled: true, reason: "余额不足" };
-  }
   return { disabled: false, reason: "只重跑跟拍改写" };
 }
 

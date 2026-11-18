@@ -81,7 +81,7 @@ func newGTIEnv(t *testing.T, limits TaskLimits) *gtiEnv {
 	env := newTaskSvcEnv(limits)
 	env.now = time.Now()
 	env.svc = NewGenerationTaskService(GenerationTaskDeps{
-		Repo: real, Registry: env.registry, Executor: env.exec, Assets: env.assets, Broadcaster: env.bc, Limits: limits,
+		Repo: real, Registry: env.registry, Executor: env.exec, Assets: env.assets, Broadcaster: env.bc, Limits: limits, Wallets: connectedWallet{},
 	})
 	return &gtiEnv{taskSvcEnv: env, store: real, db: db, user: uint64(time.Now().UnixNano()/1000)*100 + gtiUserSeq.Add(1)%100}
 }
@@ -105,7 +105,7 @@ func (e *gtiEnv) assertReconciled(t *testing.T) *repository.CreditReconcile {
 }
 
 func TestGenerationTaskService_Integration_Create(t *testing.T) {
-	cfg := &fakeLimits{initial: 50, defMax: 4}
+	cfg := &fakeLimits{defMax: 4}
 
 	t.Run("提交冻结积分并写流水，对账零差异", func(t *testing.T) {
 		env := newGTIEnv(t, cfg)
@@ -161,7 +161,7 @@ func TestGenerationTaskService_Integration_Create(t *testing.T) {
 	})
 
 	t.Run("并发提交受并发上限约束：超出返回 429，冻结额与任务数一致", func(t *testing.T) {
-		c := &fakeLimits{initial: 1000, defMax: 4}
+		c := &fakeLimits{defMax: 4}
 		env := newGTIEnv(t, c)
 		const n = 12
 		var ok, tooMany atomic.Int32
@@ -193,7 +193,7 @@ func TestGenerationTaskService_Integration_Create(t *testing.T) {
 	})
 
 	t.Run("并发提交不会把可用余额冻结成负数", func(t *testing.T) {
-		c := &fakeLimits{initial: 25, defMax: 100} // 初始积分只够 2 个任务（每个 10）
+		c := &fakeLimits{defMax: 100}
 		env := newGTIEnv(t, c)
 		var ok, insufficient atomic.Int32
 		var wg sync.WaitGroup
@@ -226,7 +226,7 @@ func TestGenerationTaskService_Integration_Create(t *testing.T) {
 
 func TestGenerationTaskService_Integration_Transitions(t *testing.T) {
 	ctx := context.Background()
-	cfg := &fakeLimits{initial: 50, defMax: 10}
+	cfg := &fakeLimits{defMax: 10}
 
 	// makeTask 创建一个任务并推进到指定状态（走真实迁移方法）。
 	makeTask := func(t *testing.T, env *gtiEnv, status string) *model.GenerationTask {
@@ -423,7 +423,7 @@ func TestGenerationTaskService_Integration_Transitions(t *testing.T) {
 // jsonb 列会规范化空白与键顺序，所以只比较解码后的语义，不比较原始字节。
 func TestGenerationTaskService_Integration_ProviderColumns(t *testing.T) {
 	ctx := context.Background()
-	cfg := &fakeLimits{initial: 50, defMax: 10}
+	cfg := &fakeLimits{defMax: 10}
 
 	t.Run("config_snapshot 落库后能还原出冻结的模型 / 渠道 / 插件版本", func(t *testing.T) {
 		env := newGTIEnv(t, cfg)

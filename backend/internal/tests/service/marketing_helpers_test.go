@@ -254,7 +254,7 @@ func mktVideoSnapshot() *provider.Snapshot {
 					{Name: "generate_audio", ParamField: modelcfg.ParamField{Type: modelcfg.ParamBoolean, Open: true, Default: true}},
 				},
 			}},
-		Channel: provider.ChannelSnapshot{Key: "p1", PluginKey: "demo", PluginVersionID: 7, BaseURL: "https://up.example.com"},
+		Channel: provider.ChannelSnapshot{Key: "p1", PluginKey: "demo", PluginVersionID: 7, BaseURL: "https://up.example.com", Wallet: true},
 		Plugin:  provider.PluginSnapshot{Key: "demo", Version: "1.0.0"},
 	}
 }
@@ -289,9 +289,9 @@ func newMktEnv(t *testing.T, initial int) *mktEnv {
 	env.models.Snapshots["text-a"] = stepfake.TextModel("text-a", true, true, 2)
 	env.models.Snapshots[mktVideoKey] = mktVideoSnapshot()
 	env.repo.SetEnqueuer(env.queue)
-	limits := &fakeLimits{initial: initial, defMax: 20}
+	limits := &fakeLimits{defMax: 20}
 	env.taskSvc = NewGenerationTaskService(GenerationTaskDeps{Repo: env.taskRepo, Registry: &mktRegistry{snap: mktVideoSnapshot()}, Executor: &fakeTaskExecutor{},
-		Assets: env.assets, Broadcaster: env.bc, Limits: limits})
+		Assets: env.assets, Broadcaster: env.bc, Limits: limits, Wallets: connectedWallet{}})
 	env.initial = initial
 	env.reg = stepkit.NewRegistry()
 	marketing.RegisterSteps(env.reg)
@@ -486,6 +486,6 @@ func wantMktCode(t *testing.T, err error, code int) {
 // rebuild 用当前依赖重新组装营销服务（换截帧能力时用），并重新挂上任务观察者。
 func (e *mktEnv) rebuild(frames MarketingFrames) {
 	e.svc = NewMarketingService(MarketingDeps{Repo: e.repo, Steps: e.reg, Resolver: e.resolver, Caller: e.caller, Models: e.models, Assets: e.assets,
-		Tasks: e.taskSvc, Canvases: e.canvases, Frames: frames, Credits: stepfake.Policy{Initial: e.initial}, Broadcaster: e.bc})
+		Tasks: e.taskSvc, Canvases: e.canvases, Frames: frames, Wallets: connectedWallet{}, Broadcaster: e.bc})
 	e.taskSvc.SetTaskObserver(e.svc)
 }

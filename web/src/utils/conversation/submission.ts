@@ -1,5 +1,5 @@
 import type { ModelInfo, RefKind } from "@/api/model/type";
-import { fanoutCount, quote } from "@/utils/pricing/quote";
+import { fanoutCount } from "@/utils/pricing/quote";
 import {
   acceptableRefKinds,
   buildTaskInput,
@@ -35,8 +35,6 @@ export type SendArgs = {
   params: Record<string, unknown>;
   /** 参考图 */
   refs: ComposerRef[];
-  /** 可用积分；还没拿到为 null */
-  available: number | null;
   /** 是否正在发送：发送期间不能重复提交 */
   sending: boolean;
 };
@@ -53,10 +51,6 @@ export type SendState = {
   input: Record<string, unknown>;
   /** 生成数量，也是结果格子数 */
   count: number;
-  /** 每个任务冻结的积分 */
-  creditsEach: number;
-  /** 本次一共冻结的积分 */
-  creditsTotal: number;
 };
 
 const blocked = (
@@ -69,8 +63,6 @@ const blocked = (
   tone: hint ? tone : null,
   input: {},
   count: 1,
-  creditsEach: 0,
-  creditsTotal: 0,
   ...rest,
 });
 
@@ -82,7 +74,7 @@ const blocked = (
  * @returns 判断结果
  */
 export function evaluateSend(args: SendArgs): SendState {
-  const { model, text, params, refs, available, sending } = args;
+  const { model, text, params, refs, sending } = args;
   if (sending) return blocked(null, null);
 
   // 1. 模型：清单没回来、加载失败、没有可用模型都不能发；
@@ -119,16 +111,10 @@ export function evaluateSend(args: SendArgs): SendState {
     return blocked(silent ? null : first[1], "warn");
   }
 
-  // 4. 计价：每个任务的积分 × 生成数量；只用于显示，下单以后端算的为准
+  // 4. 生成数量；TokenPay 直接在上游按实际调用扣费，平台不再估算或冻结积分。
   const spec = priceSpecOf(model.capabilities, built.input);
-  const creditsEach = quote(model.pricing, model.capabilities, spec);
   const count = fanoutCount(model.capabilities, spec.params);
-  const creditsTotal = creditsEach * count;
-  const result = { input: built.input, count, creditsEach, creditsTotal };
-
-  // 5. 余额：拿到了余额又不够才拦；还没拿到时交给后端兜底
-  if (available !== null && creditsTotal > available)
-    return blocked(`余额不足（需 ${creditsTotal}，可用 ${available}）`, "bad", result);
+  const result = { input: built.input, count };
 
   return { canSend: true, hint: null, tone: null, ...result };
 }

@@ -398,13 +398,13 @@ func itoaT(n int) string { return string(rune('0' + n)) }
 
 func TestMeService_Stats(t *testing.T) {
 	e := newMeEnv(t)
-	e.repo.stats = &model.UserTaskStats{Total: 10, Success: 6, Failed: 3, Last7d: 2, SpentCredits: 120}
+	e.repo.stats = &model.UserTaskStats{Total: 10, Success: 6, Failed: 3, Last7d: 2}
 	e.canvas.n = 4
 	v, err := e.svc.Stats(context.Background(), meUID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v.Total != 10 || v.Success != 6 || v.Failed != 3 || v.Last7d != 2 || v.SpentCredits != 120 || v.CanvasCount != 4 {
+	if v.Total != 10 || v.Success != 6 || v.Failed != 3 || v.Last7d != 2 || v.CanvasCount != 4 {
 		t.Fatalf("%+v", v)
 	}
 	if e.canvas.user != meUID {

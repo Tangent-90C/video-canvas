@@ -194,7 +194,7 @@ func TestAgentBridge_UnderstandVideoBoundaries(t *testing.T) {
 			t.Fatalf("不能降级: %+v", res)
 		}
 	})
-	t.Run("预算同时包含视频估算和本轮已花积分", func(t *testing.T) {
+	t.Run("历史预算和已花积分不拦截钱包视频理解", func(t *testing.T) {
 		e := newVideoEnv(t, model.AgentModeAll, false)
 		e.reg.snap.Model.Capabilities.Video, e.reg.snap.Model.APIFormat = true, "gemini"
 		e.reg.snap.Model.Pricing.Token = &modelcfg.TokenPrice{In: 1000, Out: 1000}
@@ -204,8 +204,8 @@ func TestAgentBridge_UnderstandVideoBoundaries(t *testing.T) {
 		e.bill.calls = append(e.bill.calls, &model.AgentModelCall{ID: 99, UserID: rc.UserID, RunID: rc.RunID})
 		e.bill.settled = append(e.bill.settled, repository.SettleCallInput{CallID: 99, Credits: 18, Purpose: "main"})
 		res := e.tool(t, e.tok, "canvas_inspect_video", map[string]any{"nodeId": "v1"})
-		if !res.IsError || e.str.calls != 0 || len(e.bill.calls) != 1 {
-			t.Fatalf("超出剩余预算不能发模型请求: %+v", res)
+		if res.IsError || e.str.calls == 0 || len(e.bill.calls) != 2 {
+			t.Fatalf("钱包视频理解不应受平台积分预算限制: %+v", res)
 		}
 	})
 	t.Run("请求留存脱敏且视频费用不改变主对话上下文大小", func(t *testing.T) {
@@ -224,8 +224,8 @@ func TestAgentBridge_UnderstandVideoBoundaries(t *testing.T) {
 				t.Fatalf("媒体不能进入留存: %s params=%s", saved, rec.Params)
 			}
 			usage, err := e.br.PlatformRunUsage(context.Background(), e.rcs[e.tok], 0)
-			if err != nil || usage.ContextTokens != 0 || usage.SpentCredits <= 0 {
-				t.Fatalf("视频应计费但不计入上下文: %+v err=%v", usage, err)
+			if err != nil || usage.ContextTokens != 0 || usage.SpentCredits != 0 {
+				t.Fatalf("视频不应产生平台积分且不计入上下文: %+v err=%v", usage, err)
 			}
 		}
 	})

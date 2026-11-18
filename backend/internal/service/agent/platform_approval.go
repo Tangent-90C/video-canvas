@@ -13,7 +13,7 @@ import (
 
 // 平台 API 里审批的三个无状态操作。方案二里审批记录和状态流转归 Agent 服务，Go 只保留和钱、画布、生成任务有关的规则：
 //
-//	预估（ProposeApproval）：工具参数 → 审批内容和预估积分，不落库；
+//	预估（ProposeApproval）：工具参数 → 审批内容，不落库；
 //	解析（ResolveApproval）：用户的决定 → 实际批准了什么，纯逻辑；
 //	执行（ExecuteApproval）：批准的内容 → 删除或创建生成任务，并写出给模型看的结果文字。
 //
@@ -43,7 +43,7 @@ type ApprovalProposal struct {
 	Terminate    bool            `json:"terminate"`         // 本轮执行完这一批工具后停下，等用户决定
 }
 
-// ProposeApproval 为一次需要用户决定的工具调用（生成、删除、提问）算出审批内容和预估积分，不创建审批、不发事件、不改任何状态。
+// ProposeApproval 为一次需要用户决定的工具调用（生成、删除、提问）算出审批内容，不创建审批、不发事件、不改任何状态。
 // kind 取 model.ApprovalGenerate / ApprovalDelete / ApprovalAsk；任务模式的限制在这里强制。
 // 工具层的失败（参数不对、节点没有产物、没选模型……）是 IsError 的结果；上下文或 kind 不合法才返回 error。
 func (b *AgentBridge) ProposeApproval(ctx context.Context, rc RunContext, kind string, args json.RawMessage) (*ApprovalProposal, error) {
@@ -150,7 +150,7 @@ type ApprovalExecution struct {
 //
 // 执行是幂等的，键是审批 id：Agent 服务在记录结果之前崩溃，重启后重试同一个审批，得到的是第一次的结果，
 // 不会再删一次（节点已经没了，会误报失败）、再提交一次任务、再扣一次积分。
-// 业务上的失败（节点已不存在、积分不足、模型下线……）是 Status=failed 的结果，文字里写明原因，模型据此决定下一步；
+// 业务上的失败（节点已不存在、钱包未连接、模型下线……）是 Status=failed 的结果，文字里写明原因，模型据此决定下一步；
 // 请求被取消这类「不知道有没有执行」的情况返回 error，让调用方重试。
 func (b *AgentBridge) ExecuteApproval(ctx context.Context, rc RunContext, kind string, approvalID uint64, toolCallID string, o ApprovalOutcome) (*ApprovalExecution, error) {
 	if err := rc.validate(); err != nil {

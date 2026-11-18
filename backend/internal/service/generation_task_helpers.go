@@ -39,14 +39,15 @@ func taskView(t *model.GenerationTask) *model.GenerationTaskView {
 		Outputs:         outputs,
 		ErrorCode:       t.ErrorCode,
 		ErrorMessage:    t.ErrorMessage,
-		Credits:         t.Credits,
-		Wallet:          t.Wallet,
-		ChargedCredits:  t.ChargedCredits,
-		Version:         t.Version,
-		DeadlineAt:      t.DeadlineAt,
-		CreatedAt:       t.CreatedAt,
-		SubmittedAt:     t.SubmittedAt,
-		FinishedAt:      t.FinishedAt,
+		// 平台不再结算或展示积分；历史字段保留为 0，兼容旧客户端。
+		Credits:        0,
+		Wallet:         t.Wallet,
+		ChargedCredits: zeroCredits(),
+		Version:        t.Version,
+		DeadlineAt:     t.DeadlineAt,
+		CreatedAt:      t.CreatedAt,
+		SubmittedAt:    t.SubmittedAt,
+		FinishedAt:     t.FinishedAt,
 	}
 }
 
@@ -56,6 +57,12 @@ func taskRefOf(t *model.GenerationTask) string {
 		return t.TaskRef
 	}
 	return idcodec.Encode(t.ID)
+}
+
+// zeroCredits 返回历史 charged_credits 字段的兼容值。
+func zeroCredits() *int {
+	zero := 0
+	return &zero
 }
 
 // providerKeyOf 取快照里的渠道 key，写入任务表用于查询与日志关联。

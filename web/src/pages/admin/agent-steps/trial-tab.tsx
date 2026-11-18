@@ -27,7 +27,7 @@ import {
 
 import type { TrialRun } from "./use-steps";
 
-/** 试跑结果的一列：候选或当前绑定，写格式校验、耗时 / token / 积分、硬错误、软问题和输出预览 */
+/** 试跑结果的一列：候选或当前绑定，写格式校验、耗时 / token、硬错误、软问题和输出预览 */
 function TrialColumn({
   trial,
   title,
@@ -81,12 +81,11 @@ function TrialColumn({
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-4 gap-2 text-xs">
+          <div className="grid grid-cols-3 gap-2 text-xs">
             {[
               ["耗时", `${(trial.duration_ms / 1000).toFixed(1)}s`],
               ["输入", trial.input_tokens.toLocaleString()],
               ["输出", trial.output_tokens.toLocaleString()],
-              ["积分", `✦${trial.credits}`],
             ].map(([label, value]) => (
               <div
                 key={label}
@@ -224,6 +223,9 @@ export function TrialTab({
             </span>
           )}
         </Segmented>
+
+        <span className="text-muted-foreground">费用</span>
+        <span className="text-muted-foreground">按 TokenDance 实际账单</span>
 
         <span className="text-muted-foreground">对比</span>
         <label className="flex items-center gap-2">

@@ -174,7 +174,7 @@ func (h *AdminAIHandler) DryRun(c *gin.Context) {
 	response.OK(c, res)
 }
 
-// TestRun 用已保存的配置真实跑一次（不扣积分），返回试跑任务视图，前端随后轮询 GET /test-runs/:id。
+// TestRun 用已保存的配置真实跑一次（费用由当前管理员自己的 TokenPay 钱包承担），返回试跑任务视图，前端随后轮询 GET /test-runs/:id。
 func (h *AdminAIHandler) TestRun(c *gin.Context) {
 	key, ok := pathKey(c)
 	if !ok {

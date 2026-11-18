@@ -3,6 +3,8 @@
 
 package modelcfg
 
+import "encoding/json"
+
 // 计费方式。
 const (
 	BillingPerCall   = "per_call"   // 按次：每个任务固定积分
@@ -68,4 +70,22 @@ func (p Pricing) Public() Pricing {
 		p.Tiers = tiers
 	}
 	return p
+}
+
+// UnmarshalJSON 让历史 pricing 成为宽容的兼容字段：结构、单价类型或嵌套值损坏时保留零值，
+// 不让已经停用的平台积分数据阻止模型读取、保存或启用。新配置不应再写这个字段。
+func (p *Pricing) UnmarshalJSON(data []byte) error {
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(data, &obj); err != nil {
+		*p = Pricing{}
+		return nil
+	}
+	type plain Pricing
+	var decoded plain
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		*p = Pricing{}
+		return nil
+	}
+	*p = Pricing(decoded)
+	return nil
 }

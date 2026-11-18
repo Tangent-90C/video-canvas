@@ -1,14 +1,8 @@
 import type { AdminRole } from "@/api/admin/ai/type";
-import type {
-  CreditMode,
-  LedgerType,
-  UserListItem,
-  UserRole,
-  UserStatus,
-} from "@/api/admin/users/type";
+import type { UserListItem, UserRole, UserStatus } from "@/api/admin/users/type";
 
 /**
- * 用户管理的纯逻辑：权限禁用原因、积分调整校验与预览、批量跳过规则、时间与 UA 文案。
+ * 用户管理的纯逻辑：权限禁用原因、并发校验、批量跳过规则、时间与 UA 文案。
  * 规则的出处是 docs/design/用户管理/接口契约.md 第 3、4 节；后端仍会在 service 层再判断一次，
  * 这里只是让界面提前禁用并说明原因。
  */
@@ -33,16 +27,6 @@ export const USER_STATUS_LABEL: Record<UserStatus, string> = {
   disabled: "已停用",
 };
 
-/** 积分流水类型显示名 */
-export const LEDGER_TYPE_LABEL: Record<LedgerType, string> = {
-  initial: "赠送",
-  freeze: "冻结",
-  settle: "结算",
-  refund: "退款",
-  admin_adjust: "管理员调整",
-  recharge: "充值",
-};
-
 /** 管理员动作显示名（审计日志的 action） */
 export const AUDIT_ACTION_LABEL: Record<string, string> = {
   "user.credit_adjust": "调整了积分",
@@ -60,7 +44,7 @@ export type Actor = { id: number; role: AdminRole };
 export type Target = { id: number; role: UserRole };
 
 /** 需要判断权限的动作；cancel 是「封禁并取消任务」，规则与封禁相同 */
-export type UserAction = "ban" | "cancel" | "role" | "reset" | "credit" | "limit";
+export type UserAction = "ban" | "cancel" | "role" | "reset" | "limit";
 
 /**
  * 某个动作被禁用的原因，null 表示可以操作。判断顺序：先看是不是仅 super_admin，
@@ -78,13 +62,9 @@ export function denyReason(actor: Actor | null, target: Target, action: UserActi
   if (self && (action === "ban" || action === "cancel" || action === "role")) {
     return "不能对自己执行此操作";
   }
-  if (self && action === "credit" && !superAdmin) return "admin 不能给自己调整积分";
   if (!self && !superAdmin && target.role !== "user") return "admin 不能操作管理员账号";
   return null;
 }
-
-/** 后端备注上限（字） */
-export const NOTE_MAX = 100;
 
 /** 数值输入最多 9 位：远小于安全整数，也挡住手滑多按的 0 */
 const AMOUNT_MAX_DIGITS = 9;
@@ -98,87 +78,6 @@ export function parseAmount(text: string): number | null {
   const value = text.trim();
   if (!/^\d+$/.test(value) || value.length > AMOUNT_MAX_DIGITS) return null;
   return Number(value);
-}
-
-/** 积分预览的结果 */
-export type CreditPreview = {
-  /** 调整后的可用积分；没填数值时为 null */
-  after: number | null;
-  /** 不能提交的原因（只有扣减超额会给出文字） */
-  error: string | null;
-  /** 数值本身是否可以提交（备注另算） */
-  valid: boolean;
-};
-
-/**
- * 积分调整的预览与校验，三种方式都以可用积分为准：
- * 增加 / 扣减在可用积分上加减，「设为」把可用积分设为指定值（后端换算为 余额 = 指定值 + 冻结额）。
- * @param input 方式、数值（null 表示没填）、当前可用积分
- */
-export function creditPreview(input: {
-  mode: CreditMode;
-  amount: number | null;
-  available: number;
-}): CreditPreview {
-  const { mode, amount, available } = input;
-  if (amount === null) return { after: null, error: null, valid: false };
-  if (mode === "set") return { after: amount, error: null, valid: true };
-  if (mode === "add") return { after: available + amount, error: null, valid: amount > 0 };
-  if (amount > available) {
-    return { after: available - amount, error: `最多可扣 ${available}`, valid: false };
-  }
-  return { after: available - amount, error: null, valid: amount > 0 };
-}
-
-/**
- * 可用积分的变化量（带正负号）
- * @param mode 调整方式
- * @param amount 数值
- * @param available 调整前的可用积分
- */
-export function creditDelta(mode: CreditMode, amount: number, available: number): number {
-  if (mode === "add") return amount;
-  if (mode === "sub") return -amount;
-  return amount - available;
-}
-
-/**
- * 积分调整的「撤销」请求：反向的 add / sub，备注写「撤销：原备注」，不删除原流水
- * @param delta 原调整造成的可用积分变化量
- * @param note 原备注
- * @returns 请求体；变化量为 0 时没有可撤销的，返回 null
- */
-export function creditUndoRequest(
-  delta: number,
-  note: string,
-): { mode: "add" | "sub"; amount: number; note: string } | null {
-  if (delta === 0) return null;
-  return {
-    mode: delta > 0 ? "sub" : "add",
-    amount: Math.abs(delta),
-    note: `撤销：${note}`.slice(0, NOTE_MAX),
-  };
-}
-
-/**
- * 备注校验：必填，1 到 100 字
- * @returns 错误文案；合法为 null
- */
-export function validateNote(note: string): string | null {
-  const value = note.trim();
-  if (!value) return "请填写备注";
-  if (value.length > NOTE_MAX) return `备注最多 ${NOTE_MAX} 字`;
-  return null;
-}
-
-/**
- * 点快捷档：当前没有数值就直接填入，有数值则累加（+100 再点 +100 = 200）
- * @param current 输入框当前文本
- * @param chip 快捷档的数值
- * @returns 新的输入框文本
- */
-export function stackChip(current: string, chip: number): string {
-  return String((parseAmount(current) ?? 0) + chip);
 }
 
 /** 并发上限的范围，与后端一致 */
@@ -230,7 +129,7 @@ export function concurrencyView(
 }
 
 /** 批量操作的种类 */
-export type BatchKind = "ban" | "unban" | "credit";
+export type BatchKind = "ban" | "unban";
 
 /** 批量计划里用到的用户字段 */
 export type BatchUser = Pick<UserListItem, "id" | "role" | "status" | "username">;
@@ -252,7 +151,7 @@ export type BatchPlan<T extends BatchUser> = {
  * 批量里对自己的封禁 / 启用说「不能封禁自己」，其余沿用 denyReason。
  * @param actor 当前管理员
  * @param users 勾选的用户
- * @param kind 批量封禁 / 启用 / 发积分
+ * @param kind 批量封禁 / 启用
  */
 export function batchPlan<T extends BatchUser>(
   actor: Actor | null,
@@ -263,8 +162,8 @@ export function batchPlan<T extends BatchUser>(
   const noop: T[] = [];
   const skipped: { user: T; reason: string }[] = [];
   for (const user of users) {
-    let reason = denyReason(actor, user, kind === "credit" ? "credit" : "ban");
-    if (reason && actor && user.id === actor.id && kind !== "credit") reason = "不能封禁自己";
+    let reason = denyReason(actor, user, "ban");
+    if (reason && actor && user.id === actor.id) reason = "不能封禁自己";
     if (reason) {
       skipped.push({ user, reason });
       continue;

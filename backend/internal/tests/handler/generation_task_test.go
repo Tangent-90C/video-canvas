@@ -244,10 +244,12 @@ func (fakeGenTaskAssets) Open(context.Context, uint64, uint64) (*provider.AssetF
 // 测试装配
 // ---------------------------------------------------------------------------
 
-// genTaskLimits 实现 service.TaskLimits：固定的并发上限与初始积分（生产里来自后台系统设置）。
-type genTaskLimits struct{ maxActive, initial int }
+// genTaskLimits 实现 service.TaskLimits：固定的并发上限。
+type genTaskLimits struct{ maxActive int }
 
-func (l genTaskLimits) InitialCredits(context.Context) (int, error) { return l.initial, nil }
+type connectedWalletForHandler struct{}
+
+func (connectedWalletForHandler) Connected(context.Context, uint64) (bool, error) { return true, nil }
 func (l genTaskLimits) MaxActiveTasks(context.Context, uint64) (int, error) {
 	return l.maxActive, nil
 }
@@ -281,7 +283,7 @@ func newGenTaskEnv(t *testing.T) *genTaskEnv {
 					}},
 					Pricing: modelcfg.Pricing{Billing: modelcfg.BillingPerCall, Unit: 10},
 				},
-				Channel: provider.ChannelSnapshot{Key: "ch1", PluginKey: "demo"},
+				Channel: provider.ChannelSnapshot{Key: "ch1", PluginKey: "demo", Wallet: true},
 				Plugin:  provider.PluginSnapshot{Key: "demo", Version: "1.0.0"},
 			},
 		},
@@ -290,7 +292,7 @@ func newGenTaskEnv(t *testing.T) *genTaskEnv {
 	env.svc = service.NewGenerationTaskService(service.GenerationTaskDeps{
 		Repo: env.repo, Registry: env.registry, Executor: fakeGenTaskExecutor{}, Assets: fakeGenTaskAssets{},
 		Broadcaster: ws.NopBroadcaster{},
-		Limits:      genTaskLimits{maxActive: 2, initial: 50},
+		Limits:      genTaskLimits{maxActive: 3}, Wallets: connectedWalletForHandler{},
 	},
 		service.WithInputValidator(func(_ string, _ modelcfg.Capabilities, in map[string]any) (map[string]any, []modelcfg.FieldError) {
 			if s, _ := in["prompt"].(string); s == "" {
@@ -309,7 +311,6 @@ func newGenTaskEnv(t *testing.T) *genTaskEnv {
 	v1.GET("/generation-tasks", h.List)
 	v1.GET("/generation-tasks/:id", h.Get)
 	v1.POST("/generation-tasks/:id/cancel", h.Cancel)
-	v1.GET("/credits", h.Credits)
 	env.router = r
 	return env
 }
@@ -388,7 +389,7 @@ func TestGenerationTaskHandler_Create(t *testing.T) {
 		})
 	}
 
-	t.Run("同一个 Idempotency-Key 重复提交返回同一个任务且只冻结一次", func(t *testing.T) {
+	t.Run("同一个 Idempotency-Key 重复提交返回同一个任务且不写平台积分", func(t *testing.T) {
 		env := newGenTaskEnv(t)
 		h := map[string]string{"Idempotency-Key": "same"}
 		_, first := env.call(t, http.MethodPost, "/api/v1/generation-tasks", genTaskValidBody, h)
@@ -399,22 +400,22 @@ func TestGenerationTaskHandler_Create(t *testing.T) {
 		if genTaskItem(t, first, 0)["task"].(map[string]any)["id"] != genTaskItem(t, second, 0)["task"].(map[string]any)["id"] {
 			t.Fatal("应返回同一个任务")
 		}
-		if env.repo.credits[1].Frozen != 10 || len(env.repo.tasks) != 1 {
-			t.Fatalf("只应创建一个任务、冻结一次：%+v", env.repo.credits[1])
+		if len(env.repo.tasks) != 1 || len(env.repo.credits) != 0 || len(env.repo.ledger) != 0 {
+			t.Fatalf("只应创建一个任务，且不写平台积分：tasks=%d credits=%+v ledger=%+v", len(env.repo.tasks), env.repo.credits, env.repo.ledger)
 		}
 	})
 
-	t.Run("节点级错误：202 + 该节点的 error（积分不足 402 / 并发已满 429）", func(t *testing.T) {
+	t.Run("节点级错误：202 + 该节点的 error（并发已满 429）", func(t *testing.T) {
 		for _, c := range []struct {
 			name   string
 			setup  func(e *genTaskEnv)
 			status int
 			code   int
 		}{
-			{"积分不足", func(e *genTaskEnv) { e.repo.credits[1] = &model.UserCredit{UserID: 1, Balance: 5} }, http.StatusPaymentRequired, errcode.ErrInsufficientCredits.Code},
 			{"并发已满", func(e *genTaskEnv) {
 				e.repo.add(model.GenerationTask{UserID: 1, Status: model.TaskRunning})
 				e.repo.add(model.GenerationTask{UserID: 1, Status: model.TaskPending})
+				e.repo.add(model.GenerationTask{UserID: 1, Status: model.TaskRunning})
 			}, http.StatusTooManyRequests, errcode.ErrTooManyTasks.Code},
 		} {
 			t.Run(c.name, func(t *testing.T) {
@@ -471,47 +472,39 @@ func TestGenerationTaskHandler_Create(t *testing.T) {
 		}
 	})
 
-	t.Run("node_ids 全是同一个节点、余额只够 2 个：前 2 项有任务，第 3 项积分不足", func(t *testing.T) {
+	t.Run("node_ids 全是同一个节点：3 项都创建钱包任务", func(t *testing.T) {
 		env := newGenTaskEnv(t)
-		env.repo.credits[1] = &model.UserCredit{UserID: 1, Balance: 25}
 		env.registry.snap.Model.Capabilities.Params[0].Options = []any{1.0, 2.0, 3.0}
 		body := `{"kind":"video","model_id":"m1","node_ids":["a","a","a"],"input":{"prompt":"猫","count":3}}`
 		status, resp := env.call(t, http.MethodPost, "/api/v1/generation-tasks", body, nil)
 		if status != http.StatusAccepted {
 			t.Fatalf("应是 202：%d %v", status, resp)
 		}
-		for i := 0; i < 2; i++ {
+		for i := 0; i < 3; i++ {
 			if genTaskItem(t, resp, i)["task"] == nil {
 				t.Fatalf("第 %d 项应有任务：%v", i, resp)
 			}
 		}
-		if e, _ := genTaskItem(t, resp, 2)["error"].(map[string]any); e == nil || e["code"] != float64(errcode.ErrInsufficientCredits.Code) {
-			t.Fatalf("第 3 项应是积分不足：%v", resp)
-		}
-		if env.repo.credits[1].Frozen != 20 || len(env.repo.tasks) != 2 {
-			t.Fatalf("应建 2 个任务、各冻结 10：%+v %d", env.repo.credits[1], len(env.repo.tasks))
+		if len(env.repo.tasks) != 3 || len(env.repo.credits) != 0 || len(env.repo.ledger) != 0 {
+			t.Fatalf("应建 3 个任务且不写平台积分：tasks=%d credits=%+v", len(env.repo.tasks), env.repo.credits)
 		}
 	})
 
-	t.Run("生成 3 个、余额只够 2 个：前 2 个节点成功，第 3 个节点积分不足", func(t *testing.T) {
+	t.Run("生成 3 个：3 个节点都创建钱包任务，重试全部幂等", func(t *testing.T) {
 		env := newGenTaskEnv(t)
-		env.repo.credits[1] = &model.UserCredit{UserID: 1, Balance: 25}
 		env.registry.snap.Model.Capabilities.Params[0].Options = []any{1.0, 2.0, 3.0}
 		body := `{"kind":"video","model_id":"m1","node_ids":["a","b","c"],"input":{"prompt":"猫","count":3}}`
 		status, resp := env.call(t, http.MethodPost, "/api/v1/generation-tasks", body, map[string]string{"Idempotency-Key": "multi"})
 		if status != http.StatusAccepted {
 			t.Fatalf("应是 202：%d %v", status, resp)
 		}
-		for i, node := range []string{"a", "b"} {
+		for i, node := range []string{"a", "b", "c"} {
 			if it := genTaskItem(t, resp, i); it["node_id"] != node || it["task"].(map[string]any)["node_id"] != node {
 				t.Fatalf("第 %d 项应是节点 %s 的任务：%v", i, node, it)
 			}
 		}
-		if e, _ := genTaskItem(t, resp, 2)["error"].(map[string]any); e == nil || e["code"] != float64(errcode.ErrInsufficientCredits.Code) {
-			t.Fatalf("第 3 项应是积分不足：%v", resp)
-		}
-		if env.repo.credits[1].Frozen != 20 || len(env.repo.tasks) != 2 {
-			t.Fatalf("应建 2 个任务、各冻结 10：%+v %d", env.repo.credits[1], len(env.repo.tasks))
+		if len(env.repo.tasks) != 3 || len(env.repo.credits) != 0 || len(env.repo.ledger) != 0 {
+			t.Fatalf("应建 3 个任务且不写平台积分：tasks=%d credits=%+v", len(env.repo.tasks), env.repo.credits)
 		}
 		for _, task := range env.repo.tasks {
 			var in map[string]any
@@ -521,15 +514,15 @@ func TestGenerationTaskHandler_Create(t *testing.T) {
 			}
 		}
 
-		// 充值、腾出并发名额后重试同一个 key：已创建的原样返回，失败的节点重新尝试
-		env.repo.credits[1].Balance = 100
-		env.repo.tasks[genTaskTaskID(t, resp, 1)].Status = model.TaskSucceeded
+		// 重试同一个 key：全部原样返回
 		_, again := env.call(t, http.MethodPost, "/api/v1/generation-tasks", body, map[string]string{"Idempotency-Key": "multi"})
-		if genTaskItem(t, again, 0)["task"].(map[string]any)["id"] != genTaskItem(t, resp, 0)["task"].(map[string]any)["id"] {
-			t.Fatal("重试时第 1 个任务应原样返回")
+		for i := 0; i < 3; i++ {
+			if genTaskItem(t, again, i)["task"].(map[string]any)["id"] != genTaskItem(t, resp, i)["task"].(map[string]any)["id"] {
+				t.Fatalf("重试时第 %d 个任务应原样返回", i)
+			}
 		}
-		if genTaskItem(t, again, 2)["task"] == nil || len(env.repo.tasks) != 3 {
-			t.Fatalf("重试时第 3 个节点应创建成功：%v", again)
+		if len(env.repo.tasks) != 3 {
+			t.Fatalf("重试不应多建任务：%d", len(env.repo.tasks))
 		}
 	})
 
@@ -688,10 +681,10 @@ func TestGenerationTaskHandler_Cancel(t *testing.T) {
 		wantCode   int
 		wantCharge bool
 	}{
-		{"尚未提交给上游：取消并退回积分", model.GenerationTask{UserID: 1, Status: model.TaskPending, Credits: 10}, "", http.StatusOK, 0, false},
-		{"同步请求已发出：取消并扣除积分", model.GenerationTask{UserID: 1, Status: model.TaskPending, Credits: 10, SubmittedAt: &submittedAt}, "", http.StatusOK, 0, true},
-		{"上游排队中：取消并扣除积分", model.GenerationTask{UserID: 1, Status: model.TaskQueued, Credits: 10}, "", http.StatusOK, 0, true},
-		{"上游生成中：取消并扣除积分", model.GenerationTask{UserID: 1, Status: model.TaskRunning, Credits: 10}, "", http.StatusOK, 0, true},
+		{"尚未提交给上游：取消", model.GenerationTask{UserID: 1, Status: model.TaskPending, Wallet: true}, "", http.StatusOK, 0, false},
+		{"同步请求已发出：取消", model.GenerationTask{UserID: 1, Status: model.TaskPending, Wallet: true, SubmittedAt: &submittedAt}, "", http.StatusOK, 0, true},
+		{"上游排队中：取消", model.GenerationTask{UserID: 1, Status: model.TaskQueued, Wallet: true}, "", http.StatusOK, 0, true},
+		{"上游生成中：取消", model.GenerationTask{UserID: 1, Status: model.TaskRunning, Wallet: true}, "", http.StatusOK, 0, true},
 		{"转存中的任务返回 409 + 40005", model.GenerationTask{UserID: 1, Status: model.TaskFinalizing, Credits: 10}, "", http.StatusConflict, errcode.ErrTaskNotCancelable.Code, false},
 		{"已结束的任务返回 409 + 40005", model.GenerationTask{UserID: 1, Status: model.TaskSucceeded, Credits: 10}, "", http.StatusConflict, errcode.ErrTaskNotCancelable.Code, false},
 		{"别人的任务返回 404 + 40004", model.GenerationTask{UserID: 2, Status: model.TaskRunning}, "", http.StatusNotFound, errcode.ErrTaskNotFound.Code, false},
@@ -700,7 +693,6 @@ func TestGenerationTaskHandler_Cancel(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			env := newGenTaskEnv(t)
-			env.repo.credits[1] = &model.UserCredit{UserID: 1, Balance: 50, Frozen: 10}
 			task := env.repo.add(tt.task)
 			path := "/api/v1/generation-tasks/" + genTaskItoa(task.ID) + "/cancel"
 			if tt.path != "" {
@@ -717,43 +709,24 @@ func TestGenerationTaskHandler_Cancel(t *testing.T) {
 			if data["status"] != "canceled" {
 				t.Fatalf("状态应为 canceled：%v", data)
 			}
-			wantBalance := 50
-			if tt.wantCharge {
-				wantBalance = 40
-				if data["charged_credits"] != float64(10) || !strings.Contains(data["error_message"].(string), "不退回") {
-					t.Fatalf("进入生成后的取消应显示扣除 10 积分且不退回：%v", data)
-				}
-			} else if data["charged_credits"] != nil {
-				t.Fatalf("未提交的任务不应扣除积分：%v", data)
+			if charged, ok := data["charged_credits"]; ok && charged != nil && charged != float64(0) {
+				t.Fatalf("平台积分已停用，charged_credits 只能为空或 0：%v", data)
 			}
-			if acc := env.repo.credits[1]; acc.Frozen != 0 || acc.Balance != wantBalance {
-				t.Fatalf("取消后的积分应为余额 %d、冻结 0：%+v", wantBalance, acc)
+			if len(env.repo.credits) != 0 || len(env.repo.ledger) != 0 {
+				t.Fatalf("取消不应触碰平台积分：credits=%+v ledger=%+v", env.repo.credits, env.repo.ledger)
 			}
 		})
 	}
 }
 
 func TestGenerationTaskHandler_Credits(t *testing.T) {
-	t.Run("返回余额 / 冻结 / 可用", func(t *testing.T) {
-		env := newGenTaskEnv(t)
-		env.repo.credits[1] = &model.UserCredit{UserID: 1, Balance: 40, Frozen: 15}
-		status, resp := env.call(t, http.MethodGet, "/api/v1/credits", "", nil)
-		if status != http.StatusOK || genTaskRespCode(resp) != 0 {
-			t.Fatalf("实际 %d / %v", status, resp)
-		}
-		data := resp["data"].(map[string]any)
-		if data["balance"] != float64(40) || data["frozen"] != float64(15) || data["available"] != float64(25) {
-			t.Fatalf("积分不对：%v", data)
-		}
-	})
-	t.Run("账户不存在时惰性创建并返回初始积分", func(t *testing.T) {
-		env := newGenTaskEnv(t)
-		_, resp := env.call(t, http.MethodGet, "/api/v1/credits", "", nil)
-		data := resp["data"].(map[string]any)
-		if data["balance"] != float64(50) || data["available"] != float64(50) {
-			t.Fatalf("积分不对：%v", data)
-		}
-	})
+	env := newGenTaskEnv(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/credits", nil)
+	w := httptest.NewRecorder()
+	env.router.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("平台积分接口应已移除，实际 HTTP %d", w.Code)
+	}
 }
 
 func genTaskItoa(n uint64) string {

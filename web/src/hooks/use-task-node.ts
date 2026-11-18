@@ -11,7 +11,7 @@ import { useNow } from "@/hooks/use-now";
 import { useRemoteModels } from "@/hooks/use-models";
 import type { TaskGeneration, TaskNodeKind } from "@/hooks/use-task-generation";
 import { ANIMATED_EDGE_OPTIONS, REMOTE_KIND_OF_NODE } from "@/constants/canvas";
-import { useCreditsStore } from "@/store/credits";
+import { useWalletStore } from "@/store/wallet";
 import { useTask, useTasksStore } from "@/store/tasks";
 import type { CanvasEdge, CanvasNode, CanvasNodeData, ParamAsset } from "@/types";
 import { isGenerating } from "@/utils/canvas/outputs";
@@ -41,7 +41,7 @@ import {
   type RefKey,
 } from "@/utils/tasks/capabilities";
 import { deriveVideoNodeView } from "@/utils/tasks/node-view";
-import { fanoutCount, quote } from "@/utils/pricing/quote";
+import { fanoutCount } from "@/utils/pricing/quote";
 
 /** 节点的连接点：左进右出各一个 */
 const SINGLE_HANDLES: NodeCardHandle[] = [
@@ -79,7 +79,7 @@ export function useTaskNode(
   const { updateNodeData, setEdges, getNodes, getEdges } = useReactFlow<CanvasNode, CanvasEdge>();
   const history = useCanvasHistoryContext();
   const remote = useRemoteModels(REMOTE_KIND_OF_NODE[nodeKind]);
-  const availableCredits = useCreditsStore((state) => state.credits?.available ?? null);
+  const walletConnected = useWalletStore((state) => !!state.view?.connected);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [pendingSwitch, setPendingSwitch] = useState<PendingModelSwitch | null>(null);
 
@@ -290,25 +290,12 @@ export function useTaskNode(
     [caps, refKinds],
   );
 
-  // ---- 本地计价：每个任务的积分 × 生成数量；只用于显示，下单以后端算的为准 ----
+  // ---- 本地计价：只保留生成数量；钱包模型的费用由 TokenDance 上游直接结算 ----
   const price = useMemo(() => {
     if (!model) return null;
     const spec = priceSpecOf(caps, built.input);
-    const one = quote(model.pricing, caps, spec);
     const count = fanoutCount(caps, spec.params);
-    const billing = model.pricing?.billing;
-    const unit =
-      billing === "per_second"
-        ? `${one / Math.max(1, Number(spec.params.duration) || 1)} 积分/秒 × ${spec.params.duration} 秒`
-        : `${one} 积分`;
-    return {
-      one,
-      count,
-      total: one * count,
-      isMax: billing === "token",
-      detail:
-        billing === "token" ? "按 Token 预估上限" : count > 1 ? `${unit} × ${count} 个` : unit,
-    };
+    return { one: 0, count, total: 0, isMax: false, detail: "TokenDance 实际账单" };
   }, [built.input, caps, model]);
 
   // 节点只有一个输入口：旧画布里挂在具名口上的线改回默认口，免得 xyflow 找不到 handle 把线藏掉
@@ -346,7 +333,9 @@ export function useTaskNode(
             ? "该模型已下线，请换一个模型"
             : !model
               ? "暂无可用模型"
-              : (firstError ?? null);
+              : model.wallet && !walletConnected
+                ? "请先连接 TokenPay 钱包"
+                : (firstError ?? null);
 
   /**
    * 提交失败就地提示在提示词面板里，全局错误 toast 由请求层统一弹出。
@@ -357,23 +346,21 @@ export function useTaskNode(
     async (extraPatch?: (taskIds: string[]) => Partial<CanvasNodeData>): Promise<string | null> => {
       if (blockedReason) return blockedReason;
       if (!model) return "暂无可用模型";
+      if (model.wallet && !walletConnected) return "请先连接 TokenPay 钱包";
       setSubmitError(null);
       const input = built.input;
-      const expectedCredits = price && !price.isMax ? price.one : undefined;
       const outcome = await generation.submit({
         modelKey: model.key,
         input,
         currentSrc: data.src,
         count: price?.count ?? 1,
-        // Token 计费的预估不含固定系统提示（画布拿不到），和后端本来就会不同，不比对
-        expectedCredits,
         extraPatch,
       });
       if (outcome.ok) return null;
       setSubmitError(outcome.error.message);
       return outcome.error.message;
     },
-    [blockedReason, built.input, data.src, generation, model, price],
+    [blockedReason, built.input, data.src, generation, model, price, walletConnected],
   );
 
   /** 取消本节点全部进行中的任务（一批任务时是 pendingTaskIds，否则是 taskId）；已出的图保留 */
@@ -573,7 +560,7 @@ export function useTaskNode(
     handles,
     // 提交
     price,
-    availableCredits,
+    walletConnected,
     blockedReason,
     submit,
     submitting: generation.submitting,

@@ -107,7 +107,6 @@ function SwitchModelDialog({ vm }: { vm: TaskNodeModel }) {
 const INTERRUPTED_VIEW: VideoNodeView = {
   phase: "failed",
   message: "上传已中断，请删除后重新上传",
-  refunded: false,
   taskRef: null,
 };
 
@@ -145,7 +144,7 @@ export function NodeStatusLabel({
 
 /**
  * 节点下方的生成面板（设计稿 6.4、6.7）：生成方式 Tabs、引用条、提示词（可 @ 素材）、
- * 底栏的模型 / 参数摘要 / 积分 + 发送。四种生成节点共用，kind 决定占位提示与图标。
+ * 底栏的模型 / 参数摘要 / 公开价目 + 发送。四种生成节点共用，kind 决定占位提示与图标。
  */
 export function TaskPromptPanel({
   vm,
@@ -222,11 +221,7 @@ export function TaskPromptPanel({
         onModelChange={vm.setModel}
         modelLabel={modelLabel}
         modelInvalid={vm.offline || modelsStatus === "error"}
-        credits={vm.price?.total}
-        creditsIsMax={vm.price?.isMax}
-        creditsDetail={vm.price?.detail}
         count={vm.price?.count}
-        availableCredits={vm.availableCredits}
         running={vm.running}
         submitting={vm.submitting}
         onSubmit={() => void vm.submit()}

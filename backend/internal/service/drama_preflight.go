@@ -69,7 +69,7 @@ func (s *DramaService) Preflight(ctx context.Context, userID uint64, req *DramaP
 	}
 	// 2. 规则认不出体裁、用户也没指定时，让 AI 看开头 / 中间 / 结尾的采样判断；失败保持 unknown 由用户手选。
 	if p.KindGuess == "unknown" && req.SourceKind == "" {
-		if kind, reason, ok := s.guessKindByAI(ctx, req.TextModel, p.Text); ok {
+		if kind, reason, ok := s.guessKindByAI(ctx, userID, req.TextModel, p.Text); ok {
 			ruleSignals := p.KindSignals
 			p = drama.Preflight(source, kind)
 			p.KindGuess = kind
@@ -94,9 +94,9 @@ func (s *DramaService) Preflight(ctx context.Context, userID uint64, req *DramaP
 // kindGuessTimeout 预检里 AI 判断体裁的最长等待；超时按认不出处理，不拖慢上传。
 const kindGuessTimeout = 30 * time.Second
 
-// guessKindByAI 让文本模型判断原文是剧本还是小说。只发一小段采样，平台承担这次调用，不向用户扣积分；
+// guessKindByAI 让文本模型判断原文是剧本还是小说。只发一小段采样，使用用户自己的 TokenPay 钱包；
 // 模型不可用、超时、输出不合规一律返回 ok=false，调用方保持 unknown 让用户手选。
-func (s *DramaService) guessKindByAI(ctx context.Context, modelKey, text string) (kind, reason string, ok bool) {
+func (s *DramaService) guessKindByAI(ctx context.Context, userID uint64, modelKey, text string) (kind, reason string, ok bool) {
 	snap, err := s.resolvePlanningModel(ctx, modelKey)
 	if err != nil {
 		return "", "", false
@@ -104,7 +104,7 @@ func (s *DramaService) guessKindByAI(ctx context.Context, modelKey, text string)
 	callCtx, cancel := context.WithTimeout(ctx, kindGuessTimeout)
 	defer cancel()
 	callCtx, callID := logger.WithCall(callCtx, "drama.preflight", zap.String("model_key", snap.Model.Key))
-	res, err := s.streamText(callCtx, snap, drama.KindPrompt(drama.KindSample(text)), func(c context.Context) error { return c.Err() })
+	res, err := s.streamText(callCtx, userID, snap, drama.KindPrompt(drama.KindSample(text)), func(c context.Context) error { return c.Err() })
 	if err != nil {
 		// 降级：按「认不出」处理，让用户手选体裁；调用详情在同一 call_id 的 llm.call 和 payload.log 里
 		logger.Ctx(ctx).Warn("预检 AI 判断体裁失败，按认不出处理", zap.String("call_id", callID), zap.String("error", err.Error()))

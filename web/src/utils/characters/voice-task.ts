@@ -3,7 +3,7 @@ import type { Capabilities, ModelInfo } from "@/api/model/type";
 import type { CanvasNodeData, NodeCharacter } from "@/types";
 import { isGenerating } from "@/utils/canvas/outputs";
 import { buildTaskInput, toAssetNumber } from "@/utils/tasks/capabilities";
-import { canceledRefunded, isTerminalStatus } from "@/utils/tasks/status";
+import { isTerminalStatus } from "@/utils/tasks/status";
 
 import { applyVoiceAudio } from "./node-character";
 
@@ -21,8 +21,8 @@ export type VoiceTaskView =
   | { phase: "idle" }
   | { phase: "generating"; progress: number | null }
   | { phase: "failed"; reason: string }
-  /** refunded：积分有没有退回（排队中取消退，已进入生成取消不退） */
-  | { phase: "canceled"; refunded: boolean }
+  /** 已取消 */
+  | { phase: "canceled" }
   | { phase: "done"; asset: { id: string; url: string } };
 
 /**
@@ -40,7 +40,7 @@ export function voiceTaskView(
   if (!view || !isTerminalStatus(view.status)) {
     return { phase: "generating", progress: view?.progress ?? null };
   }
-  if (view.status === "canceled") return { phase: "canceled", refunded: canceledRefunded(view) };
+  if (view.status === "canceled") return { phase: "canceled" };
   if (view.status === "succeeded") {
     const audio = view.outputs?.find(
       (output) =>

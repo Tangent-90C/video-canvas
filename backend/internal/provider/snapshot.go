@@ -53,7 +53,7 @@ type ChannelSnapshot struct {
 	Headers         map[string]string `json:"headers,omitempty"`  // 渠道自定义请求头，只加到发往 base_url 同源的请求
 	Settings        map[string]any    `json:"settings,omitempty"` // 模型的协议设置项取值
 	RateLimit       RateLimit         `json:"rate_limit"`
-	Wallet          bool              `json:"wallet,omitempty"` // 钱包渠道：执行时用发起用户自己的 TokenPay 钱包 Key，任务不冻结 / 不扣积分
+	Wallet          bool              `json:"wallet,omitempty"` // 钱包渠道：执行时用发起用户自己的 TokenPay 钱包 Key
 }
 
 // PluginSnapshot 是插件版本的标识与 meta。

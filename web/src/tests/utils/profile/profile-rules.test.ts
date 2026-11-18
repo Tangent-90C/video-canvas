@@ -103,7 +103,7 @@ describe("身份卡与统计", () => {
   });
   test("tab 参数非法时回到概览", () => {
     expect(parseProfileTab("security")).toBe("security");
-    expect(parseProfileTab("credits")).toBe("credits");
+    expect(parseProfileTab("credits")).toBe("wallet");
     expect(parseProfileTab("xxx")).toBe("overview");
     expect(parseProfileTab(null)).toBe("overview");
   });
@@ -134,9 +134,13 @@ describe("接口映射", () => {
     });
   });
   test("统计：snake_case 转 camelCase", () => {
-    expect(
-      mapStats({ total: 9, success: 7, failed: 1, last7d: 3, spent_credits: 120, canvas_count: 4 }),
-    ).toEqual({ total: 9, success: 7, failed: 1, last7d: 3, spentCredits: 120, canvasCount: 4 });
+    expect(mapStats({ total: 9, success: 7, failed: 1, last7d: 3, canvas_count: 4 })).toEqual({
+      total: 9,
+      success: 7,
+      failed: 1,
+      last7d: 3,
+      canvasCount: 4,
+    });
   });
 });
 

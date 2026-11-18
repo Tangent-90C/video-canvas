@@ -65,7 +65,7 @@ const isApiResponse = (value: unknown): value is ApiResponse => {
 const reject = (error: ApiError, silent = false) => {
   console.error(`[api] ${error.code}: ${error.message}`);
   if (!silent) {
-    // 有的错误能给用户一个出路（积分不足 → 去充值）：动作由业务模块注册，这里只查表
+    // 有的错误能给用户一个出路（钱包未连接 → 去连接）：动作由业务模块注册，这里只查表
     const action = getErrorAction(error.code);
     toast.error(error.message, {
       id: `api:${error.code}`,

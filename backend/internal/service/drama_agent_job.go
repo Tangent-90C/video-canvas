@@ -9,13 +9,13 @@ import (
 	"video-canvas/internal/repository"
 )
 
-// CreateAgentJob 使用审批ID幂等提交任务，审批重试返回原任务且不重复冻结积分。
+// CreateAgentJob 使用审批ID幂等提交任务，审批重试返回原任务。
 func (s *DramaService) CreateAgentJob(ctx context.Context, userID, dramaID, approvalID uint64, req *model.DramaJobReq) (*model.DramaJobView, error) {
 	// 1. 审批ID由服务端提供，零值不能形成可靠的幂等键。
 	if approvalID == 0 {
 		return nil, errcode.ErrInvalidParams.WithMsg("审批ID不能为空")
 	}
-	// 2. 复用普通提交的全部范围、锁定、并发和积分规则。
+	// 2. 复用普通提交的全部范围、锁定、并发和钱包规则。
 	return s.createDramaJob(ctx, userID, dramaID, &approvalID, req)
 }
 

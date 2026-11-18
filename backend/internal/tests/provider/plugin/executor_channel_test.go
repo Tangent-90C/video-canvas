@@ -63,7 +63,7 @@ module.exports = {
 
 	snap := testSnapshot(upstream.URL, code, modelcfg.KindText, pluginmeta.Auth{Type: pluginmeta.AuthBearer})
 	snap.Channel.Headers = map[string]string{"X-Biz": "canvas", "X-Test": "from-channel", "User-Agent": "Custom/1.0"}
-	submitText(t, channelTestExecutor(code, mapSecrets{"channel:test-channel": "KEY"}), snap)
+	submitText(t, channelTestExecutor(code, mapSecrets{"wallet:1": "KEY", "channel:test-channel": "PRODUCT-KEY"}), snap)
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -77,7 +77,7 @@ module.exports = {
 		t.Errorf("插件请求描述里的头应覆盖渠道头：%q", got.Get("X-Test"))
 	}
 	if got.Get("Authorization") != "Bearer KEY" {
-		t.Errorf("鉴权头由宿主注入：%q", got.Get("Authorization"))
+		t.Errorf("钱包任务应注入用户 Key：%q", got.Get("Authorization"))
 	}
 }
 
@@ -102,7 +102,7 @@ module.exports = {
 
 	snap := testSnapshot(base.URL, code, modelcfg.KindText, pluginmeta.Auth{Type: pluginmeta.AuthBearer})
 	snap.Channel.Headers = map[string]string{"X-Biz": "canvas"}
-	submitText(t, channelTestExecutor(code, mapSecrets{"channel:test-channel": "KEY"}), snap)
+	submitText(t, channelTestExecutor(code, mapSecrets{"wallet:1": "KEY", "channel:test-channel": "PRODUCT-KEY"}), snap)
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -127,8 +127,7 @@ module.exports = {
 		secrets mapSecrets
 		want    string
 	}{
-		{"有 Key 和 Secret Key", mapSecrets{"channel:test-channel": "AK", "channel:test-channel:secret": "SK"}, "AK|SK"},
-		{"只有 Key", mapSecrets{"channel:test-channel": "AK"}, "AK|"},
+		{"钱包任务只提供用户 Key，不提供渠道 Secret Key", mapSecrets{"wallet:1": "AK", "channel:test-channel": "PRODUCT-KEY", "channel:test-channel:secret": "SK"}, "AK|"},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {

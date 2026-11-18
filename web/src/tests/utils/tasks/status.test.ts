@@ -2,8 +2,6 @@ import { describe, expect, test } from "bun:test";
 
 import {
   cancelableTaskIds,
-  cancelRefunds,
-  canceledRefunded,
   isCancelableTask,
   matchesTaskId,
   outputText,
@@ -63,24 +61,6 @@ describe("isCancelableTask：转存前都能取消，转存中和终态不能", 
     for (const status of ["succeeded", "failed", "canceled", "expired"] as const) {
       expect(isCancelableTask(makeTask({ status }))).toBe(false);
     }
-  });
-});
-
-describe("cancelRefunds：取消后积分退不退", () => {
-  const at = "2026-09-29T10:00:05Z";
-
-  test("还没提交给上游（排队中）退，已经进入生成不退", () => {
-    expect(cancelRefunds(makeTask({ status: "pending", submitted_at: null }))).toBe(true);
-    expect(cancelRefunds(makeTask({ status: "pending", submitted_at: at }))).toBe(false);
-    expect(cancelRefunds(makeTask({ status: "running", submitted_at: at }))).toBe(false);
-  });
-});
-
-describe("canceledRefunded：已取消的任务积分有没有退", () => {
-  test("没有实扣积分就是退了，有实扣积分就是没退", () => {
-    expect(canceledRefunded(makeTask({ status: "canceled", charged_credits: null }))).toBe(true);
-    expect(canceledRefunded(makeTask({ status: "canceled", charged_credits: 0 }))).toBe(true);
-    expect(canceledRefunded(makeTask({ status: "canceled", charged_credits: 8 }))).toBe(false);
   });
 });
 

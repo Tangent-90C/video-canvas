@@ -88,14 +88,13 @@ describe("请求原文", () => {
 });
 
 describe("头部信息", () => {
-  test("有摘要：直接取摘要的状态、时间、耗时、步数、积分、Token", () => {
+  test("有摘要：直接取摘要的状态、时间、耗时、步数、Token", () => {
     const d = detail({
       digest: digest({
         status: "failed",
         ended_at: "2026-10-22T09:01:00Z",
         duration_ms: 60_000,
         steps: 7,
-        spent_credits: 12,
         input_tokens: 1000,
         output_tokens: 200,
       }),
@@ -106,7 +105,6 @@ describe("头部信息", () => {
       endedAt: "2026-10-22T09:01:00Z",
       durationMs: 60_000,
       steps: 7,
-      credits: 12,
       inputTokens: 1000,
       outputTokens: 200,
     });
@@ -119,7 +117,6 @@ describe("头部信息", () => {
       status: "running",
       mode: "auto",
       budget_credits: 0,
-      spent_credits: 3,
       steps: 2,
       max_steps: 40,
       error_code: "",
@@ -134,7 +131,6 @@ describe("头部信息", () => {
       status: "running",
       durationMs: null,
       steps: 2,
-      credits: 3,
       inputTokens: 30,
       outputTokens: 3,
     });

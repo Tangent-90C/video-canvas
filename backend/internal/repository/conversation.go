@@ -135,7 +135,7 @@ func (r *ConversationRepository) ListRecords(ctx context.Context, userID, convID
 	return out, err
 }
 
-// SaveRecordTasks 写入提交结果：每格任务 id、失败原因和冻结积分合计。记录不存在返回 ErrNotFound。
+// SaveRecordTasks 写入提交结果：每格任务 id、失败原因和历史积分兼容值。记录不存在返回 ErrNotFound。
 func (r *ConversationRepository) SaveRecordTasks(ctx context.Context, id uint64, taskIDs, submitErrors datatypes.JSON, quote int) error {
 	res := r.db.WithContext(ctx).Model(&model.ConversationRecord{}).Where("id = ?", id).Updates(map[string]any{
 		"task_ids": taskIDs, "submit_errors": submitErrors, "quote_credits": quote,

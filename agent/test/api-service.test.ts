@@ -239,7 +239,7 @@ test("发起运行：消息里的引用先问 Go；选中的节点用 Go 去掉�
       ]);
       assert.deepEqual(
         [run.status, run.budget_credits, run.ended_at, run.mode],
-        ["queued", 30, null, "all"],
+        ["queued", 0, null, "all"],
       );
       assert.equal(run.session_id, enc(e.sessionId));
       assert.deepEqual(e.go.seen.find((s) => s.path.endsWith("/messages/check"))!.body, {

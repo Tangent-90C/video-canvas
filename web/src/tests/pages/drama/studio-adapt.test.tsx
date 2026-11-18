@@ -35,7 +35,22 @@ const studio = (patch: Partial<Studio>): Studio =>
     registerEditor: () => () => {},
     submitting: new Set<string>(),
     plan: { errors: {}, input: {}, refs: [], imageCount: 0, imageMax: 9, deadLabels: [] },
-    video: { models: [], status: "ready", model: { key: "h3" }, setModel: () => {} },
+    video: {
+      models: [
+        {
+          key: "h3",
+          kind: "video",
+          label: "H3",
+          wallet: true,
+          pricing: {},
+          capabilities: { ops: ["t2v"], refs: {}, prompt: { max_length: 4000 }, params: {} },
+        },
+      ],
+      status: "ready",
+      model: { key: "h3" },
+      setModel: () => {},
+      walletConnected: true,
+    },
     actions: { patch: async () => seg(), generate: async () => {}, adapt: async () => true },
     ...patch,
   }) as unknown as Studio;

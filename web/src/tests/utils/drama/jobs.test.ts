@@ -425,10 +425,10 @@ describe("JobBar 规划行 planningRow", () => {
     expect(row?.kind === "paused" && row.reason).toContain("已规划到第 44 章");
   });
 
-  test("积分不足：充值后继续；失败 / 上下文不足：重试", () => {
+  test("TokenPay 需要处理：连接钱包后继续；失败 / 上下文不足：重试", () => {
     expect(planningRow(drama({ phase: "paused", pauseCode: "credits" }), [])).toMatchObject({
       tone: "error",
-      reason: "积分不足，充值后继续",
+      reason: "TokenPay 钱包授权或额度需要处理，连接钱包后继续",
       actions: ["resume"],
     });
     expect(

@@ -38,10 +38,10 @@ func TestDramaStoryboardPipeline(t *testing.T) {
 		status               string
 		code, calls, balance int
 	}{
-		{"成功", []string{storyboardValid}, "succeeded", 0, 1, 995},
-		{"非法JSON重试", []string{`{bad`, storyboardValid}, "succeeded", 0, 2, 995},
-		{"连续非法退款", []string{`{bad`, `{bad`}, "failed", 67008, 2, 1000},
-		{"时长超限退款", []string{strings.ReplaceAll(storyboardValid, `"seconds":15`, `"seconds":16`), strings.ReplaceAll(storyboardValid, `"seconds":15`, `"seconds":16`)}, "failed", 67008, 2, 1000},
+		{"成功", []string{storyboardValid}, "succeeded", 0, 1, 1000},
+		{"非法JSON重试", []string{`{bad`, storyboardValid}, "succeeded", 0, 2, 1000},
+		{"连续非法失败", []string{`{bad`, `{bad`}, "failed", 67008, 2, 1000},
+		{"时长超限失败", []string{strings.ReplaceAll(storyboardValid, `"seconds":15`, `"seconds":16`), strings.ReplaceAll(storyboardValid, `"seconds":15`, `"seconds":16`)}, "failed", 67008, 2, 1000},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newDramaMemory()
@@ -61,8 +61,8 @@ func TestDramaStoryboardPipeline(t *testing.T) {
 			if r.jobs[0].Status != tc.status || r.jobs[0].ErrorCode != tc.code || e.calls != tc.calls {
 				t.Fatalf("job=%+v calls=%d", r.jobs[0], e.calls)
 			}
-			if r.credit.Balance != tc.balance || r.credit.Frozen != 0 {
-				t.Fatalf("credit=%+v", r.credit)
+			if r.credit.Balance != tc.balance || r.credit.Frozen != 0 || r.jobs[0].Credits != 0 || len(r.ledger) != 0 {
+				t.Fatalf("钱包任务不应触碰平台积分：credit=%+v job=%+v ledger=%+v", r.credit, r.jobs[0], r.ledger)
 			}
 			wantStatus := "failed"
 			if tc.status == "succeeded" {
@@ -157,7 +157,7 @@ func TestDramaStoryboardHasTakes(t *testing.T) {
 		dramaCheckCode(t, err, 67013)
 		_, err = s.CreateJob(context.Background(), 7, 1, req)
 		dramaCheckCode(t, err, 67013)
-		if len(r.jobs) != 0 || r.credit.Frozen != 0 {
+		if len(r.jobs) != 0 || r.credit.Frozen != 0 || len(r.ledger) != 0 {
 			t.Fatalf("拒绝仍冻结: %+v", r.credit)
 		}
 	})
@@ -278,14 +278,14 @@ func TestDramaStoryboardAtomicReplacementRetry(t *testing.T) {
 	if err = s.HandleDrama(context.Background(), 7, 1, uint64(j.ID)); !errors.Is(err, failure) {
 		t.Fatalf("want repository failure, got %v", err)
 	}
-	if len(r.segments) != 1 || r.segments[0].ID != 99 || r.episodes[0].StoryboardStatus != "generating" || r.credit.Balance != 1000 || r.credit.Frozen != 5 {
+	if len(r.segments) != 1 || r.segments[0].ID != 99 || r.episodes[0].StoryboardStatus != "generating" || r.credit.Balance != 1000 || r.credit.Frozen != 0 {
 		t.Fatalf("非原子变更: segments=%+v ep=%+v credit=%+v", r.segments, r.episodes[0], r.credit)
 	}
 	r.replaceErr = nil
 	if err = s.HandleDrama(context.Background(), 7, 1, uint64(j.ID)); err != nil {
 		t.Fatal(err)
 	}
-	if len(r.segments) != 1 || r.segments[0].ID == 99 || r.episodes[0].StoryboardStatus != "ready" || r.credit.Balance != 995 || r.credit.Frozen != 0 {
+	if len(r.segments) != 1 || r.segments[0].ID == 99 || r.episodes[0].StoryboardStatus != "ready" || r.credit.Balance != 1000 || r.credit.Frozen != 0 {
 		t.Fatalf("恢复未完成: segments=%+v ep=%+v credit=%+v", r.segments, r.episodes[0], r.credit)
 	}
 }

@@ -419,26 +419,27 @@ describe("密钥卡片", () => {
 });
 
 describe("试跑卡片和时间线", () => {
-  test("缺少成本报价时显示无法估算，不伪造零费用", async () => {
+  test("不再展示平台积分预估，费用统一指向 TokenDance 实际账单", async () => {
     const a = trialApproval();
     a.payload = { ...(a.payload as AdminTestRunPayload), estimate: { credits: null, yuan: null } };
     const m = await mountDock(a);
-    expect(m.container.textContent).toContain("暂无法估算");
-    expect(m.container.textContent).not.toContain("0 积分");
+    expect(m.container.textContent).toContain("按 TokenDance 实际账单");
+    expect(m.container.textContent).not.toContain("预估费用");
+    expect(m.container.textContent).not.toContain("暂无法估算");
+    expect(m.container.textContent).not.toContain("积分");
     await m.unmount();
   });
-  test("显示摘要、费用示意、次数，批准与拒绝不附加输入", async () => {
+  test("显示摘要、费用口径、次数，批准与拒绝不附加输入", async () => {
     for (const approve of [true, false]) {
       const m = await mountDock(trialApproval());
       for (const text of [
         "视频模型",
         "t2v · 5s · 720p",
-        "示意",
-        "5 积分",
-        "¥0.5",
+        "TokenDance 实际账单",
         "第 2 次 / 共 3 次",
       ])
         expect(m.container.textContent).toContain(text);
+      expect(m.container.textContent).not.toContain("积分");
       await click(option(m.container, approve ? "同意试跑" : "不试跑", true));
       expect(m.calls.decisions).toEqual([{ decision: approve ? "approve" : "reject" }]);
       await m.unmount();

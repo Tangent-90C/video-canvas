@@ -387,10 +387,6 @@ export interface MarketingSendArgs {
   videoModel: ModelInfo | undefined;
   /** 能看图的文本模型清单 */
   visionModels: readonly ModelInfo[];
-  /** 写脚本预估积分；还没算出来为 null */
-  credits: number | null;
-  /** 可用积分；还没拿到为 null */
-  available: number | null;
   /** 正在发送 */
   sending: boolean;
   /** dock 所在的项目正在写脚本：等写完再来一轮 */
@@ -416,8 +412,7 @@ const blocked = (hint: string | null, tone: MarketingSendState["tone"]): Marketi
 /**
  * 发送前的全部判断。原因按用户最该先处理的顺序：
  * 发送中 / 没有视频模型（静默）→ 项目正在写脚本 → 文本模型 → 素材上传中 → 上传失败 → 没有商品图（静默）
- * → 参考视频 → 图片参考张数 → 余额。
- * 余额只在预估和余额都拿到时才拦，拿不到交给后端 40001 兜底。
+ * → 参考视频 → 图片参考张数。平台余额不再参与判断，TokenPay 在上游按实际调用扣费。
  */
 export function evaluateMarketingSend(
   args: MarketingSendArgs,
@@ -449,8 +444,5 @@ export function evaluateMarketingSend(
   const imageMax = model.capabilities.refs?.image?.max ?? 0;
   if (images > imageMax) return blocked(`${model.label} 最多收 ${imageMax} 张参考图`, "bad");
 
-  if (args.credits !== null && args.available !== null && args.credits > args.available) {
-    return blocked(`余额不足，还差 ${args.credits - args.available} 积分`, "bad");
-  }
   return { canSend: true, hint: null, tone: null };
 }

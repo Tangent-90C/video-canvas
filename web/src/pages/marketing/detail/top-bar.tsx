@@ -20,7 +20,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { useMarketingOptions } from "@/hooks/use-marketing-options";
 import { cn } from "@/lib/utils";
-import { CreditsPill } from "@/pages/canvas/chrome/top-right-bar";
+import { WalletPill } from "@/pages/canvas/chrome/top-right-bar";
 import { platformName, STEP_NAME } from "@/utils/marketing/options";
 import { methodLabel, renderAllState } from "@/utils/marketing/script";
 import { splitStepLevels, STEP_STATUS_LABEL } from "@/utils/marketing/status";
@@ -92,12 +92,11 @@ function Chip({ children }: { children: React.ReactNode }) {
 
 /**
  * 创作台顶栏：返回、商品名（点开编辑事实卡）、轮次切换（最新在左）、本轮参数（模型与分辨率可改）、环节进度
- * （写脚本中带阶段文字和取消）、全部出片、再写一轮、积分与主题。
+ * （写脚本中带阶段文字和取消）、全部出片、再写一轮与主题。
  */
 export function TopBar({
   project,
   round,
-  available,
   actions,
   composerOpen,
   onRound,
@@ -106,7 +105,6 @@ export function TopBar({
 }: {
   project: Project;
   round: Round | undefined;
-  available: number | null;
   actions: MarketingActions;
   composerOpen: boolean;
   onRound: (roundId: string) => void;
@@ -114,7 +112,7 @@ export function TopBar({
   onComposer: () => void;
 }) {
   const { platforms } = useMarketingOptions();
-  const all = round ? renderAllState(round, available) : null;
+  const all = round ? renderAllState(round) : null;
   const settings = round?.settings;
   const PlatformIcon = settings
     ? (PLATFORM_ICON[settings.platform] ?? PLATFORM_ICON.generic)
@@ -228,13 +226,12 @@ export function TopBar({
       {round && all?.show && (
         <Button
           size="sm"
-          disabled={all.disabled || actions.busy[`render-all:${round.id}`]}
-          title={all.reason || `一次出 ${all.count} 条`}
+          disabled={actions.busy[`render-all:${round.id}`]}
+          title={`一次出 ${all.count} 条`}
           onClick={() => void actions.renderAll(round)}
         >
           {actions.busy[`render-all:${round.id}`] ? <Loader2 className="animate-spin" /> : <Play />}
           全部出片
-          <span className="tabular-nums opacity-70">✦{all.credits}</span>
         </Button>
       )}
       <Button
@@ -247,7 +244,7 @@ export function TopBar({
         <PenLine />
         再写一轮
       </Button>
-      <CreditsPill />
+      <WalletPill />
       <ThemeToggle />
     </header>
   );

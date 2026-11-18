@@ -15,7 +15,6 @@ import {
   type ProfileTab,
 } from "@/utils/profile/profile-rules";
 
-import { CreditsTab } from "./credits-tab";
 import { OverviewTab } from "./overview-tab";
 import { WalletTab } from "./wallet-tab";
 import { ProfileTab as ProfileFormTab } from "./profile-tab";
@@ -24,7 +23,6 @@ import { SecurityTab } from "./security-tab";
 /** tab 的显示名，顺序即界面顺序 */
 const TABS: { value: ProfileTab; label: string }[] = [
   { value: "overview", label: "概览" },
-  { value: "credits", label: "积分" },
   { value: "wallet", label: "钱包" },
   { value: "profile", label: "资料" },
   { value: "security", label: "安全" },
@@ -108,8 +106,8 @@ function IdentityCard({ onEdit }: { onEdit: () => void }) {
 }
 
 /**
- * 个人中心（设计 docs/design/个人中心）：顶部身份卡 + 概览 / 积分 / 资料 / 安全四个 tab。
- * 当前 tab 同步到 ?tab=，积分页的页码同步到 ?page=，刷新后停在原处，也能直达 /profile?tab=security。
+ * 个人中心（设计 docs/design/个人中心）：顶部身份卡 + 概览 / 钱包 / 资料 / 安全四个 tab。
+ * 当前 tab 同步到 ?tab=，刷新后停在原处，也能直达 /profile?tab=security。
  */
 export default function ProfilePage() {
   const [params, setParams] = useSearchParams();
@@ -140,9 +138,6 @@ export default function ProfilePage() {
         </TabsList>
         <TabsContent value="overview" className="pt-3">
           <OverviewTab />
-        </TabsContent>
-        <TabsContent value="credits" className="pt-3">
-          <CreditsTab />
         </TabsContent>
         <TabsContent value="wallet" className="pt-3">
           <WalletTab />

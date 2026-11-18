@@ -29,7 +29,6 @@ import (
 	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/pkg/videoframe"
 	"video-canvas/internal/pkg/ws"
-	"video-canvas/internal/provider/fx"
 	"video-canvas/internal/provider/plugin"
 	"video-canvas/internal/provider/pluginrunner"
 	"video-canvas/internal/provider/queue"
@@ -45,7 +44,6 @@ import (
 )
 
 type App struct {
-	fx     *fx.Service
 	cfg    *config.Config
 	db     *gorm.DB
 	rdb    *redis.Client
@@ -60,7 +58,6 @@ type App struct {
 	assets     *service.AssetService    // 素材服务；后台定期用它清理过期未登记的直传对象
 	loginLogs  *service.LoginLogCleaner // 登录记录清理器；后台每天清理超过保留天数的记录
 	observe    *agentsvc.ObserveService // Agent 运行观测；后台每天清理超过 30 天的工具参数和结果
-	payment    *service.PaymentService  // 积分充值；后台每 30 秒补单、处理超时订单
 }
 
 // NewApp 初始化基础设施并手动组装依赖：repository -> service -> handler -> router。
@@ -82,8 +79,6 @@ func NewApp(cfg *config.Config) (*App, error) {
 	// 发信与主机校验都经 netguard，拒绝内网 / 回环 / 链路本地
 	auditRepo := repository.NewAdminAuditRepository(db)
 	settingsSvc := service.NewSettingsService(repository.NewSystemSettingRepository(db), auditRepo)
-	pricingRepo := repository.NewSystemSettingRepository(db)
-	pricingSvc := service.NewPricingSettingsService(pricingRepo, nil)
 	smtpSvc := service.NewSMTPService(repository.NewSMTPSettingRepository(db), mailer.NewSMTPSender(nil), auditRepo, cfg.AI.SecretKey, service.NewNetguardHostChecker())
 	userSvc := service.NewUserService(service.UserDeps{
 		Repo: userRepo, Cache: userCache, Codes: cache.NewRegisterCodeStore(rdb), Policy: settingsSvc, Mail: smtpSvc,
@@ -197,7 +192,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 	// 短剧和环节协议层共用同一个 LLM 网关实例，渠道限流（RPS / 并发）才是对两者合计生效。
 	textGateway := llmgateway.New(llmgateway.Options{IPAllowed: outboundIPPolicy(cfg), Observer: llmlog.Observer{}})
 	dramaSvc := service.NewDramaService(service.DramaDeps{
-		Repo: dramaRepo, Settings: dramaRepo, Skills: skillSvc, Registry: aiCfgSvc, Streamer: textGateway, Secrets: aiCfgSvc, Canvas: dramaCanvasSvc, Broadcaster: hub, Credits: settingsSvc,
+		Repo: dramaRepo, Settings: dramaRepo, Skills: skillSvc, Registry: aiCfgSvc, Streamer: textGateway, Secrets: aiCfgSvc, Canvas: dramaCanvasSvc, Broadcaster: hub, Wallets: walletSvc,
 		Segments: dramaSegments, CanvasAssets: canvasProjectRepo,
 		Compose: videoframe.New(videoframe.Options{Timeout: 10 * time.Minute}), Assets: assetSvc,
 		// 列表封面：资产画布里第一张生成成功的图，和画布列表一样取缩略图
@@ -215,19 +210,19 @@ func NewApp(cfg *config.Config) (*App, error) {
 	storyboardRepo := repository.NewStoryboardRepository(db)
 	stepCaller := &stepkit.GatewayCaller{Streamer: textGateway, Secrets: aiCfgSvc}
 	stepSvc := service.NewStepAdminService(service.StepAdminDeps{
-		Registry: stepRegistry, Repo: stepRepo, Skills: skillSvc, Models: aiCfgSvc, Credits: settingsSvc, Audit: auditRepo,
+		Registry: stepRegistry, Repo: stepRepo, Skills: skillSvc, Models: aiCfgSvc, Audit: auditRepo,
 		Caller: stepCaller, Stats: service.NewMarketingStats(marketingRepo, nil), // 环节失败率读营销环节运行记录
 	})
 	// 营销工作室：四个环节按后台绑定的方法运行（Resolver），写脚本走 River，出片走现有生成任务（node_id = mkt:{脚本id}）。
 	marketingSvc := service.NewMarketingService(service.MarketingDeps{
 		Repo: marketingRepo, Steps: stepRegistry, Resolver: stepSvc.Resolver(), Caller: stepCaller, Models: aiCfgSvc,
-		Assets: assetSvc, Tasks: taskSvc, Canvases: canvasProjectSvc, Frames: newVideoFrames(), Credits: settingsSvc, Broadcaster: hub,
+		Assets: assetSvc, Tasks: taskSvc, Canvases: canvasProjectSvc, Frames: newVideoFrames(), Wallets: walletSvc, Broadcaster: hub,
 	})
 	// 生成任务的关联业务观察者：短剧片段和营销脚本各按节点前缀认领自己的任务。
 	taskSvc.SetTaskObserver(service.TaskObservers{dramaSegments, marketingSvc})
 	// 分镜表拆分镜：异步任务，提交、worker 执行和推送都在这个服务里；队列晚于它创建，入队器稍后回填到仓储
 	storyboardSvc := service.NewStoryboardService(service.StoryboardDeps{
-		Repo: storyboardRepo, Models: aiCfgSvc, Caller: stepCaller, Credits: settingsSvc, Broadcaster: hub,
+		Repo: storyboardRepo, Models: aiCfgSvc, Caller: stepCaller, Wallets: walletSvc, Broadcaster: hub,
 	})
 
 	// 配置服务反向依赖插件宿主与任务服务，所以组装完后再注入。
@@ -236,6 +231,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 
 	// 画布 Agent：模型清单来自后台已发布的 agent 类型模型；会话、运行、审批在独立的 Agent 服务里，按 agent.enabled 装配平台 API 和反向代理
 	agentRepo := repository.NewAgentRepository(db)
+	upstreamPricingSvc := service.NewUpstreamPricingService("")
 	// Agent 技能库：整包存在素材所用的对象存储里（key 前缀 agent-skills/，不会被 /files 公开路由读到：那里只认有素材记录的 key）
 	agentCanvasSvc := agentsvc.NewAgentCanvasService(agentRepo, hub)
 	// Agent 运行观测：工具调用逐条留存、运行摘要、用户反馈、后台只读导出。Harness 版本在创建运行时记下，改了提示词或工具后才能对比效果
@@ -247,7 +243,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 	agentSvc := agentsvc.NewAgentService(agentsvc.AgentDeps{
 		Harness: agentsvc.CurrentHarness(buildSHA),
 		Repo:    agentRepo, Canvas: agentCanvasSvc,
-		Models: agentsvc.NewRegistryAgentModels(aiCfgSvc), Registry: aiCfgSvc, Skills: skillSvc,
+		Models: agentsvc.NewRegistryAgentModels(aiCfgSvc, upstreamPricingSvc), Registry: aiCfgSvc, Skills: skillSvc,
 		Generator: agentsvc.NewAgentGenerator(taskSvc, agentCanvasSvc, aiCfgSvc), // 批准生成后创建任务并绑定到节点
 	})
 	// 切换到独立 Agent 服务之前留在 Go 库里的旧运行：没有人会再推进它们，不该一直显示成进行中。幂等
@@ -264,15 +260,14 @@ func NewApp(cfg *config.Config) (*App, error) {
 	aiChannelSvc := service.NewAIChannelService(aiChannelRepo, aiCfgSvc, aiCfgSvc, executor, aiChannelRepo, aiCfgSvc)
 	adminAuditRepo := repository.NewAdminAssistantRepository(db)
 	adminUsers := service.NewAdminUserService(userRepo, auditRepo, settingsSvc, service.WithAdminControls(service.AdminControls{
-		Credits: taskRepo, // 积分调整与任务冻结 / 结算共用 LockCredit 行锁
-		Users:   userSvc,  // 封禁 / 启用 / 改并发后清用户状态缓存
-		Tasks:   taskSvc,  // 封禁并取消任务：复用任务服务的取消与退款流程
-		Conns:   hub,      // 封禁后断开该用户全部 WebSocket
+		Users: userSvc, // 封禁 / 启用 / 改并发后清用户状态缓存
+		Tasks: taskSvc, // 封禁并取消任务：复用任务服务的取消流程
+		Conns: hub,     // 封禁后断开该用户全部 WebSocket
 	}))
 	adminUsage := service.NewAdminUsageService(repository.NewAdminUsageRepository(db))
 	adminLogs := service.NewAuditLogService(auditRepo)
 	management := agentsvc.AdminManagementDeps{Users: adminUsers, Register: settingsSvc, SMTP: smtpSvc, Storages: storageSvc, Processors: processorSvc, Usage: adminUsage, Logs: adminLogs, Operations: adminAuditRepo}
-	adminAssistant := agentsvc.NewAdminAssistantService(agentsvc.AdminAssistantDeps{Management: &management, Models: aiConfigRepo, Writer: aiCfgSvc, Users: userRepo, Channels: aiChannelRepo, Settings: pricingSvc, Audit: adminAuditRepo, History: adminAuditRepo, Plugins: aiPluginRepo, PluginWriter: aiPluginSvc, ChannelWriter: aiChannelSvc, Checker: plugin.NewDraftChecker(runnerClient), Trials: aiCfgSvc, Attempts: adminAuditRepo})
+	adminAssistant := agentsvc.NewAdminAssistantService(agentsvc.AdminAssistantDeps{Management: &management, Models: aiConfigRepo, Writer: aiCfgSvc, Users: userRepo, Channels: aiChannelRepo, Audit: adminAuditRepo, History: adminAuditRepo, Plugins: aiPluginRepo, PluginWriter: aiPluginSvc, ChannelWriter: aiChannelSvc, Checker: plugin.NewDraftChecker(runnerClient), Trials: aiCfgSvc, Attempts: adminAuditRepo})
 	agentRT, err := newAgentRuntime(cfg, agentDeps{admin: adminAssistant, tasks: taskSvc, assets: assetSvc, assetLinks: assetSvc, frames: newVideoFrames(), frameStore: assetFrameStore{assetSvc}, repo: agentRepo, agent: agentSvc, canvas: agentCanvasSvc, registry: aiCfgSvc, secrets: aiCfgSvc, skills: skillSvc, drama: dramaSvc, segments: dramaSegments, toolCalls: observeRepo, modelRequests: observeRepo, ipAllowed: outboundIPPolicy(cfg), broadcaster: hub})
 	if err != nil {
 		stopRunner(runnerStop)
@@ -296,7 +291,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		closeDB(db)
 		return nil, err
 	}
-	taskRepo.SetEnqueuer(taskQueue)       // 创建任务的事务里入队：任务、积分冻结、job 一起提交
+	taskRepo.SetEnqueuer(taskQueue)       // 创建任务的事务里入队：任务与 job 一起提交
 	stepRepo.SetEnqueuer(taskQueue)       // 后台试跑与 River job 在业务事务里一并提交。
 	marketingRepo.SetEnqueuer(taskQueue)  // 营销轮次与写脚本 job 在业务事务里一并提交。
 	storyboardRepo.SetEnqueuer(taskQueue) // 分镜表拆分镜任务与 job 在业务事务里一并提交。
@@ -317,9 +312,6 @@ func NewApp(cfg *config.Config) (*App, error) {
 		Users:   userSvc, Conns: hub, Tokens: userSvc,
 		FileBaseURL: cfg.Storage.Local.BaseURL,
 	})
-
-	// 积分充值与支付：渠道密钥复用 AI 配置的加密存储，入账走积分账户的同一套行锁与流水；回调、补单、后台管理都在这里装配
-	pay := wirePayment(db, hub, aiCfgSvc, settingsSvc, auditRepo, outboundIPPolicy(cfg))
 
 	// 鉴权用的用户状态查询：RequireActive 与 RequireAdmin / RequireSuperAdmin 共用同一套（Redis 缓存，无 Redis 直接查库）。
 	// 封禁、改角色、重置密码时由 UserService.InvalidateUser 主动删缓存，所以不再需要进程内的角色缓存
@@ -357,18 +349,17 @@ func NewApp(cfg *config.Config) (*App, error) {
 		agentProxy.WithRoleLookup(roleLookup)
 	}
 	engineHTTP := router.New(cfg.Server.Mode, cfg.JWT.Secret, router.Handlers{
-		PricingSettings: handler.NewPricingSettingsHandler(pricingSvc),
-		AgentProxy:      agentProxy,
-		Health:          handler.NewHealthHandler(db, rdb),
-		User:            handler.NewUserHandler(userSvc),
-		Me:              handler.NewMeHandler(meSvc),
-		Wallet:          handler.NewWalletHandler(walletSvc),
-		CanvasProject:   handler.NewCanvasProjectHandler(canvasProjectSvc),
-		Drama:           handler.NewDramaHandler(dramaSvc),
-		AdminStep:       handler.NewAdminStepHandler(stepSvc),
-		AdminFormatter:  handler.NewAdminFormatterHandler(),
-		Marketing:       handler.NewMarketingHandler(marketingSvc),
-		DramaSegment:    handler.NewDramaSegmentHandler(dramaSegments),
+		AgentProxy:     agentProxy,
+		Health:         handler.NewHealthHandler(db, rdb),
+		User:           handler.NewUserHandler(userSvc),
+		Me:             handler.NewMeHandler(meSvc),
+		Wallet:         handler.NewWalletHandler(walletSvc),
+		CanvasProject:  handler.NewCanvasProjectHandler(canvasProjectSvc),
+		Drama:          handler.NewDramaHandler(dramaSvc),
+		AdminStep:      handler.NewAdminStepHandler(stepSvc),
+		AdminFormatter: handler.NewAdminFormatterHandler(),
+		Marketing:      handler.NewMarketingHandler(marketingSvc),
+		DramaSegment:   handler.NewDramaSegmentHandler(dramaSegments),
 		CanvasTransfer: handler.NewCanvasTransferHandler(service.NewCanvasTransferService(service.CanvasTransferDeps{
 			Canvases: canvasProjectRepo, Assets: assetSvc,
 			Tx: repository.NewCanvasTransferRepository(db), AppVersion: version.Version,
@@ -394,7 +385,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 			Assets: assetRepo, Canvases: canvasProjectRepo, Views: assetSvc,
 		})),
 		Files:        handler.NewFilesHandler(assetSvc),
-		AIModel:      handler.NewAIModelHandler(aiCfgSvc),
+		AIModel:      handler.NewAIModelHandler(aiCfgSvc, upstreamPricingSvc),
 		AdminAI:      handler.NewAdminAIHandler(aiCfgSvc),
 		AdminCatalog: handler.NewAdminCatalogHandler(service.NewAICatalogService(aiChannelSvc, aiPluginSvc, aiCfgSvc)),
 		AdminPlugin:  handler.NewAdminPluginHandler(aiPluginSvc),
@@ -419,14 +410,11 @@ func NewApp(cfg *config.Config) (*App, error) {
 		AdminSystem:    newAdminSystemHandler(cfg, db, taskRepo, auditRepo),
 		Showcase:       handler.NewShowcaseHandler(showcaseSvc),
 		Announcement:   handler.NewAnnouncementHandler(announcementSvc),
-		Payment:        pay.user,
-		AdminPayment:   pay.admin,
 		AdminRole:      roleLookup,
 		UserState:      stateLookup,
 	})
 
 	return &App{
-		fx:         fx.New(pricingRepo, outboundIPPolicy(cfg)),
 		cfg:        cfg,
 		db:         db,
 		rdb:        rdb,
@@ -439,7 +427,6 @@ func NewApp(cfg *config.Config) (*App, error) {
 		assets:     assetSvc,
 		loginLogs:  service.NewLoginLogCleaner(userRepo),
 		observe:    observeSvc,
-		payment:    pay.svc,
 		server: &http.Server{
 			Addr:         cfg.Server.Addr(),
 			Handler:      engineHTTP,
@@ -548,17 +535,6 @@ func (p cmdProcess) Kill() error {
 // Run 启动 HTTP 服务，ctx 取消（收到退出信号）后优雅关闭并释放资源。
 func (a *App) Run(ctx context.Context) error {
 	defer a.close()
-	// 与现有清理和同步任务共用可取消 ticker 的生命周期，不依赖生成 worker 是否启用。
-	fxCtx, fxCancel := context.WithCancel(context.Background())
-	fxDone := make(chan struct{})
-	go func() {
-		defer close(fxDone)
-		if a.fx != nil {
-			a.fx.Run(fxCtx)
-		}
-	}()
-	defer func() { fxCancel(); <-fxDone }()
-
 	// 生成任务队列：状态全在 DB 里，重启后自然接着处理（对账会把没有 job 的任务补上）；退出时先停 HTTP 再等在途任务处理完，最后才关库
 	queueCtx, queueCancel := context.WithCancel(context.Background())
 	queueDone := make(chan struct{})
@@ -631,18 +607,6 @@ func (a *App) Run(ctx context.Context) error {
 	defer func() {
 		skillCancel()
 		<-skillDone
-	}()
-
-	// 支付补单：先于关库停止，和其它后台任务一样
-	payCtx, payCancel := context.WithCancel(context.Background())
-	payDone := make(chan struct{})
-	go func() {
-		defer close(payDone)
-		a.runPayment(payCtx)
-	}()
-	defer func() {
-		payCancel()
-		<-payDone
 	}()
 
 	if a.agent != nil {

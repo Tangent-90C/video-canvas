@@ -66,7 +66,7 @@ func newStEnv(t *testing.T) *stEnv {
 	reg.MustRegister(stTestStep())
 	env := &stEnv{repo: repo, lib: lib, caller: caller, tokens: map[int]string{}, now: time.Now()}
 	env.svc = service.NewStepAdminService(service.StepAdminDeps{Registry: reg, Repo: repo, Skills: lib, Models: stepfake.NewModels(),
-		Credits: stepfake.Policy{Initial: 50}, Audit: &stepfake.Audit{}, Caller: caller, Now: func() time.Time { return env.now }})
+		Audit: &stepfake.Audit{}, Caller: caller, Now: func() time.Time { return env.now }})
 	roles := map[uint64]string{stAdmin: model.RoleAdmin, stNormal: model.RoleUser}
 	stateLookup := func(_ context.Context, id uint64) (*middleware.UserState, error) {
 		role, ok := roles[id]
@@ -215,9 +215,10 @@ func TestAdminStepHandler_CreateTrialsBusinessErrors(t *testing.T) {
 	missing["candidate"] = map[string]any{"source": "skill", "skill_name": "ghost"}
 	e.do(http.MethodPost, path, missing, stAdmin).want(t, http.StatusBadRequest, 68014)
 	e.do(http.MethodPost, stBase+"/steps/nope.step/trials", trialBody(), stAdmin).want(t, http.StatusNotFound, 68012)
+	// 平台积分不再参与后台试跑：即使管理员账户余额为 0，也只登记试跑并由渠道直接结算。
 	poor := trialBody()
-	e.repo.Credits[stAdmin].Balance = 1
-	e.do(http.MethodPost, path, poor, stAdmin).want(t, http.StatusPaymentRequired, 40001)
+	e.repo.Credits[stAdmin].Balance = 0
+	e.do(http.MethodPost, path, poor, stAdmin).want(t, http.StatusAccepted, 0)
 }
 
 func TestAdminStepHandler_GetTrial(t *testing.T) {

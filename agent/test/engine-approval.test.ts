@@ -23,7 +23,7 @@ async function waitingApproval(e: Env, over: Partial<Parameters<Env["start"]>[0]
 
 const code = (c: number) => (err: unknown) => err instanceof AgentError && err.code === c;
 
-test("批准生成：解析 → 登记已花积分 → 执行 → 结果交给模型 → 运行接着往下走直到成功", () =>
+test("批准生成：解析 → 执行 → 结果交给模型 → 运行接着往下走直到成功；平台积分不再登记", () =>
   withEngine(
     {
       turns: [
@@ -33,7 +33,7 @@ test("批准生成：解析 → 登记已花积分 → 执行 → 结果交给�
       propose: GEN,
     },
     async (e) => {
-      const { run, approval } = await waitingApproval(e, { budgetCredits: 20 });
+      const { run, approval } = await waitingApproval(e);
       assert.equal(e.persisted("approval.created")[0].result, null);
       const view = await e.engine.decide("1", approval.id, { decision: "approve", add_budget: 10 });
       await e.engine.idle();
@@ -46,20 +46,18 @@ test("批准生成：解析 → 登记已花积分 → 执行 → 结果交给�
         decision: { decision: "approve", add_budget: 10 },
       });
       const rc = decodeRunContext(String(resolve.headers["x-agent-context"]));
-      assert.deepEqual(
-        [rc.run_id, rc.budget_credits, rc.spent_extra ?? 0],
-        [run.id, 20, 0],
-        "解析时本轮预算和已花的积分",
-      );
+      assert.equal(rc.run_id, run.id);
+      assert.equal(rc.budget_credits, undefined, "平台预算不再下发给模型代理");
+      assert.equal(rc.spent_extra ?? 0, 0, "平台积分不再下发给模型代理");
       const exec = e.go.seen.find((s) => s.path.endsWith("/approvals/execute"))!;
       assert.deepEqual(
         [exec.body.kind, exec.body.approval_id, exec.body.tool_call_id, exec.body.outcome.status],
         ["generate", approval.id, "call_g", "approved"],
       );
       assert.equal(
-        decodeRunContext(String(exec.headers["x-agent-context"])).spent_extra,
-        5,
-        "执行时已批准的预估已经算进已花积分",
+        decodeRunContext(String(exec.headers["x-agent-context"])).spent_extra ?? 0,
+        0,
+        "执行时不再登记平台积分",
       );
 
       // 审批记录
@@ -75,13 +73,13 @@ test("批准生成：解析 → 登记已花积分 → 执行 → 结果交给�
         "返回的是对外的视图（id 是编码串）",
       );
 
-      // 运行：预算追加生效，已花积分含批准的预估，最后成功
+      // 运行：历史预算与积分字段保持 0，审批不再影响平台积分，最后成功
       const r = e.run(run.id);
-      assert.equal(r.budgetCredits, 30);
+      assert.equal(r.budgetCredits, 0);
       assert.equal(r.status, "succeeded");
-      assert.equal(r.spentCredits, 5 + 2, "批准的 5 + 两次模型调用各 1 积分");
+      assert.equal(r.spentCredits, 0);
 
-      // 事件顺序：approval.created → 决定后 run.status running → run.usage → approval.decided → 后面的回答
+      // 事件顺序：approval.created → 决定后 run.status running → approval.decided → run.usage → 后面的回答
       const seq = e.types().slice(e.types().indexOf("approval.created"));
       assert.deepEqual(
         seq
@@ -89,7 +87,7 @@ test("批准生成：解析 → 登记已花积分 → 执行 → 结果交给�
             ["approval.created", "run.status", "run.usage", "approval.decided"].includes(t),
           )
           .slice(0, 5),
-        ["approval.created", "run.status", "run.status", "run.usage", "approval.decided"],
+        ["approval.created", "run.status", "run.status", "approval.decided", "run.usage"],
       );
       assert.deepEqual(
         e
@@ -153,7 +151,7 @@ test("拒绝：附上理由转告模型，不登记积分，审批保持已拒�
       propose: GEN,
     },
     async (e) => {
-      const { run, approval } = await waitingApproval(e, { budgetCredits: 20 });
+      const { run, approval } = await waitingApproval(e);
       await e.engine.decide("1", approval.id, {
         decision: "reject",
         answer: "太贵",
@@ -166,11 +164,11 @@ test("拒绝：附上理由转告模型，不登记积分，审批保持已拒�
       assert.match(JSON.stringify(e.go.modelRequests[1].body.messages), /用户的说明：太贵/);
       assert.ok(
         !e.types().includes("run.usage") ||
-          e.persisted("run.usage").every((u) => u.spent_credits <= 2),
-        "没有登记被拒绝的预估",
+          e.persisted("run.usage").every((u) => u.spent_credits === 0),
+        "平台积分不再登记",
       );
-      assert.equal(e.run(run.id).spentCredits, 2, "只有两次模型调用的积分");
-      assert.equal(e.run(run.id).budgetCredits, 20, "拒绝时追加的预算不生效");
+      assert.equal(e.run(run.id).spentCredits, 0);
+      assert.equal(e.run(run.id).budgetCredits, 0);
     },
   ));
 
@@ -224,7 +222,7 @@ test("部分批准：状态原样沿用平台解析出的 partially_approved", (
         ),
         "partially_approved",
       );
-      assert.equal(e.run(run.id).spentCredits, 3 + 2);
+      assert.equal(e.run(run.id).spentCredits, 0);
     },
   ));
 
@@ -351,44 +349,16 @@ test("重复点击 / 两个标签页同时点：只有一次生效，另一次�
 
 const BUDGET_OUT = { status: 402, message: "超出本轮积分预算", errorCode: 60008 };
 
-test("额度用完后继续：必须追加预算；追加后运行重新排队、运行、完成，模型收到「请继续」", () =>
-  withEngine({ turns: [{ error: BUDGET_OUT }, { text: "接着做完了" }] }, async (e) => {
+test("历史 60008 不再进入平台预算暂停，按普通失败结束", () =>
+  withEngine({ turns: [{ error: BUDGET_OUT }] }, async (e) => {
     const run = await e.start({ budgetCredits: 5 });
     await e.engine.idle();
-    assert.equal(e.run(run.id).status, "budget_exhausted");
-    await assert.rejects(
-      e.engine.resume("1", run.id),
-      (err: AgentError) => err.code === 10001 && /追加预算/.test(err.message),
-    );
-    await assert.rejects(e.engine.resume("1", run.id, 0), (err: AgentError) => err.code === 10001);
-
-    const queued = await e.engine.resume("1", run.id, 20);
-    assert.equal(queued.status, "queued", "返回的是排队状态，和现在一致");
-    await e.engine.idle();
     const r = e.run(run.id);
-    assert.deepEqual(
-      [r.status, r.budgetCredits, r.errorMessage, r.endedAt !== null],
-      ["succeeded", 25, "", true],
-    );
-    assert.deepEqual(e.statuses().slice(-4), [
-      "budget_exhausted",
-      "queued",
-      "running",
-      "succeeded",
-    ]);
-    assert.deepEqual(
-      e.persisted("run.status").find((x) => x.status === "queued" && x.resumed)?.resumed,
-      true,
-      "排队事件带 resumed",
-    );
-    assert.match(JSON.stringify(e.go.modelRequests.at(-1)!.body.messages), /请继续刚才的任务/);
-    assert.doesNotMatch(
-      JSON.stringify(e.go.modelRequests.at(-1)!.body.messages),
-      /被中断/,
-      "额度用完不是中断，不带中断的提醒",
-    );
-    const rc = decodeRunContext(String(e.go.modelRequests.at(-1)!.headers["x-agent-context"]));
-    assert.equal(rc.budget_credits, 25, "继续的这一段用的是新预算");
+    assert.equal(r.status, "failed");
+    assert.equal(r.budgetCredits, 0);
+    assert.equal(r.spentCredits, 0);
+    assert.match(r.errorMessage, /预算/);
+    assert.equal(e.store.activeRun("7"), undefined);
   }));
 
 test("步数用尽后继续：步数上限放宽一轮，之前的步数累计，运行能接着做完", () =>
@@ -434,8 +404,8 @@ test("被中断后继续：模型收到的提醒说明最后一步可能已经�
     },
   ));
 
-test("继续的限制：只有中断、额度用完、步数用尽能继续；别人的运行 60012；画布上已有别的运行 60001；准备失败时运行标失败", async () => {
-  await withEngine({ turns: [{ text: "好" }, { error: BUDGET_OUT }] }, async (e) => {
+test("继续的限制：只有中断、步数用尽等可恢复状态能继续；别人的运行 60012；画布上已有别的运行 60001；准备失败时运行标失败", async () => {
+  await withEngine({ turns: [{ text: "好" }] }, async (e) => {
     const done = await e.start();
     await e.engine.idle();
     await assert.rejects(
@@ -445,10 +415,10 @@ test("继续的限制：只有中断、额度用完、步数用尽能继续；�
     );
     const next = await e.start();
     await e.engine.idle();
-    assert.equal(e.run(next.id).status, "budget_exhausted");
+    e.store.updateRunIf(next.id, ["succeeded"], { status: "step_limit", endedAt: null });
     await assert.rejects(e.engine.resume("2", next.id, 5), (err: AgentError) => err.code === 60012);
     // 画布被别的运行占了
-    e.store.updateRunIf(next.id, ["budget_exhausted"], { status: "interrupted" });
+    e.store.updateRunIf(next.id, ["step_limit"], { status: "interrupted" });
     const other = e.store.createRun({
       sessionId: e.sessionId,
       canvasId: "7",
@@ -460,9 +430,10 @@ test("继续的限制：只有中断、额度用完、步数用尽能继续；�
     assert.equal(e.run(next.id).status, "interrupted", "没有占到画布，状态不变");
     void other;
   });
-  await withEngine({ turns: [{ error: BUDGET_OUT }] }, async (e) => {
+  await withEngine({ turns: [{ text: "好" }] }, async (e) => {
     const run = await e.start();
     await e.engine.idle();
+    e.store.updateRunIf(run.id, ["succeeded"], { status: "interrupted", endedAt: null });
     e.go.setPrepareError({ status: 400, code: 60002, msg: "Agent 模型不可用" });
     await assert.rejects(e.engine.resume("1", run.id, 5), (err: AgentError) => err.code === 60005);
     assert.equal(e.run(run.id).status, "failed");

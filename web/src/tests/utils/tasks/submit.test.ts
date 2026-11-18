@@ -11,7 +11,7 @@ import { makeTask } from "./fixtures";
 
 describe("describeSubmitError：提交处就地提示", () => {
   test("按后端业务码翻译", () => {
-    expect(describeSubmitError({ code: 40001 }).kind).toBe("credits");
+    expect(describeSubmitError({ code: 40016 }).kind).toBe("wallet");
     expect(describeSubmitError({ code: 40002 }).kind).toBe("limit");
     expect(describeSubmitError({ code: 40003 }).kind).toBe("unavailable");
     expect(describeSubmitError({ code: 40007 }).kind).toBe("asset");
@@ -24,7 +24,7 @@ describe("describeSubmitError：提交处就地提示", () => {
   });
 
   test("没有业务码时按 HTTP 状态兜底：402 / 429", () => {
-    expect(describeSubmitError({ code: "HTTP_402", status: 402 }).kind).toBe("credits");
+    expect(describeSubmitError({ code: "HTTP_402", status: 402 }).kind).toBe("wallet");
     expect(describeSubmitError({ code: "HTTP_429", status: 429 }).kind).toBe("limit");
   });
 
@@ -62,18 +62,18 @@ describe("submitWithRetry：同一次点击的重试复用同一个 Idempotency-
     expect(keys).toEqual(["key-1", "key-1", "key-1"]);
   });
 
-  test("4xx（积分不足等确定答复）不重试", async () => {
+  test("4xx（钱包未连接等确定答复）不重试", async () => {
     let calls = 0;
     await expect(
       submitWithRetry(
         async () => {
           calls += 1;
-          throw { code: 40001, status: 402 };
+          throw { code: 40016, status: 400 };
         },
         "k",
         { sleep: noSleep },
       ),
-    ).rejects.toMatchObject({ code: 40001 });
+    ).rejects.toMatchObject({ code: 40016 });
     expect(calls).toBe(1);
   });
 
@@ -159,9 +159,9 @@ describe("settleSubmission：把一次提交的逐项结果整理成「成功的
   });
 
   test("部分失败：成功的留着，失败的翻译成给用户看的话", () => {
-    const result = settleSubmission([ok(11), ok(12), err(40001, 402), err(40002, 429)]);
+    const result = settleSubmission([ok(11), ok(12), err(40016, 400), err(40002, 429)]);
     expect(result.taskIds).toEqual(["11", "12"]);
-    expect(result.failures.map((item) => item.kind)).toEqual(["credits", "limit"]);
+    expect(result.failures.map((item) => item.kind)).toEqual(["wallet", "limit"]);
   });
 
   test("一个都没成功：taskIds 为空，失败原因都在", () => {

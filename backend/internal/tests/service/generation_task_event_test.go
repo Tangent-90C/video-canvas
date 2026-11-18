@@ -15,9 +15,7 @@ func TestGenerationTaskService_EventDetail(t *testing.T) {
 	const user = uint64(7)
 	newEnv := func(status string) (*taskSvcEnv, *model.GenerationTask) {
 		env := newTaskSvcEnv(defaultTaskLimits())
-		env.repo.addCredit(user, 50, 10)
-		task := env.repo.addTask(model.GenerationTask{UserID: user, Status: status, Credits: 10, Provider: "p1"})
-		env.repo.ledger = append(env.repo.ledger, model.CreditLedger{UserID: user, TaskID: model.TaskIDPtr(task.ID), Type: model.LedgerFreeze, Amount: 10})
+		task := env.repo.addTask(model.GenerationTask{UserID: user, Status: status, Credits: 0, Provider: "p1"})
 		return env, task
 	}
 
@@ -87,13 +85,13 @@ func TestGenerationTaskService_EventDetail(t *testing.T) {
 		}
 	})
 
-	t.Run("Cancel：已进入生成的任务用户可取消，事件原因是 user_cancel 并标明扣费", func(t *testing.T) {
+	t.Run("Cancel：已进入生成的任务用户可取消，事件原因是 user_cancel 且不记平台扣费", func(t *testing.T) {
 		env, task := newEnv(model.TaskQueued)
 		if _, err := env.svc.Cancel(ctx, user, task.ID); err != nil {
 			t.Fatal(err)
 		}
-		if d := env.repo.eventDetails[task.ID]; d["reason"] != "user_cancel" || d["charged"] != true {
-			t.Fatalf("取消事件应为 user_cancel 且 charged=true：%+v", d)
+		if d := env.repo.eventDetails[task.ID]; d["reason"] != "user_cancel" || d["charged"] != nil {
+			t.Fatalf("取消事件应为 user_cancel 且不带平台扣费标记：%+v", d)
 		}
 	})
 

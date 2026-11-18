@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -43,6 +44,16 @@ type fakeSecrets map[string]string
 func (s fakeSecrets) Get(_ context.Context, name string) (string, error) {
 	if v, ok := s[name]; ok {
 		return v, nil
+	}
+	// 旧测试夹具把 Agent 渠道 Key 叫 channel:ch1；新实现固定读 wallet:<uid>。
+	// 只给测试兼容，不改变生产代码的钱包 Key 解析。
+	if strings.HasPrefix(name, "wallet:") {
+		if v, ok := s["wallet:1"]; ok {
+			return v, nil
+		}
+		if v, ok := s["channel:ch1"]; ok {
+			return v, nil
+		}
 	}
 	return "", errors.New("凭证尚未设置")
 }
@@ -106,16 +117,17 @@ func newBridgeEnvWith(t *testing.T, lib SkillLibrary, web provider.WebAccess) *b
 	caps.Vision = true
 	reg := &fakeBridgeRegistry{snap: &provider.Snapshot{
 		Model:   provider.ModelSnapshot{Key: "claude", Kind: "agent", UpstreamModel: "claude-up", Pricing: billingPricing, Capabilities: caps},
-		Channel: provider.ChannelSnapshot{Key: "ch1", BaseURL: "https://llm.example", RateLimit: provider.RateLimit{RPS: 2, MaxConcurrency: 3}},
+		Channel: provider.ChannelSnapshot{Key: "ch1", BaseURL: "https://llm.example", Wallet: true, RateLimit: provider.RateLimit{RPS: 2, MaxConcurrency: 3}},
 	}, models: []provider.ModelInfo{
-		{Key: "seedream", Kind: "image", Label: "Seedream", Hint: "图片模型", Capabilities: modelcfg.Capabilities{Ops: []string{"t2i"}}},
+		{Key: "seedream", Kind: "image", Label: "Seedream", Hint: "图片模型", Wallet: true, Capabilities: modelcfg.Capabilities{Ops: []string{"t2i"}}},
+		{Key: "legacy-image", Kind: "image", Label: "旧平台渠道图片模型", Hint: "不可再用于用户调用", Capabilities: modelcfg.Capabilities{Ops: []string{"t2i"}}},
 		{Key: "claude", Kind: "agent", Label: "Claude"},
 	}}
 	str := &fakeStreamer{script: okStream("好的", llmgateway.Usage{InputTokens: 1_000_000, OutputTokens: 100_000})}
 	now := e.now
 	br := NewAgentBridge(BridgeDeps{
 		Repo: e.repo, Canvas: NewAgentCanvasService(e.repo, e.bc), Agent: e.svc, Billing: NewAgentBilling(bill),
-		Registry: reg, Secrets: fakeSecrets{"channel:ch1": "sk-test"}, Streamer: str, Skills: lib, Web: web,
+		Registry: reg, Secrets: fakeSecrets{"wallet:1": "sk-test"}, Streamer: str, Skills: lib, Web: web,
 		Now: func() time.Time { return now }, RunUsage: &fakeRunUsage{bill: bill},
 	})
 	return &bridgeEnv{agentEnv: e, bill: bill, reg: reg, str: str, br: br, now: &now, webAccess: web}

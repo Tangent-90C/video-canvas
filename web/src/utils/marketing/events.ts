@@ -68,7 +68,7 @@ export function handleMarketingRoundEvent(event: MarketingRoundEvent) {
       toast.success(`「${title}」${round.scripts.length} 份脚本已写好`, { action });
       break;
     case "failed":
-      toast.error(`「${title}」写脚本失败，积分已退回`, { action });
+      toast.error(`「${title}」写脚本失败，费用以 TokenDance 实际账单为准`, { action });
       break;
   }
 }

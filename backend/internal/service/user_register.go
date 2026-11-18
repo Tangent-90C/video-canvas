@@ -174,12 +174,8 @@ func (s *UserService) Register(ctx context.Context, req *model.RegisterUserReq, 
 		verified = true
 	}
 
-	// 4. 事务外先做耗时操作：bcrypt 哈希与读初始积分，避免持有注册锁时做 CPU 密集计算
+	// 4. 事务外先做耗时操作：bcrypt 哈希，避免持有注册锁时做 CPU 密集计算
 	hashed, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
-	if err != nil {
-		return nil, err
-	}
-	initial, err := s.Policy.InitialCredits(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -187,7 +183,7 @@ func (s *UserService) Register(ctx context.Context, req *model.RegisterUserReq, 
 	// 5. 事务内建号
 	user := &model.User{Username: req.Username, Email: email, Password: string(hashed), Status: model.UserStatusActive}
 	if err := s.Repo.WithTx(ctx, func(tx repository.UserTx) error {
-		return s.registerInTx(ctx, tx, user, initial, verified, st.smtpOn, meta)
+		return s.registerInTx(ctx, tx, user, verified, st.smtpOn, meta)
 	}); err != nil {
 		return nil, err
 	}
@@ -201,8 +197,8 @@ func (s *UserService) Register(ctx context.Context, req *model.RegisterUserReq, 
 //  2. 锁内重新判断是否第一个用户：预检（锁外）之后可能已有别人注册，此时必须按“非首个”的规则复核，
 //     否则两个并发请求都会以“免验证码”的身份注册成功，且都当上 super_admin；
 //  3. 查用户名、邮箱唯一性（锁内，结果可靠）；
-//  4. 建用户、积分账户（含 initial 流水）与 register 登录记录。
-func (s *UserService) registerInTx(ctx context.Context, tx repository.UserTx, user *model.User, initial int, verified, smtpOn bool, meta ClientMeta) error {
+//  4. 建用户与 register 登录记录；不再创建平台积分账户。
+func (s *UserService) registerInTx(ctx context.Context, tx repository.UserTx, user *model.User, verified, smtpOn bool, meta ClientMeta) error {
 	if err := tx.LockRegistration(ctx); err != nil {
 		return err
 	}
@@ -243,9 +239,6 @@ func (s *UserService) registerInTx(ctx context.Context, tx repository.UserTx, us
 		if errors.Is(err, repository.ErrDuplicate) {
 			return errcode.ErrUserExists
 		}
-		return err
-	}
-	if err := tx.CreateCredit(ctx, user.ID, initial); err != nil {
 		return err
 	}
 	return tx.InsertLoginLog(ctx, &model.UserLoginLog{

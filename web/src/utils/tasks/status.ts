@@ -20,16 +20,6 @@ export const isCancelableTask = (task: Pick<TaskView, "status">) =>
   task.status === "pending" || task.status === "queued" || task.status === "running";
 
 /**
- * 现在取消，积分会不会退回：只有还没提交给上游（pending 且没有提交时间，界面上的「排队中」）才退；
- * 已经进入生成，平台照常产生费用，冻结的积分全额扣除。
- */
-export const cancelRefunds = (task: Pick<TaskView, "status" | "submitted_at">) =>
-  task.status === "pending" && !task.submitted_at;
-
-/** 已取消的任务积分有没有退回：后端取消时按「已进入生成」写了实扣积分的，就是没退 */
-export const canceledRefunded = (task: Pick<TaskView, "charged_credits">) => !task.charged_credits;
-
-/**
  * 从一批任务 id 里挑出该去取消的：本地已有快照且不可取消的跳过；
  * 没有快照的保留（快照可能还没到，交给后端判断）。
  * @param ids 任务 ID

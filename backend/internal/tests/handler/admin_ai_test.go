@@ -219,7 +219,7 @@ func (e *aicEnv) seedProtocolModel(t *testing.T, key, channel, plugin, version s
 // aicChannelJSON 是一份合法的新建渠道请求体：渠道只管连接信息，协议在模型里选。
 func aicChannelJSON(key string) map[string]any {
 	return map[string]any{
-		"key": key, "name": "渠道-" + key, "base_url": "https://gw.example.com",
+		"key": key, "name": "渠道-" + key, "base_url": "https://gw.example.com", "wallet_enabled": true,
 		"rate_limit": map[string]any{"rps": 5, "max_concurrency": 20},
 	}
 }
@@ -295,7 +295,7 @@ func TestAIModelHandler_List(t *testing.T) {
 			t.Fatalf("应返回 1 个模型：%v %s", err, r.Raw)
 		}
 		m := list[0]
-		if m["key"] != "m1" || m["kind"] != "video" || m["label"] != "模型-m1" || m["hint"] != "小字" || m["pricing"].(map[string]any)["unit"] != float64(5) {
+		if m["key"] != "m1" || m["kind"] != "video" || m["label"] != "模型-m1" || m["hint"] != "小字" || m["wallet"] != true {
 			t.Fatalf("公开字段不符合预期：%v", m)
 		}
 		if caps, _ := m["capabilities"].(map[string]any); caps == nil || caps["prompt"] == nil || caps["ops"] == nil {
@@ -303,7 +303,7 @@ func TestAIModelHandler_List(t *testing.T) {
 		}
 		// upstream_model 是公开字段（钱包模型用它匹配 TokenDance 调用记录），
 		// 所以这里不再把 "upstream" / 上游模型名当泄露；真正要守住的是渠道、插件、凭证与积分成本
-		for _, bad := range []string{"params", "channel", "plugin", "secret", "instanceType", "sk-super-secret", "base_url", "cost", "保密的系统提示"} {
+		for _, bad := range []string{"params", "channel", "plugin", "secret", "instanceType", "sk-super-secret", "base_url", "pricing", "cost", "保密的系统提示"} {
 			if strings.Contains(r.Raw, bad) {
 				t.Fatalf("/models 响应泄露了 %q：%s", bad, r.Raw)
 			}
@@ -315,7 +315,7 @@ func TestAIModelHandler_List(t *testing.T) {
 			t.Fatalf("没有标签时 tags 应为 []：%v", m["tags"])
 		}
 		if len(m) != 9 {
-			t.Fatalf("公开字段应恰好 9 个（key/kind/label/hint/vendor/tags/capabilities/pricing/upstream_model），实际 %d：%v", len(m), m)
+			t.Fatalf("公开字段应恰好 9 个（key/kind/label/hint/vendor/tags/capabilities/upstream_model/wallet），实际 %d：%v", len(m), m)
 		}
 	})
 	t.Run("kind=text 合法：文本节点能拿到清单", func(t *testing.T) {
@@ -1367,8 +1367,12 @@ func TestAdminAIHandler_ConfigLifecycle(t *testing.T) {
 			t.Fatalf("应报缺少协议：%s", r.Raw)
 		}
 	})
-	t.Run("渠道 Key 未设置时启用返回 409（50015）", func(t *testing.T) {
-		aicWant(t, env.admin(http.MethodPut, aicBase+"/models/m1/enabled", map[string]any{"enabled": true}), http.StatusConflict, errcode.ErrChannelSecretUnset.Code)
+	t.Run("钱包模型不要求产品方渠道 Key，启用后用户可见", func(t *testing.T) {
+		aicWant(t, env.admin(http.MethodPut, aicBase+"/models/m1/enabled", map[string]any{"enabled": true}), http.StatusOK, 0)
+		r := env.do(http.MethodGet, "/api/v1/models", nil, aicNormalUser)
+		if !strings.Contains(r.Raw, `"m1"`) {
+			t.Fatalf("启用后用户清单里应有 m1：%s", r.Raw)
+		}
 	})
 	t.Run("渠道停用时启用返回 409（50014）", func(t *testing.T) {
 		aicWant(t, env.super(http.MethodPut, aicBase+"/channels/kling-main", map[string]any{"enabled": false}), http.StatusOK, 0)
@@ -1487,11 +1491,14 @@ func TestAdminAIHandler_DryRunTestRunAndTrace(t *testing.T) {
 	aicWant(t, env.admin(http.MethodPut, aicBase+"/models/m1", map[string]any{"body": aicModelJSON("m1", "video", "kling-main")}), http.StatusOK, 0)
 	base := aicBase + "/models/m1"
 
-	t.Run("dry-run 成功且响应不含凭证", func(t *testing.T) {
-		env.dry.Result = map[string]any{"submit": map[string]any{"headers": map[string]any{"X-Echo": "Bearer sk-super-secret"}}}
+	t.Run("dry-run 成功且响应不含用户钱包凭证", func(t *testing.T) {
+		if err := env.cfg.SetSecret(context.Background(), model.WalletSecretName(aicAdminUser), "sk-wallet-admin", aicAdminUser); err != nil {
+			t.Fatal(err)
+		}
+		env.dry.Result = map[string]any{"submit": map[string]any{"headers": map[string]any{"X-Echo": "Bearer sk-wallet-admin"}}}
 		r := env.admin(http.MethodPost, base+"/dry-run", map[string]any{"input": map[string]any{"prompt": "hi"}})
 		aicWant(t, r, http.StatusOK, 0)
-		if strings.Contains(r.Raw, "sk-super-secret") || !strings.Contains(r.Raw, "***") {
+		if strings.Contains(r.Raw, "sk-wallet-admin") || !strings.Contains(r.Raw, "***") {
 			t.Fatalf("响应不得包含凭证明文：%s", r.Raw)
 		}
 	})

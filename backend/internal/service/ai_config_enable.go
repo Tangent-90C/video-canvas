@@ -82,17 +82,15 @@ func (s *AIConfigService) checkEnableable(ctx context.Context, key string, body 
 	if len(issues) > 0 || cfg == nil {
 		return repository.ConfigPointer{}, errcode.ErrConfigInvalid.WithMsg("配置校验未通过：" + aiFormatIssues(issues))
 	}
-	if cfg.Pricing.Pending {
-		return repository.ConfigPointer{}, errcode.ErrConfigInvalid.WithMsg("模型售价待确认，仅可管理员试跑；完成定价后才能启用")
-	}
 	// 2. 渠道与协议可用：否则启用后模型也不会出现在清单里
 	rc, err := s.resolveChannel(ctx, cfg)
 	if err != nil {
 		return repository.ConfigPointer{}, err
 	}
 	// 3. 渠道 Key 已设置：否则启用后每个任务都会因缺凭证而失败
-	if err := s.checkChannelSecret(ctx, rc); err != nil {
-		return repository.ConfigPointer{}, err
+	// 钱包渠道的运行时凭证是发起用户自己的 wallet:<uid>；产品方渠道 Key 只用于同步目录。
+	if !rc.channel.WalletEnabled {
+		return repository.ConfigPointer{}, errcode.ErrConfigInvalid.WithMsg("平台积分渠道已停用，请将模型绑定到 TokenPay 钱包渠道")
 	}
 	return aiPointer(meta), nil
 }

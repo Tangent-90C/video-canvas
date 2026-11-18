@@ -37,7 +37,7 @@ func (f *fakeGenTasks) Create(_ context.Context, _ uint64, key string, req *mode
 		return nil, err
 	}
 	f.next++
-	return &model.CreateGenerationTaskResp{Items: []model.CreateTaskItem{{NodeID: req.NodeID, Task: &model.GenerationTaskView{ID: 100 + f.next, Credits: 5}}}}, nil
+	return &model.CreateGenerationTaskResp{Items: []model.CreateTaskItem{{NodeID: req.NodeID, Task: &model.GenerationTaskView{ID: 100 + f.next, Credits: 0, Wallet: true}}}}, nil
 }
 
 func (f *fakeGenTasks) Get(_ context.Context, _, id uint64) (*model.GenerationTaskView, error) {
@@ -54,7 +54,7 @@ var imageSnap = &provider.Snapshot{
 	Model: provider.ModelSnapshot{Key: "seedream", Kind: "image", Label: "Seedream",
 		Pricing:      modelcfg.Pricing{Billing: modelcfg.BillingPerCall, Unit: 5},
 		Capabilities: modelcfg.Capabilities{Ops: []string{"t2i", "i2i"}, Refs: modelcfg.Refs{Image: modelcfg.RefSpec{On: true, Max: 4, MaxMB: 10}}, Prompt: modelcfg.PromptSpec{MaxLength: 500}}},
-	Channel: provider.ChannelSnapshot{Key: "ch1"},
+	Channel: provider.ChannelSnapshot{Key: "ch1", Wallet: true},
 }
 
 type genEnv struct {
@@ -298,7 +298,7 @@ func TestAgentGenerator_CharacterVoice(t *testing.T) {
 			if tc.mute {
 				caps.Params = modelcfg.ParamSet{{Name: "generate_audio", ParamField: modelcfg.ParamField{Type: "boolean", Default: false}}}
 			}
-			e.reg.snap = &provider.Snapshot{Model: provider.ModelSnapshot{Key: "video", Kind: "video", Capabilities: caps}}
+			e.reg.snap = &provider.Snapshot{Model: provider.ModelSnapshot{Key: "video", Kind: "video", Capabilities: caps}, Channel: provider.ChannelSnapshot{Key: "ch1", Wallet: true}}
 			if tc.want != "" {
 				if result := propose(t, e, platformCtx(e.run.ID, "all"), "generate", map[string]any{"items": []map[string]string{{"nodeId": "v"}}}); !result.IsError || !strings.Contains(result.Content, tc.want) {
 					t.Fatalf("审批预检应拒绝：%+v", result)

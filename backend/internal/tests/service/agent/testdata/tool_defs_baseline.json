@@ -216,161 +216,161 @@
                 "description": "角色卡（kind 为 character）的人物数据：create_node 必填，update_node 只改给了的字段"
               },
               "storyboard": {
-                  "type": "object",
-                  "properties": {
-                    "shots": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "scene": {
-                            "type": "string",
-                            "description": "画面描述：这个镜头里发生了什么，最多 1000 字；新镜头必填"
-                          },
-                          "shot": {
-                            "type": "string",
-                            "enum": [
-                              "大远景",
-                              "远景",
-                              "全景",
-                              "中景",
-                              "中近景",
-                              "近景",
-                              "特写",
-                              "大特写"
-                            ],
-                            "description": "景别；新镜头不写是中景"
-                          },
-                          "camera": {
-                            "type": "string",
-                            "enum": [
-                              "固定",
-                              "推",
-                              "拉",
-                              "摇",
-                              "移",
-                              "跟",
-                              "升",
-                              "降",
-                              "环绕",
-                              "变焦",
-                              "甩镜",
-                              "手持",
-                              "航拍"
-                            ],
-                            "description": "运镜；新镜头不写是固定"
-                          },
-                          "action": {
-                            "type": "string",
-                            "description": "动作 / 走位：角色动作、移动路线、朝向，最多 1000 字"
-                          },
-                          "dialogue": {
-                            "type": "string",
-                            "description": "对白，旁白写成「OS：……」，最多 1000 字"
-                          },
-                          "duration": {
-                            "type": "number",
-                            "description": "时长（秒），1–60，最多 1 位小数，越界会被修正；新镜头不写是 3"
-                          }
+                "type": "object",
+                "properties": {
+                  "shots": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "scene": {
+                          "type": "string",
+                          "description": "画面描述：这个镜头里发生了什么，最多 1000 字；新镜头必填"
                         },
-                        "additionalProperties": false
+                        "shot": {
+                          "type": "string",
+                          "enum": [
+                            "大远景",
+                            "远景",
+                            "全景",
+                            "中景",
+                            "中近景",
+                            "近景",
+                            "特写",
+                            "大特写"
+                          ],
+                          "description": "景别；新镜头不写是中景"
+                        },
+                        "camera": {
+                          "type": "string",
+                          "enum": [
+                            "固定",
+                            "推",
+                            "拉",
+                            "摇",
+                            "移",
+                            "跟",
+                            "升",
+                            "降",
+                            "环绕",
+                            "变焦",
+                            "甩镜",
+                            "手持",
+                            "航拍"
+                          ],
+                          "description": "运镜；新镜头不写是固定"
+                        },
+                        "action": {
+                          "type": "string",
+                          "description": "动作 / 走位：角色动作、移动路线、朝向，最多 1000 字"
+                        },
+                        "dialogue": {
+                          "type": "string",
+                          "description": "对白，旁白写成「OS：……」，最多 1000 字"
+                        },
+                        "duration": {
+                          "type": "number",
+                          "description": "时长（秒），1–60，最多 1 位小数，越界会被修正；新镜头不写是 3"
+                        }
                       },
-                      "description": "整表替换：按镜号顺序给出全部镜头，原有镜头全部换掉（新建分镜表、从剧本拆分镜时用）"
+                      "additionalProperties": false
                     },
-                    "edits": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "required": [
-                          "op"
-                        ],
-                        "properties": {
-                          "op": {
-                            "type": "string",
-                            "enum": [
-                              "update",
-                              "insert",
-                              "delete",
-                              "move"
-                            ],
-                            "description": "update 改第 no 镜（只改 set 里给了的字段）；insert 在第 after 镜后插入新镜头（after 为 0 插到最前）；delete 删第 no 镜；move 把第 no 镜挪到第 to 镜的位置"
-                          },
-                          "no": {
-                            "type": "integer",
-                            "description": "update / delete / move：第几镜"
-                          },
-                          "after": {
-                            "type": "integer",
-                            "description": "insert：插在第几镜后面，0 是最前面"
-                          },
-                          "to": {
-                            "type": "integer",
-                            "description": "move：挪到第几镜"
-                          },
-                          "set": {
-                            "type": "object",
-                            "properties": {
-                              "scene": {
-                                "type": "string",
-                                "description": "画面描述：这个镜头里发生了什么，最多 1000 字；新镜头必填"
-                              },
-                              "shot": {
-                                "type": "string",
-                                "enum": [
-                                  "大远景",
-                                  "远景",
-                                  "全景",
-                                  "中景",
-                                  "中近景",
-                                  "近景",
-                                  "特写",
-                                  "大特写"
-                                ],
-                                "description": "景别；新镜头不写是中景"
-                              },
-                              "camera": {
-                                "type": "string",
-                                "enum": [
-                                  "固定",
-                                  "推",
-                                  "拉",
-                                  "摇",
-                                  "移",
-                                  "跟",
-                                  "升",
-                                  "降",
-                                  "环绕",
-                                  "变焦",
-                                  "甩镜",
-                                  "手持",
-                                  "航拍"
-                                ],
-                                "description": "运镜；新镜头不写是固定"
-                              },
-                              "action": {
-                                "type": "string",
-                                "description": "动作 / 走位：角色动作、移动路线、朝向，最多 1000 字"
-                              },
-                              "dialogue": {
-                                "type": "string",
-                                "description": "对白，旁白写成「OS：……」，最多 1000 字"
-                              },
-                              "duration": {
-                                "type": "number",
-                                "description": "时长（秒），1–60，最多 1 位小数，越界会被修正；新镜头不写是 3"
-                              }
-                            },
-                            "additionalProperties": false
-                          }
-                        },
-                        "additionalProperties": false
-                      },
-                      "description": "逐行修改，按顺序执行；no / after / to 都是镜号（从 1 起），按这一步执行前的顺序算"
-                    }
+                    "description": "整表替换：按镜号顺序给出全部镜头，原有镜头全部换掉（新建分镜表、从剧本拆分镜时用）"
                   },
-                  "additionalProperties": false,
-                  "description": "分镜表（kind 为 storyboard）的镜头：create_node 可选（不写是空表），update_node 用 shots 整表替换或 edits 逐行改，两者都给时先替换再改。分镜表只能写标题、位置和这一项，不能写提示词、模型和参数"
-                }
+                  "edits": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "op"
+                      ],
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "enum": [
+                            "update",
+                            "insert",
+                            "delete",
+                            "move"
+                          ],
+                          "description": "update 改第 no 镜（只改 set 里给了的字段）；insert 在第 after 镜后插入新镜头（after 为 0 插到最前）；delete 删第 no 镜；move 把第 no 镜挪到第 to 镜的位置"
+                        },
+                        "no": {
+                          "type": "integer",
+                          "description": "update / delete / move：第几镜"
+                        },
+                        "after": {
+                          "type": "integer",
+                          "description": "insert：插在第几镜后面，0 是最前面"
+                        },
+                        "to": {
+                          "type": "integer",
+                          "description": "move：挪到第几镜"
+                        },
+                        "set": {
+                          "type": "object",
+                          "properties": {
+                            "scene": {
+                              "type": "string",
+                              "description": "画面描述：这个镜头里发生了什么，最多 1000 字；新镜头必填"
+                            },
+                            "shot": {
+                              "type": "string",
+                              "enum": [
+                                "大远景",
+                                "远景",
+                                "全景",
+                                "中景",
+                                "中近景",
+                                "近景",
+                                "特写",
+                                "大特写"
+                              ],
+                              "description": "景别；新镜头不写是中景"
+                            },
+                            "camera": {
+                              "type": "string",
+                              "enum": [
+                                "固定",
+                                "推",
+                                "拉",
+                                "摇",
+                                "移",
+                                "跟",
+                                "升",
+                                "降",
+                                "环绕",
+                                "变焦",
+                                "甩镜",
+                                "手持",
+                                "航拍"
+                              ],
+                              "description": "运镜；新镜头不写是固定"
+                            },
+                            "action": {
+                              "type": "string",
+                              "description": "动作 / 走位：角色动作、移动路线、朝向，最多 1000 字"
+                            },
+                            "dialogue": {
+                              "type": "string",
+                              "description": "对白，旁白写成「OS：……」，最多 1000 字"
+                            },
+                            "duration": {
+                              "type": "number",
+                              "description": "时长（秒），1–60，最多 1 位小数，越界会被修正；新镜头不写是 3"
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "description": "逐行修改，按顺序执行；no / after / to 都是镜号（从 1 起），按这一步执行前的顺序算"
+                  }
+                },
+                "additionalProperties": false,
+                "description": "分镜表（kind 为 storyboard）的镜头：create_node 可选（不写是空表），update_node 用 shots 整表替换或 edits 逐行改，两者都给时先替换再改。分镜表只能写标题、位置和这一项，不能写提示词、模型和参数"
+              }
             },
             "additionalProperties": false
           },
@@ -606,7 +606,7 @@
   },
   {
     "name": "model_list",
-    "description": "列出已发布的生成模型（图片、视频或音频）及其能力和价格摘要：支持的生成方式、参考素材、参数和可选值。建节点前用它挑模型、写对参数。",
+    "description": "列出已发布的生成模型（图片、视频或音频）及其能力摘要：支持的生成方式、参考素材、参数和可选值。建节点前用它挑模型、写对参数；实际费用由用户自己的 TokenPay 钱包按 TokenDance 账单结算。",
     "parameters": {
       "type": "object",
       "required": [
@@ -634,7 +634,7 @@
   },
   {
     "name": "generate_media",
-    "description": "为画布上的节点申请生成（图片、视频、音频、文本）。不会直接生成：会向用户展示确认卡片（含预估积分），本轮暂停，用户批准后任务才创建，你会收到结果。节点必须已选好模型、写好提示词，且还没有产物（不会覆盖已有产物，需要新版本请先新建节点）。上游连线的文字和素材会自动作为提示词补充和参考。一个节点只生成一个结果，要多个结果请建多个节点。",
+    "description": "为画布上的节点申请生成（图片、视频、音频、文本）。不会直接生成：会向用户展示确认卡片，本轮暂停，用户批准后任务才创建，你会收到结果。费用由用户 TokenPay 钱包直接结算。节点必须已选好模型、写好提示词，且还没有产物（不会覆盖已有产物，需要新版本请先新建节点）。上游连线的文字和素材会自动作为提示词补充和参考。一个节点只生成一个结果，要多个结果请建多个节点。",
     "parameters": {
       "type": "object",
       "required": [

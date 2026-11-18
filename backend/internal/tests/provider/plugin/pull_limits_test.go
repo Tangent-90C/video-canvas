@@ -27,7 +27,7 @@ func TestListUpstreamLimits_识别各家字段(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	got, err := pullExecutor(func() bool { return true }).ListUpstreamLimits(context.Background(), provider.ChannelSnapshot{Key: "c1", BaseURL: srv.URL}, "k")
+	got, err := pullExecutor(func() bool { return true }).ListUpstreamLimits(context.Background(), provider.ChannelSnapshot{Wallet: true, Key: "c1", BaseURL: srv.URL}, "k")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestListUpstreamLimits_识别各家字段(t *testing.T) {
 func TestListUpstreamLimits_失败原样返回拉取错误(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusUnauthorized) }))
 	defer srv.Close()
-	_, err := pullExecutor(func() bool { return true }).ListUpstreamLimits(context.Background(), provider.ChannelSnapshot{Key: "c1", BaseURL: srv.URL}, "k")
+	_, err := pullExecutor(func() bool { return true }).ListUpstreamLimits(context.Background(), provider.ChannelSnapshot{Wallet: true, Key: "c1", BaseURL: srv.URL}, "k")
 	var pe *provider.PullError
 	if !errors.As(err, &pe) || pe.Reason != provider.PullUnauthorized {
 		t.Fatalf("应是 PullUnauthorized：%v", err)

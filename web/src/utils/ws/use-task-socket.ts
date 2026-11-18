@@ -2,8 +2,7 @@ import { useEffect } from "react";
 
 import { getWsTicket } from "@/api/ws";
 import { useAgentStore } from "@/store/agent";
-import { useCreditsStore } from "@/store/credits";
-import { usePaymentStore } from "@/store/payment";
+import { useWalletStore } from "@/store/wallet";
 import { publishCanvasPatch } from "@/utils/agent/patch-bus";
 import { useWsStore } from "@/store/ws";
 import { getToken } from "@/utils/storage/token";
@@ -44,7 +43,6 @@ export function useTaskSocket() {
       onTask: (view) => handleTaskView(view, "live"),
       onCanvasPatch: publishCanvasPatch,
       onAgentEvent: (event) => useAgentStore.getState().handleEvent(event, { live: true }),
-      onPayment: (update) => usePaymentStore.getState().handleWsUpdate(update),
       onDramaJob: handleDramaJobEvent,
       onDrama: handleDramaEvent,
       onDramaEpisode: handleDramaEpisodeEvent,
@@ -58,7 +56,8 @@ export function useTaskSocket() {
         void reconcileWatchedDramas();
         void reconcileWatchedSegments();
         void reconcileWatchedMarketing();
-        void useCreditsStore.getState().refresh();
+        if (useWalletStore.getState().view?.connected)
+          void useWalletStore.getState().fetchBalance();
         // 断线期间可能漏了 Agent 事件：把已经打开过的会话补齐
         const { sessions, sync } = useAgentStore.getState();
         for (const id of Object.keys(sessions)) void sync(id).catch(() => undefined);

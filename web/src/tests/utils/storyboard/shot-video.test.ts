@@ -41,10 +41,7 @@ describe("视频格的状态（设计 §6.6 的四种）", () => {
 
   test("失败：带原因，去处理", () => {
     expect(
-      shotVideoState(
-        "v1",
-        view({ phase: "failed", message: "模型超时", refunded: true, taskRef: null }),
-      ),
+      shotVideoState("v1", view({ phase: "failed", message: "模型超时", taskRef: null })),
     ).toEqual({ kind: "failed", message: "模型超时" });
   });
 

@@ -124,16 +124,15 @@ describe("deriveVideoNodeView：节点状态 -> 展示状态（设计 6.3）", (
     ).toMatchObject({ phase: "failed", taskRef: null });
   });
 
-  test("失败：任务失败标注积分已退回，本地错误（如上传失败）不标", () => {
+  test("失败：任务失败展示原因，本地错误（如上传失败）也按失败展示", () => {
     expect(
       deriveVideoNodeView({ status: "error", error: "内容未通过审核", taskId: "1" }, undefined, T0),
-    ).toEqual({ phase: "failed", message: "内容未通过审核", refunded: true, taskRef: null });
+    ).toEqual({ phase: "failed", message: "内容未通过审核", taskRef: null });
     expect(
       deriveVideoNodeView({ status: "error", error: "上传失败，请重试" }, undefined, T0),
     ).toEqual({
       phase: "failed",
       message: "上传失败，请重试",
-      refunded: false,
       taskRef: null,
     });
   });

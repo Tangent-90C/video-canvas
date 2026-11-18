@@ -92,7 +92,7 @@ func (s *AgentService) checkChip(ctx context.Context, g *canvasgraph.Graph, c Ag
 	return nil
 }
 
-// checkModelChip 校验模型引用：必须是已发布、已上架的生成模型。
+// checkModelChip 校验模型引用：必须是已发布、已上架且绑定 TokenPay 钱包的生成模型。
 func (s *AgentService) checkModelChip(ctx context.Context, c AgentChip, bad func(string) error) error {
 	if s.registry == nil {
 		return nil
@@ -102,7 +102,7 @@ func (s *AgentService) checkModelChip(ctx context.Context, c AgentChip, bad func
 		return err
 	}
 	for _, m := range infos {
-		if m.Key == c.ID && m.Kind != "agent" {
+		if m.Key == c.ID && m.Kind != "agent" && m.Wallet {
 			return nil
 		}
 	}

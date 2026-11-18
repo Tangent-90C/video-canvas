@@ -16,7 +16,7 @@ import (
 // errInvalidOutput 表示产物本身不合规（类型未知、缺少地址、文本模型给了 URL 产物等），重试也不会变好，直接失败。
 var errInvalidOutput = errors.New("产物不合规")
 
-// finalize 处理 finalizing 任务：拿到产物列表，逐个转存（文本与宿主已落库的素材不下载），全部完成后结算。
+// finalize 处理 finalizing 任务：拿到产物列表，逐个转存（文本与宿主已落库的素材不下载），全部完成后结束任务。
 func (w *Worker) finalize(ctx context.Context, t *model.GenerationTask, snap *provider.Snapshot) {
 	log := w.taskLog(t)
 
@@ -32,7 +32,7 @@ func (w *Worker) finalize(ctx context.Context, t *model.GenerationTask, snap *pr
 		return
 	}
 
-	// 2. 逐个处理（已成功的跳过），失败按退避重试，耗尽后失败退款
+	// 2. 逐个处理（已成功的跳过），失败按退避重试，耗尽后任务失败
 	tctx, tcancel := context.WithTimeout(ctx, w.opts.TransferTimeout)
 	defer tcancel()
 	outputs, err := w.transferAll(tctx, t, snap, outs)
@@ -41,7 +41,7 @@ func (w *Worker) finalize(ctx context.Context, t *model.GenerationTask, snap *pr
 		return
 	}
 
-	// 3. 全部完成：一个事务里写 output_json、置 succeeded、结算积分（在 store.Complete 内完成）
+	// 3. 全部完成：一个事务里写 output_json 并置 succeeded（在 store.Complete 内完成）
 	applied, err := w.store.Complete(ctx, t, outputs, totalUsage(outs))
 	if err != nil {
 		// 事务失败：产物已转存好并记在内存里，稍后重试时不会重复转存
@@ -61,7 +61,7 @@ func (w *Worker) finalOutputs(ctx context.Context, t *model.GenerationTask, snap
 	if len(t.ProviderResult) > 0 {
 		var outs []provider.Output
 		if err := json.Unmarshal(t.ProviderResult, &outs); err != nil {
-			// 同步结果只有这一份，上游不能再查；损坏只能失败退款
+			// 同步结果只有这一份，上游不能再查；损坏只能判定任务失败
 			w.taskLog(t).Error("任务的 provider_result 损坏，直接失败", zap.Error(err))
 			w.fail(ctx, t, snap, failure{class: provider.ClassTerminal, raw: "invalid provider_result"})
 			return nil, false
@@ -218,11 +218,11 @@ func (w *Worker) downloadOne(ctx context.Context, t *model.GenerationTask, snap 
 }
 
 // retryTransfer 转存阶段的一次失败：次数没耗尽就退避重试（必须在上游 URL 有效期内完成，
-// 默认最多 10 次、总窗口约 40 分钟），耗尽后置 failed（transfer_failed）并退款。
+// 默认最多 10 次、总窗口约 40 分钟），耗尽后置 failed（transfer_failed）。
 func (w *Worker) retryTransfer(ctx context.Context, t *model.GenerationTask, err error) {
 	attempts := t.PollAttempts + 1
 	if attempts >= w.opts.TransferMaxAttempts {
-		w.taskLog(t).Error("转存重试次数耗尽，任务失败并退款", zap.Int("attempts", attempts), zap.Error(err))
+		w.taskLog(t).Error("转存重试次数耗尽，任务失败", zap.Int("attempts", attempts), zap.Error(err))
 		w.failTransfer(ctx, t)
 		return
 	}
@@ -231,7 +231,7 @@ func (w *Worker) retryTransfer(ctx context.Context, t *model.GenerationTask, err
 	w.retry(ctx, t, attempts, w.opts.Now().Add(delay))
 }
 
-// failTransfer 转存彻底失败：置 failed（transfer_failed）并退款。钱包任务没有积分，文案不说「退积分」。
+// failTransfer 转存彻底失败：置 failed（transfer_failed）。费用以 TokenDance 实际账单为准，平台不退积分。
 func (w *Worker) failTransfer(ctx context.Context, t *model.GenerationTask) {
 	w.forgetTask(t.ID)
 	code, msg := failureForWallet(failTransfer, "", "", t.Wallet)

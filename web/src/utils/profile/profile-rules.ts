@@ -1,7 +1,7 @@
 import type { MeDto, MeStatsDto } from "@/api/me/type";
 
-/** 个人中心的 tab：概览 / 积分 / 钱包 / 资料 / 安全，顺序即界面顺序 */
-export const PROFILE_TABS = ["overview", "credits", "wallet", "profile", "security"] as const;
+/** 个人中心的 tab：概览 / 钱包 / 资料 / 安全，顺序即界面顺序。credits 是旧地址，解析时兼容到钱包。 */
+export const PROFILE_TABS = ["overview", "wallet", "profile", "security"] as const;
 
 /** 个人中心的一个 tab */
 export type ProfileTab = (typeof PROFILE_TABS)[number];
@@ -30,6 +30,7 @@ const hasControlChar = (value: string) =>
  * @param value URLSearchParams.get("tab") 的结果
  */
 export function parseProfileTab(value: string | null): ProfileTab {
+  if (value === "credits") return "wallet";
   return PROFILE_TABS.find((tab) => tab === value) ?? "overview";
 }
 

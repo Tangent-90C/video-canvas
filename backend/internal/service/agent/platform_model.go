@@ -44,7 +44,7 @@ func (b *AgentBridge) ProxyModelPlatform(ctx context.Context, rc RunContext, bod
 	if b.d.RunUsage == nil {
 		return errors.New("平台模型代理没有配置 RunUsage")
 	}
-	snap, key, err := b.resolveModel(ctx, rc.ModelKey)
+	snap, key, err := b.resolveModel(ctx, rc.ModelKey, rc.UserID)
 	if err != nil {
 		return err
 	}
@@ -107,7 +107,9 @@ func (b *AgentBridge) platformRunState(ctx context.Context, rc RunContext) (*mod
 		return nil, err
 	}
 	run := rc.run()
-	run.SpentCredits = rc.SpentExtra + used.Credits
+	run.SpentCredits = 0
+	_ = rc.SpentExtra
+	_ = used
 	return run, nil
 }
 
@@ -142,7 +144,7 @@ func (b *AgentBridge) PlatformRunUsage(ctx context.Context, rc RunContext, callI
 	if err != nil {
 		return nil, err
 	}
-	out := &PlatformUsage{SpentCredits: used.Credits, ContextTokens: used.ContextTokens}
+	out := &PlatformUsage{SpentCredits: 0, ContextTokens: used.ContextTokens}
 	if callID == 0 {
 		return out, nil
 	}
@@ -153,7 +155,7 @@ func (b *AgentBridge) PlatformRunUsage(ctx context.Context, rc RunContext, callI
 	if err != nil {
 		return nil, fmt.Errorf("读取模型调用失败: %w", err)
 	}
-	out.Call = &PlatformCallUsage{ID: c.ID, Status: c.Status, Credits: c.Credits, Charged: c.Charged, Estimated: c.UsageEstimated,
+	out.Call = &PlatformCallUsage{ID: c.ID, Status: c.Status, Credits: 0, Charged: 0, Estimated: c.UsageEstimated,
 		InputTokens: c.InputTokens, OutputTokens: c.OutputTokens, Error: c.Error}
 	return out, nil
 }

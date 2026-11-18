@@ -19,16 +19,14 @@ type SystemSettingRepo interface {
 
 // 设置的合法范围与内置缺省。
 const (
-	maxInitialCredits   = 100_000_000
 	maxActiveTasksUpper = 64
 
 	// DefaultMaxActiveTasks 是每个用户进行中生成任务数的默认上限。
 	// 后台「注册设置」里保存的库值优先，这个常量只是库里没有（或库值非法）时的兜底；单用户还可以再单独覆盖。
 	// 它不再放在配置文件里：同一个数有「配置文件 + 后台」两个来源会让人不知道以谁为准。
 	DefaultMaxActiveTasks = 4
-	// DefaultInitialCredits 是新用户（新积分账户）的默认初始积分。
-	// 后台「注册设置」里保存的库值优先，这个常量只是库里没有（或库值非法）时的兜底。
-	DefaultInitialCredits = 50
+	// DefaultInitialCredits 是历史平台积分的兼容常量；新用户不再创建积分账户。
+	DefaultInitialCredits = 0
 
 	// DefaultQueueMultiplier 是排队倍数的默认值：用户非终态任务数达到“并发上限 × 倍数”才拒绝新任务。
 	// 并发上限 4 时最多排 20 个。后台「注册设置」里的库值优先。
@@ -40,7 +38,7 @@ const (
 	maxQueueMaxWaitMinutes     = 1440 // 一天
 )
 
-// SettingsService 管理“库值优先、代码常量兜底”的系统设置：注册开关、初始积分、默认并发上限。
+// SettingsService 管理“库值优先、代码常量兜底”的系统设置：注册开关、默认并发上限和排队参数。
 // 同时实现 RegisterPolicy。
 type SettingsService struct {
 	repo  SystemSettingRepo
@@ -52,7 +50,7 @@ func NewSettingsService(repo SystemSettingRepo, audit AdminAuditWriter) *Setting
 	return &SettingsService{repo: repo, audit: audit}
 }
 
-// RegisterSettings 返回当前生效的注册设置：库里有合法值用库值，否则回落 DefaultInitialCredits / DefaultMaxActiveTasks（注册开关缺省为开）。
+// RegisterSettings 返回当前生效的注册设置：库里有合法值用库值，否则回落默认值（注册开关缺省为开）。
 func (s *SettingsService) RegisterSettings(ctx context.Context) (*model.RegisterSettingsView, error) {
 	kv, err := s.repo.GetAll(ctx)
 	if err != nil {
@@ -60,15 +58,11 @@ func (s *SettingsService) RegisterSettings(ctx context.Context) (*model.Register
 	}
 	v := &model.RegisterSettingsView{
 		RegisterEnabled:       kv[model.SettingRegisterEnabled] != "false", // 缺省或任何非 "false" 的值都按开
-		InitialCredits:        DefaultInitialCredits,
 		DefaultMaxActiveTasks: DefaultMaxActiveTasks,
 		QueueMultiplier:       DefaultQueueMultiplier,
 		QueueMaxWaitMinutes:   DefaultQueueMaxWaitMinutes,
 	}
-	// 库值损坏（非数字、越界）时忽略它而不是报错：设置读取在注册、提交任务的热路径上，不能因为一行脏数据让它们不可用
-	if n, err := strconv.Atoi(kv[model.SettingInitialCredits]); err == nil && n >= 0 && n <= maxInitialCredits {
-		v.InitialCredits = n
-	}
+	// 库值损坏（非数字、越界）时忽略它而不是报错：设置读取在注册、提交任务的热路径上，不能因为一行脏数据让它们不可用。
 	if n, err := strconv.Atoi(kv[model.SettingDefaultMaxActiveTasks]); err == nil && n >= 1 && n <= maxActiveTasksUpper {
 		v.DefaultMaxActiveTasks = n
 	}
@@ -90,13 +84,9 @@ func (s *SettingsService) RegisterEnabled(ctx context.Context) (bool, error) {
 	return v.RegisterEnabled, nil
 }
 
-// InitialCredits 实现 RegisterPolicy：新用户初始积分。
+// InitialCredits 是历史接口兼容；新用户不再创建或赠送平台积分。
 func (s *SettingsService) InitialCredits(ctx context.Context) (int, error) {
-	v, err := s.RegisterSettings(ctx)
-	if err != nil {
-		return 0, err
-	}
-	return v.InitialCredits, nil
+	return 0, nil
 }
 
 // DefaultMaxActiveTasks 返回全局默认的并发上限。
@@ -146,10 +136,7 @@ func (s *SettingsService) SetQueueConcurrency(ctx context.Context, actorID uint6
 
 // UpdateRegisterSettings 保存注册设置（仅 super_admin 可调，由路由保证），写审计并返回最新值。
 func (s *SettingsService) UpdateRegisterSettings(ctx context.Context, actorID uint64, req *model.RegisterSettingsView) (*model.RegisterSettingsView, error) {
-	// 1. 范围校验：初始积分 >= 0，默认并发 1..64，排队倍数 1..20，排队超时 5..1440 分钟
-	if req.InitialCredits < 0 || req.InitialCredits > maxInitialCredits {
-		return nil, errcode.ErrInvalidParams.WithMsg("初始积分必须在 0 到 " + strconv.Itoa(maxInitialCredits) + " 之间")
-	}
+	// 1. 范围校验：默认并发 1..64，排队倍数 1..20，排队超时 5..1440 分钟
 	if req.DefaultMaxActiveTasks < 1 || req.DefaultMaxActiveTasks > maxActiveTasksUpper {
 		return nil, errcode.ErrInvalidParams.WithMsg("默认并发上限必须在 1 到 " + strconv.Itoa(maxActiveTasksUpper) + " 之间")
 	}
@@ -167,7 +154,6 @@ func (s *SettingsService) UpdateRegisterSettings(ctx context.Context, actorID ui
 	}
 	err = s.repo.SetMany(ctx, map[string]string{
 		model.SettingRegisterEnabled:       strconv.FormatBool(req.RegisterEnabled),
-		model.SettingInitialCredits:        strconv.Itoa(req.InitialCredits),
 		model.SettingDefaultMaxActiveTasks: strconv.Itoa(req.DefaultMaxActiveTasks),
 		model.SettingQueueMultiplier:       strconv.Itoa(req.QueueMultiplier),
 		model.SettingQueueMaxWaitMinutes:   strconv.Itoa(req.QueueMaxWaitMinutes),
@@ -181,7 +167,7 @@ func (s *SettingsService) UpdateRegisterSettings(ctx context.Context, actorID ui
 		"before": before, "after": req,
 	})
 	return &model.RegisterSettingsView{
-		RegisterEnabled: req.RegisterEnabled, InitialCredits: req.InitialCredits, DefaultMaxActiveTasks: req.DefaultMaxActiveTasks,
+		RegisterEnabled: req.RegisterEnabled, DefaultMaxActiveTasks: req.DefaultMaxActiveTasks,
 		QueueMultiplier: req.QueueMultiplier, QueueMaxWaitMinutes: req.QueueMaxWaitMinutes,
 	}, nil
 }

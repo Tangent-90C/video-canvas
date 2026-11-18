@@ -31,7 +31,7 @@ describe("短剧错误码映射（契约 §8）", () => {
     expect(dramaErrorMessage(err(DRAMA_ERR.jobBusy, 409))).toContain("进行中");
     expect(dramaErrorMessage(err(DRAMA_ERR.episodeLocked, 409))).toContain("锁定");
     expect(dramaErrorMessage(err(DRAMA_ERR.noTextModel, 400))).toContain("Agent 模型");
-    expect(dramaErrorMessage(err(DRAMA_ERR.outputInvalid, 502))).toContain("不扣积分");
+    expect(dramaErrorMessage(err(DRAMA_ERR.outputInvalid, 502))).toContain("TokenDance 实际账单");
   });
 
   test("不认识的错误用后端 Msg，再不行用兜底", () => {
@@ -53,8 +53,10 @@ describe("短剧错误码映射（契约 §8）", () => {
 });
 
 describe("任务失败文案 jobFailureMessage", () => {
-  test("67008 用固定文案并写明不扣积分", () => {
-    expect(jobFailureMessage({ errorCode: 67008, errorMessage: "解析失败" })).toContain("不扣积分");
+  test("67008 用固定文案并写明费用按 TokenDance 实际账单", () => {
+    expect(jobFailureMessage({ errorCode: 67008, errorMessage: "解析失败" })).toContain(
+      "TokenDance 实际账单",
+    );
   });
 
   test("其他错误用后端 Msg；Msg 为空用兜底", () => {

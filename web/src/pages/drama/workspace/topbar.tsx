@@ -16,7 +16,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { useDramaStyles } from "@/hooks/use-drama-styles";
 import { cn } from "@/lib/utils";
-import { CreditsPill } from "@/pages/canvas/chrome/top-right-bar";
+import { WalletPill } from "@/pages/canvas/chrome/top-right-bar";
 import { CUSTOM_STYLE_KEY } from "@/utils/drama/options";
 import type { StageHints, WorkspaceStage } from "@/utils/drama/stages";
 
@@ -202,7 +202,7 @@ export function Topbar({
           <kbd className="bg-muted rounded px-1 font-mono text-[11px]">⌘K</kbd>
         </Button>
         <ThemeToggle />
-        <CreditsPill />
+        <WalletPill />
       </div>
     </header>
   );

@@ -51,7 +51,7 @@ func newInchoEnv(t *testing.T) *inchoEnv {
 func (e *inchoEnv) snapshot(baseURL, upstream string) *provider.Snapshot {
 	return &provider.Snapshot{
 		Model:   provider.ModelSnapshot{Key: "m", Kind: "audio", UpstreamModel: upstream, Capabilities: promptCaps},
-		Channel: provider.ChannelSnapshot{Key: "incho-main", PluginKey: "incho", PluginVersionID: 1, BaseURL: baseURL},
+		Channel: provider.ChannelSnapshot{Wallet: true, Key: "incho-main", PluginKey: "incho", PluginVersionID: 1, BaseURL: baseURL},
 		Plugin:  provider.PluginSnapshot{Key: "incho", Version: e.meta.Version, SHA256: e.sha, Meta: *e.meta},
 
 		ModelRevisionID: 1,

@@ -224,3 +224,22 @@ func TestExecutePlatformTool_ToolEndCarriesWhatOnlyGoKnows(t *testing.T) {
 		})
 	}
 }
+
+func TestModelListToolDoesNotExposePlatformPricing(t *testing.T) {
+	b := newBridgeEnv(t)
+	res := execPlatform(context.Background(), t, b, platformCtx(900099, "all"), "model-list", "model_list", map[string]any{"kind": "image"})
+	if res.IsError {
+		t.Fatalf("model_list 失败：%+v", res)
+	}
+	for _, bad := range []string{`"pricing"`, `"billing"`, `"per_second"`} {
+		if strings.Contains(res.Content, bad) {
+			t.Fatalf("model_list 不应再向模型暴露平台积分字段 %s：%s", bad, res.Content)
+		}
+	}
+	if !strings.Contains(res.Content, `"caps"`) && !strings.Contains(res.Content, `"models"`) {
+		t.Fatalf("model_list 应返回模型能力摘要：%s", res.Content)
+	}
+	if strings.Contains(res.Content, "legacy-image") || strings.Contains(res.Content, "旧平台渠道图片模型") {
+		t.Fatalf("model_list 只能向 Agent 暴露 TokenPay 钱包模型：%s", res.Content)
+	}
+}

@@ -92,26 +92,6 @@ function pickUsage(
 }
 
 /**
- * 下单前的预估（元）：这条记录还没发生，调用记录里没有它，
- * 用同模型最近成功调用的平均花费顶一下——固定价模型（如图片按张计价）均值就是真实单价。
- * 没有同模型的历史记录返回 null，界面显示「—」。
- */
-export function estimateCost(
-  usage: WalletUsageItem[],
-  upstreamModel: string,
-  count = 1,
-): number | null {
-  if (!upstreamModel) return null;
-  const costs = usage
-    .filter((item) => slugOf(item) === upstreamModel && item.success && item.cost_yuan > 0)
-    .slice(0, 10)
-    .map((item) => item.cost_yuan);
-  if (costs.length === 0) return null;
-  const avg = costs.reduce((sum, value) => sum + value, 0) / costs.length;
-  return avg * Math.max(1, count);
-}
-
-/**
  * 金额文案：整数部分不带多余小数，小数部分按量级保留位数，前面加 ¥。
  * 预估场景由调用方自己加「≈」——这里是钱，不是估算值。
  */

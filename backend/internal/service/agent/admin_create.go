@@ -211,6 +211,10 @@ func (s *AdminAssistantService) buildModelCreateItem(ctx context.Context, item *
 	}
 	after["key"] = item.Key
 	after["enabled"] = false
+	if _, ok := after["pricing"]; ok {
+		item.Issues = append(item.Issues, "平台积分 pricing 已停用，新模型不能写入该字段")
+		return nil
+	}
 	raw, _ := json.Marshal(after)
 	// latest 是审批占位符，结构校验使用合法版本；执行时才固定实际上传版本。
 	var validation map[string]any

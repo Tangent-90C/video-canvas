@@ -54,7 +54,7 @@ func newAnthropicEnv(t *testing.T, mod func(*plugin.Options)) *anthropicEnv {
 func (e *anthropicEnv) snapshot(baseURL string, caps modelcfg.Capabilities) *provider.Snapshot {
 	return &provider.Snapshot{
 		Model: provider.ModelSnapshot{Key: "m", Kind: "text", UpstreamModel: "claude-up", Capabilities: caps},
-		Channel: provider.ChannelSnapshot{
+		Channel: provider.ChannelSnapshot{Wallet: true,
 			Key: "anthropic-main", PluginKey: "anthropic", PluginVersionID: 1, BaseURL: baseURL,
 		},
 		Plugin:          provider.PluginSnapshot{Key: "anthropic", Version: e.meta.Version, SHA256: e.sha, Meta: *e.meta},

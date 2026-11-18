@@ -369,6 +369,7 @@ func (b *AgentBridge) askModels(ctx context.Context, kind string) ([]AskModel, e
 	if err != nil {
 		return nil, err
 	}
+	infos = walletModelInfos(infos)
 	if len(infos) == 0 {
 		return nil, fail("目前没有已发布的%s模型，请告诉用户需要管理员先配置。", map[string]string{"image": "图片", "video": "视频"}[kind])
 	}
@@ -391,6 +392,7 @@ func (b *AgentBridge) toolModelList(ctx context.Context, tc *toolCall) (*toolOut
 	if err != nil {
 		return nil, err
 	}
+	infos = walletModelInfos(infos)
 	out := make([]map[string]any, len(infos))
 	for i, m := range infos {
 		out[i] = modelSummary(m)
@@ -399,11 +401,11 @@ func (b *AgentBridge) toolModelList(ctx context.Context, tc *toolCall) (*toolOut
 	return &toolOut{content: content, summary: fmt.Sprintf("列出 %d 个%s模型", len(out), a.Kind)}, err
 }
 
-// modelSummary 是给模型看的模型摘要：能力和定价的关键信息，不含任何内部配置。
+// modelSummary 是给模型看的模型摘要：只含能力和生成参数，不含价格或内部配置。
+// 实际费用由用户自己的 TokenPay 钱包按 TokenDance 账单结算。
 func modelSummary(m provider.ModelInfo) map[string]any {
 	out := map[string]any{"key": m.Key, "label": m.Label, "hint": m.Hint, "ops": m.Capabilities.Ops,
-		"refs":    map[string]bool{"image": m.Capabilities.Refs.Image.On, "video": m.Capabilities.Refs.Video.On, "audio": m.Capabilities.Refs.Audio.On},
-		"pricing": map[string]any{"billing": m.Pricing.Billing, "unit": m.Pricing.Unit, "per_second": m.Pricing.PerSecond}}
+		"refs": map[string]bool{"image": m.Capabilities.Refs.Image.On, "video": m.Capabilities.Refs.Video.On, "audio": m.Capabilities.Refs.Audio.On}}
 	params := make([]map[string]any, 0, len(m.Capabilities.Params))
 	for _, p := range m.Capabilities.Params {
 		params = append(params, map[string]any{"name": p.Name, "type": p.Type, "options": p.Options, "default": p.Default})

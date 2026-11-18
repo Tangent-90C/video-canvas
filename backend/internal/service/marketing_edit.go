@@ -45,6 +45,9 @@ func checkLockedParams(old, next map[string]any) error {
 // UpdateRoundSettings 改一轮的出片设置：视频模型、分辨率（画幅、时长不能变）、换模特图（原来有才能换，不能加也不能去掉）。
 // 只影响之后的出片，已出的片不动。轮次写脚本中 68007；模型不满足 68004；素材无效 68002。
 func (s *MarketingService) UpdateRoundSettings(ctx context.Context, userID, roundID uint64, req *model.UpdateMarketingRoundSettingsReq) (*model.MarketingRoundView, error) {
+	if err := s.ensureWallet(ctx, userID); err != nil {
+		return nil, err
+	}
 	round, err := s.repo.Round(ctx, userID, roundID, false)
 	if mktNotFound(err) {
 		return nil, errcode.ErrMarketingNotFound
@@ -181,6 +184,9 @@ func (s *MarketingService) checkProductSwap(ctx context.Context, tx repository.M
 // 跑完只替换外观锚点，商品名、卖点、禁用说法、引导下单保留（见 mergeRefreshedFacts）。
 // 还没有事实卡时请走重试；最新一轮写脚本中 68007；积分不足 40001。
 func (s *MarketingService) RefreshFacts(ctx context.Context, userID, projectID uint64) (*model.MarketingRoundView, error) {
+	if err := s.ensureWallet(ctx, userID); err != nil {
+		return nil, err
+	}
 	var roundID uint64
 	err := s.repo.WithTx(ctx, func(tx repository.MarketingTx) error {
 		p, err := tx.Project(ctx, userID, projectID, true)

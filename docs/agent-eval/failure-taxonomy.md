@@ -1,5 +1,7 @@
 # Agent 失败分类（failure taxonomy）
 
+> **计费状态（2026-11-18）**：平台积分体系已停用。本文涉及积分、冻结、结算、退款、充值、商城、后台调账或平台定价的内容均为历史设计；当前所有模型生成与 Agent 对话统一使用用户自己的 TokenPay 钱包，详见 `docs/design/TokenPay钱包/TokenPay钱包.md`。
+
 > **种子分类，前 1–2 次分析要先开放编码再收敛，修改需人确认。**
 >
 > 使用方：`/agent-review` skill（`.claude/skills/agent-review/SKILL.md`）。分析时 `failure_codes` 取自本表；表里没有的新问题写 `new:<短名>`，同一个 `new:*` 出现 ≥ 3 次才建议并入本表，由人确认后改动。

@@ -16,14 +16,6 @@ export interface UserListItem {
   role: UserRole;
   /** 账号状态 */
   status: UserStatus;
-  /** 积分余额（含冻结部分） */
-  balance: number;
-  /** 被进行中任务冻结的积分 */
-  frozen: number;
-  /** 可用积分 = balance - frozen；界面一律以它为准 */
-  available: number;
-  /** 老用户可能还没有积分账户：此时 balance 为 0 */
-  has_credit_account: boolean;
   /** 单用户并发上限覆盖；null 表示使用全局默认 */
   max_active_tasks: number | null;
   /** 实际生效的并发上限 */
@@ -60,8 +52,6 @@ export interface UserDetail extends UserListItem {
   task_success: number;
   /** 失败的任务数 */
   task_failed: number;
-  /** 累计消耗的积分 */
-  spent_credits: number;
   /** 近 7 天生成的任务数 */
   tasks_last_7d: number;
   /** 最近的管理员操作，最多 3 条 */
@@ -117,40 +107,10 @@ export interface UserTaskItem {
   model_name: string;
   /** 任务状态：pending / queued / running / finalizing / succeeded / failed / canceled / expired */
   status: string;
-  /** 预估积分（提交时冻结的额度） */
-  credits: number;
-  /** 实际扣费积分；未结算为 0 */
-  charged_credits: number;
   /** 失败原因；成功时为空串 */
   error: string;
   /** 耗时（毫秒）；未完成为 null */
   duration_ms: number | null;
-  /** 创建时间（ISO） */
-  created_at: string;
-}
-
-/** 积分流水的类型筛选 */
-export type LedgerFilter = "all" | "admin" | "task";
-
-/** 流水类型：initial 赠送、freeze 冻结、settle 结算、refund 退款、admin_adjust 管理员调整、recharge 充值 */
-export type LedgerType = "initial" | "freeze" | "settle" | "refund" | "admin_adjust" | "recharge";
-
-/** 一条积分流水 */
-export interface UserLedgerItem {
-  /** 流水 ID */
-  id: number;
-  /** 流水类型 */
-  type: LedgerType;
-  /** 变动额，带正负号 */
-  amount: number;
-  /** 关联任务 ID；管理员调整和赠送为 null */
-  task_id: number | null;
-  /** 备注；管理员调整必填 */
-  note: string;
-  /** 操作人 ID；系统流水为 null */
-  operator_id: number | null;
-  /** 操作人用户名；系统流水为空串 */
-  operator_name: string;
   /** 创建时间（ISO） */
   created_at: string;
 }
@@ -174,29 +134,6 @@ export interface UserLoginItem {
   created_at: string;
 }
 
-/** 积分调整方式：add 增加，sub 扣减，set 把可用积分设为指定值 */
-export type CreditMode = "add" | "sub" | "set";
-
-/** POST /admin/users/:id/credits 请求体 */
-export interface AdjustCreditsRequest {
-  /** 调整方式 */
-  mode: CreditMode;
-  /** 数值（整数，>= 0；add / sub 必须 > 0） */
-  amount: number;
-  /** 备注，1 到 100 字，写入流水和审计 */
-  note: string;
-}
-
-/** 积分账户快照 */
-export interface UserCredits {
-  /** 余额（含冻结） */
-  balance: number;
-  /** 冻结额 */
-  frozen: number;
-  /** 可用积分 */
-  available: number;
-}
-
 /** PUT /admin/users/:id/limits 请求体 */
 export interface SetLimitRequest {
   /** 并发上限 1 到 64；null 表示改回全局默认 */
@@ -207,7 +144,7 @@ export interface SetLimitRequest {
 export interface SetStatusRequest {
   /** 目标状态 */
   status: UserStatus;
-  /** 封禁时同时取消进行中的任务并退还冻结积分；仅 status=disabled 有效，不可撤销 */
+  /** 封禁时同时取消进行中的任务；仅 status=disabled 有效，不可撤销 */
   cancel_active?: boolean;
 }
 
@@ -237,16 +174,6 @@ export interface BatchResultItem {
 export interface BatchResult {
   /** 逐项结果，顺序与请求的 ids 一致 */
   results: BatchResultItem[];
-}
-
-/** POST /admin/users/batch/credits 请求体（只增不减） */
-export interface BatchCreditsRequest {
-  /** 用户 ID 列表 */
-  ids: number[];
-  /** 每人增加的积分，> 0 */
-  amount: number;
-  /** 备注，1 到 100 字 */
-  note: string;
 }
 
 /** PUT /admin/users/batch/status 请求体（不支持取消任务） */

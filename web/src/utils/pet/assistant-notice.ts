@@ -22,7 +22,7 @@ export function approvalBubble(approvalId: string, kind: AgentApprovalKind): Ass
 const FAILURE_FALLBACK: Partial<Record<AgentRunStatus, string>> = {
   timeout: "运行超时",
   step_limit: "达到步数上限",
-  budget_exhausted: "额度用完了",
+  budget_exhausted: "运行已暂停",
   interrupted: "被中断了",
   expired: "等太久，已过期",
 };

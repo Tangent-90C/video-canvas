@@ -41,7 +41,7 @@ describe("版本对比卡片：各状态", () => {
 });
 
 describe("版本对比卡片：内容", () => {
-  test("版本名、运行数、最近运行时间、六项指标", () => {
+  test("版本名、运行数、最近运行时间、五项业务指标", () => {
     const out = cards("ready", [
       group({
         n: 50,
@@ -49,7 +49,6 @@ describe("版本对比卡片：内容", () => {
         undo_rate: 0.1,
         fail_end_rate: 0.04,
         median_duration_ms: 42_000,
-        avg_credits: 3.46,
         feedback_rate: 0.2,
         last_at: "2026-10-22T08:00:00Z",
       }),
@@ -57,11 +56,11 @@ describe("版本对比卡片：内容", () => {
     expect(out).toContain("v10 · a1b2c3");
     expect(out).toContain("50 次运行");
     expect(out).toContain("2 小时前");
-    for (const label of ["点踩率", "撤销率", "失败结束率", "中位耗时", "平均积分", "反馈率"])
+    for (const label of ["点踩率", "撤销率", "失败结束率", "中位耗时", "反馈率"])
       expect(out).toContain(label);
     expect(out).toContain("12.5%");
     expect(out).toContain("42s");
-    expect(out).toContain("3.5");
+    expect(out).not.toContain("平均积分");
     expect(out).toContain("20.0%");
   });
 

@@ -15,6 +15,7 @@ import { holdExitAnimations, installDom, type DomEnv } from "@/tests/helpers/dom
 import service from "@/utils/requests/service";
 import type { StartBody as StartBodyType } from "@/pages/drama/start-dialog";
 import type { useModelsStore as useModelsStoreType } from "@/store/models";
+import type { useWalletStore as useWalletStoreType } from "@/store/wallet";
 
 /**
  * 开拍设置弹窗主体：用 jsdom 挂载真实组件，检查来源行、规则（剧本置灰 / 时长锁定 / 上下文 < 128k 禁用 /
@@ -24,10 +25,12 @@ import type { useModelsStore as useModelsStoreType } from "@/store/models";
 let dom: DomEnv;
 let StartBody: typeof StartBodyType;
 let useModelsStore: typeof useModelsStoreType;
+let useWalletStore: typeof useWalletStoreType;
 beforeAll(async () => {
   dom = await installDom();
   StartBody = (await import("@/pages/drama/start-dialog")).StartBody;
   useModelsStore = (await import("@/store/models")).useModelsStore;
+  useWalletStore = (await import("@/store/wallet")).useWalletStore;
 });
 afterAll(() => {
   // models store 是全局单例：清掉本文件灌进去的模型，免得后面的测试（如连线规则）读到残留
@@ -71,16 +74,28 @@ const model = (key: string, window: number) =>
     key,
     kind: "agent",
     label: key,
+    wallet: true,
     pricing: {},
     capabilities: { context: { window, output: 8000 } },
   }) as never;
 
 let get: ReturnType<typeof spyOn>;
 beforeEach(() => {
-  get = spyOn(service, "get").mockResolvedValue({
-    genres: [{ key: "xianxia", name: "玄幻修仙" }],
-    styles: [{ key: "real_city_film", name: "都市电影", prompt: "" }],
-  } as never);
+  get = spyOn(service, "get").mockImplementation((async (url: string) => {
+    if (url.includes("wallet")) {
+      return {
+        enabled: true,
+        connected: true,
+        app_url: "https://canvas.tan90.site",
+        key_masked: "tk-…test",
+        connected_at: "2026-11-18T00:00:00Z",
+      };
+    }
+    return {
+      genres: [{ key: "xianxia", name: "玄幻修仙" }],
+      styles: [{ key: "real_city_film", name: "都市电影", prompt: "" }],
+    };
+  }) as never);
   useModelsStore.setState({
     byKind: {
       agent: {
@@ -89,6 +104,16 @@ beforeEach(() => {
         models: [model("big", 200_000), model("small", 64_000)],
       },
     },
+  });
+  useWalletStore.setState({
+    view: {
+      enabled: true,
+      connected: true,
+      app_url: "https://canvas.tan90.site",
+      key_masked: "tk-…test",
+      connected_at: "2026-11-18T00:00:00Z",
+    },
+    status: "ready",
   });
   dom.win.localStorage.clear();
 });
@@ -124,11 +149,12 @@ describe("开拍设置：来源与基本规则", () => {
     await m.unmount();
   });
 
-  test("小说：规划范围显示预估（集数、积分、耗时），画幅默认 9:16，只有三档", async () => {
+  test("小说：规划范围显示预估（集数、费用口径、耗时），画幅默认 9:16，只有三档", async () => {
     const m = await mountBody(pre());
     const text = m.container.textContent ?? "";
     expect(text).toContain("预计约 900–1,400 集");
-    expect(text).toContain("3,200");
+    expect(text).toContain("费用按 TokenDance 实际账单");
+    expect(text).not.toContain("3,200");
     expect(text).toContain("约 40 分钟");
     const ratios = buttons(m.container).filter((b) => b.hasAttribute("aria-pressed"));
     expect(ratios.map((b) => b.textContent)).toEqual(["9:16", "16:9", "4:3"]);
@@ -291,6 +317,7 @@ describe("开拍设置：视频 / 图片模型", () => {
       key,
       kind: "video",
       label: key,
+      wallet: true,
       pricing: {},
       capabilities: {
         ops: withImageRef ? ["t2v", "i2v"] : ["t2v"],
@@ -299,7 +326,7 @@ describe("开拍设置：视频 / 图片模型", () => {
       },
     }) as never;
   const imageModel = (key: string) =>
-    ({ key, kind: "image", label: key, pricing: {}, capabilities: {} }) as never;
+    ({ key, kind: "image", label: key, wallet: true, pricing: {}, capabilities: {} }) as never;
 
   beforeEach(() => {
     const byKind = useModelsStore.getState().byKind;

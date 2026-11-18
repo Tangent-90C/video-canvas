@@ -162,10 +162,8 @@ export function ApprovalRow({ approvalId, ctl }: { approvalId: string; ctl: Agen
   }
   const quote =
     !approval.kind.startsWith("admin_") &&
-    approval.kind !== "ask" &&
-    approval.kind !== "delete" &&
-    approval.quote_credits > 0
-      ? approval.quote_credits
+    (approval.kind === "generate" || approval.kind === "edit")
+      ? "TokenDance 实际账单"
       : null;
 
   // 答过的提问（设计稿 6.12）：每题一行「↳ 问题  答案」挂在过程轨上，问题淡、答案实；选填没答的写「没回答」
@@ -252,7 +250,7 @@ export function ApprovalRow({ approvalId, ctl }: { approvalId: string; ctl: Agen
           查看产物
         </a>
       )}
-      {quote !== null && <span className="text-credit shrink-0 tabular-nums">· ✦ {quote}</span>}
+      {quote !== null && <span className="text-muted-foreground shrink-0">· {quote}</span>}
       {pending && (
         <span className="flex shrink-0 items-center gap-1">
           · 等你{ask ? "回答" : "确认"}

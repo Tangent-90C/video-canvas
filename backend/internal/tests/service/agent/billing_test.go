@@ -61,6 +61,7 @@ func billingRun(spent int) *model.AgentRun {
 }
 
 func TestAgentBilling_Preflight(t *testing.T) {
+	t.Skip("平台积分预检已停用；新契约见 TestAgentBilling_PlatformCreditsDisabled")
 	ctx := context.Background()
 
 	t.Run("预算和余额都够：通过", func(t *testing.T) {
@@ -112,6 +113,7 @@ func TestAgentBilling_Preflight(t *testing.T) {
 }
 
 func TestAgentBilling_Settle(t *testing.T) {
+	t.Skip("平台积分结算已停用；新契约见 TestAgentBilling_PlatformCreditsDisabled")
 	ctx := context.Background()
 	newBilling := func() (*AgentBilling, *fakeBillingRepo, *model.AgentModelCall) {
 		repo := &fakeBillingRepo{available: 100}
@@ -217,4 +219,28 @@ func TestAgentBilling_Settle(t *testing.T) {
 			t.Errorf("错误原因要能存进 255 字的列: %d", n)
 		}
 	})
+}
+
+func TestAgentBilling_PlatformCreditsDisabled(t *testing.T) {
+	ctx := context.Background()
+	repo := &fakeBillingRepo{}
+	b := NewAgentBilling(repo)
+	run := billingRun(9999)
+	if err := b.Preflight(ctx, run, billingPricing, billingCaps, 4000); err != nil {
+		t.Fatalf("钱包模型预检不应依赖平台积分：%v", err)
+	}
+	call, err := b.Begin(ctx, run, "wallet-model")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := b.Settle(ctx, run, call, billingPricing, CallOutcome{
+		Result:     &llmgateway.Result{Text: "好", Usage: llmgateway.Usage{InputTokens: 1000000, OutputTokens: 100000}},
+		InputChars: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Credits != 0 || res.Charged != 0 || res.Shortfall || len(repo.settled) != 1 || repo.settled[0].Credits != 0 || repo.usageCredit != 0 {
+		t.Fatalf("平台积分必须保持为 0：res=%+v settled=%+v usage=%+v", res, repo.settled, repo)
+	}
 }

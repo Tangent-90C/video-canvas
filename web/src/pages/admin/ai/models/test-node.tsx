@@ -8,7 +8,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import type { Capabilities, GenerationOp, Pricing } from "@/api/model/type.d";
+import type { Capabilities, GenerationOp } from "@/api/model/type.d";
 import { VendorAvatar } from "@/components/admin-ui/vendor-avatar";
 import { Tag } from "@/components/admin-ui/tag";
 import { VideoParamPanel } from "@/components/canvas/video-param-panel";
@@ -17,15 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type { ParamAsset } from "@/types";
 import { MODEL_KIND_LABEL } from "@/utils/admin/model-body";
-import { fanoutCount, quote } from "@/utils/pricing/quote";
-import {
-  buildTaskInput,
-  currentOp,
-  emptyBindings,
-  OP_LABEL,
-  priceSpecOf,
-  type RefKey,
-} from "@/utils/tasks/capabilities";
+import { currentOp, emptyBindings, OP_LABEL, type RefKey } from "@/utils/tasks/capabilities";
 
 const KIND_ICON: Record<string, LucideIcon> = {
   text: Type,
@@ -44,7 +36,6 @@ export function TestNode({
   vendor,
   label,
   kind,
-  pricing,
   caps,
   params,
   assets,
@@ -62,8 +53,6 @@ export function TestNode({
   vendor?: string;
   label: string;
   kind: string;
-  /** 定价，用来在按钮上显示本次的积分 */
-  pricing?: Pricing;
   caps: Capabilities | undefined;
   params: Record<string, unknown>;
   assets: Record<string, ParamAsset>;
@@ -78,8 +67,6 @@ export function TestNode({
 }) {
   const Icon = KIND_ICON[kind] ?? Sparkles;
   const op: GenerationOp | undefined = currentOp(caps, params);
-  const spec = priceSpecOf(caps, buildTaskInput(caps, params).input);
-  const credits = pricing ? quote(pricing, caps, spec) * fanoutCount(caps, spec.params) : null;
   const promptValue = typeof params.prompt === "string" ? params.prompt : "";
   const promptError = showErrors ? errors.prompt : undefined;
 
@@ -183,7 +170,7 @@ export function TestNode({
           >
             {action.busy ? <Loader2 className="animate-spin" /> : <Sparkles />}
             {action.label}
-            {credits !== null && ` · ${pricing?.billing === "token" ? "≤" : ""}${credits} 积分`}
+            {" · TokenDance 实际账单"}
           </Button>
         </div>
       )}

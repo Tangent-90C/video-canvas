@@ -395,6 +395,47 @@ func TestUserWalletRecharge(t *testing.T) {
 	}
 }
 
+// TestUserWalletRechargeSessionEnvelope 验证官方 Agent Payment 接口的 {"session": {...}} 包装能正确解析。
+func TestUserWalletRechargeSessionEnvelope(t *testing.T) {
+	svc, _ := newRechargeService(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer tk-live" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		session := map[string]any{
+			"id":          "sess-envelope",
+			"amount":      30,
+			"status":      "pending",
+			"payment_url": "weixin://pay/sess-envelope",
+			"alipay_url":  "alipays://pay/sess-envelope",
+			"expired_at":  1_800_000_000,
+		}
+		if r.Method == http.MethodPost {
+			w.WriteHeader(http.StatusCreated)
+		} else {
+			session["status"] = "paid"
+			session["paid_at"] = 1_799_999_100
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"session": session})
+	})
+
+	ctx := context.Background()
+	view, err := svc.Recharge(ctx, 7, 30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.ID != "sess-envelope" || view.PaymentURL != "weixin://pay/sess-envelope" || view.Status != "pending" {
+		t.Fatalf("创建会话包装解析不对：%+v", view)
+	}
+	status, err := svc.RechargeStatus(ctx, 7, "sess-envelope")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.ID != "sess-envelope" || status.Status != "paid" {
+		t.Fatalf("查询会话包装解析不对：%+v", status)
+	}
+}
+
 // 充值校验：未启用 / 未连接 / Key 丢失 / 金额越界 / 非法会话 ID 都不请求上游。
 func TestUserWalletRechargeValidation(t *testing.T) {
 	ctx := context.Background()

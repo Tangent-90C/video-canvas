@@ -81,11 +81,11 @@ function AgentModelMenu({
               <ModelLogo vendor={m.vendor} name={m.name} className="size-7" />
               <span className="min-w-0 flex-1">
                 <span className="block truncate">{m.name}</span>
-                {vendorOf(m.vendor) && (
-                  <span className="text-muted-foreground block truncate text-[11px]">
-                    {vendorOf(m.vendor)?.name}
-                  </span>
-                )}
+                <span className="text-muted-foreground block truncate text-[11px]">
+                  {[vendorOf(m.vendor)?.name, m.price_label || "按 TokenDance 实际账单"]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </span>
               </span>
               {!m.vision && <span className="text-muted-foreground text-[11px]">不能看图</span>}
               {m.key === modelKey && <Check className="size-4" />}

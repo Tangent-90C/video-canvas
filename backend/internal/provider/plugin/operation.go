@@ -79,8 +79,8 @@ func (o *operation) needsSecretUpfront() bool {
 }
 
 // loadSecret 取执行用的 API Key 并登记脱敏；DryRun 不解析凭证，一律用 ***。
-// 钱包任务（task.Wallet）用发起用户连接 TokenPay 钱包得到的自己的 Key（ai_secrets wallet:<userID>），
-// 其余任务用渠道 Key（ai_secrets channel:<key>）。
+// 所有真实任务都必须走钱包：用发起用户连接 TokenPay 钱包得到的 Key（ai_secrets wallet:<userID>）。
+// 历史非钱包任务直接失败，禁止回退到产品方渠道 Key。
 func (o *operation) loadSecret(ctx context.Context) (string, error) {
 	if o.secretLoaded {
 		return o.secret, nil
@@ -92,12 +92,12 @@ func (o *operation) loadSecret(ctx context.Context) (string, error) {
 	if o.e.opts.Secrets == nil {
 		return "", terminalErr(codeHostMisconfigured, "宿主未配置凭证解析器", nil)
 	}
-	name := model.ChannelSecretName(o.rt.Channel.Key)
-	missing := fmt.Sprintf("渠道 %s 的 Key 未设置或无法读取", o.rt.Channel.Key)
-	if o.task.Wallet {
-		name = model.WalletSecretName(o.task.UserID)
-		missing = "你还没有连接 TokenPay 钱包，或钱包 Key 已失效，请到个人中心重新连接"
+	// 任务标记或渠道标记任一为钱包都使用用户 Key；非钱包渠道 / 非钱包任务直接失败。
+	if !o.task.Wallet && !o.rt.Channel.Wallet {
+		return "", terminalErr(codeWalletRequired, "该历史任务未使用 TokenPay 钱包，已停止执行，请重新提交", nil)
 	}
+	name := model.WalletSecretName(o.task.UserID)
+	missing := "你还没有连接 TokenPay 钱包，或钱包 Key 已失效，请到个人中心重新连接"
 	s, err := o.e.opts.Secrets.Get(ctx, name)
 	if err != nil || s == "" {
 		// 凭证取不到是配置问题，重试没有意义；错误信息只带渠道名 / 用户提示，不带任何明文
@@ -113,7 +113,7 @@ func (o *operation) loadSecretKey(ctx context.Context) string {
 	if o.dryRun {
 		return redactedSecret
 	}
-	if o.e.opts.Secrets == nil {
+	if o.task.Wallet || o.rt.Channel.Wallet || o.e.opts.Secrets == nil {
 		return ""
 	}
 	s, err := o.e.opts.Secrets.Get(ctx, model.ChannelSecretKeyName(o.rt.Channel.Key))

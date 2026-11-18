@@ -54,7 +54,7 @@ func newXaiEnv(t *testing.T) *xaiEnv {
 func (e *xaiEnv) snapshot(baseURL, upstreamModel string, caps modelcfg.Capabilities) *provider.Snapshot {
 	return &provider.Snapshot{
 		Model: provider.ModelSnapshot{Key: "m", Kind: "video", UpstreamModel: upstreamModel, Capabilities: caps},
-		Channel: provider.ChannelSnapshot{
+		Channel: provider.ChannelSnapshot{Wallet: true,
 			Key: "xai-main", PluginKey: "xai", PluginVersionID: 1, BaseURL: baseURL,
 		},
 		Plugin:          provider.PluginSnapshot{Key: "xai", Version: e.meta.Version, SHA256: e.sha, Meta: *e.meta},

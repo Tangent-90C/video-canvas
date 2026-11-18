@@ -55,7 +55,7 @@ func newAlibabaVideoEnv(t *testing.T, mod func(*plugin.Options)) *alibabavideoEn
 func (e *alibabavideoEnv) snapshot(baseURL, kind, upstream string, caps modelcfg.Capabilities) *provider.Snapshot {
 	return &provider.Snapshot{
 		Model: provider.ModelSnapshot{Key: "m", Kind: kind, UpstreamModel: upstream, Capabilities: caps},
-		Channel: provider.ChannelSnapshot{
+		Channel: provider.ChannelSnapshot{Wallet: true,
 			Key: "ali-main", PluginKey: "alibaba-video", PluginVersionID: 1, BaseURL: baseURL,
 		},
 		Plugin:          provider.PluginSnapshot{Key: "alibaba-video", Version: e.meta.Version, SHA256: e.sha, Meta: *e.meta},

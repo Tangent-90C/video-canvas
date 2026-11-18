@@ -25,28 +25,14 @@ describe("钱包任务不提示「积分已退回」", () => {
   const task = (_patch: Partial<TaskView>): TaskView =>
     ({ id: 1, status: "failed", credits: 4, charged_credits: 0 }) as TaskView;
 
-  test("普通任务失败：credits>0 → 提示退回", () => {
+  test("任务失败只展示原因，不再判断平台积分退回", () => {
     const phase = deriveTaskStatus(task({}), null);
     expect(phase?.phase).toBe("failed");
     if (phase?.phase !== "failed") return;
-    expect(phase.refunded).toBe(true);
+    expect(phase).not.toHaveProperty("refunded");
   });
 
-  test("任务快照没加载（credits 缺失）：保持原行为，标退回", () => {
-    const bare = { id: 9, status: "failed", charged_credits: 0 } as TaskView;
-    const phase = deriveTaskStatus(bare, null);
-    if (phase?.phase !== "failed") throw new Error("应解析为失败态");
-    expect(phase.refunded).toBe(true);
-  });
-
-  test("钱包任务失败：credits=0 → 不提示退回（扣的是用户自己的 TokenDance 额度）", () => {
-    const wallet = { id: 2, status: "failed", credits: 0, charged_credits: 0 } as TaskView;
-    const phase = deriveTaskStatus(wallet, null);
-    if (phase?.phase !== "failed") throw new Error("应解析为失败态");
-    expect(phase.refunded).toBe(false);
-  });
-
-  test("节点本地错误路径：钱包任务同样不提示退回", () => {
+  test("节点本地错误路径同样不判断平台积分退回", () => {
     const walletTask = { id: 3, status: "failed", credits: 0 } as TaskView;
     const view = deriveVideoNodeView(
       { status: "error", error: "生成失败", taskId: "3" } as never,
@@ -55,7 +41,7 @@ describe("钱包任务不提示「积分已退回」", () => {
     );
     expect(view.phase).toBe("failed");
     if (view.phase !== "failed") return;
-    expect(view.refunded).toBe(false);
+    expect(view).not.toHaveProperty("refunded");
   });
 });
 

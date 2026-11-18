@@ -192,7 +192,7 @@ type AdminChannelWriter interface {
 	Create(context.Context, service.ChannelCreateInput) (*service.ChannelView, error)
 }
 
-// AdminTrialRunner 提供不扣积分的幂等试跑和已脱敏追踪。
+// AdminTrialRunner 提供使用管理员 TokenPay 钱包的幂等试跑和已脱敏追踪。
 type AdminTrialRunner interface {
 	// TestRunIdempotent 按审批标识去重创建试跑。
 	TestRunIdempotent(context.Context, uint64, string, map[string]any, string) (*model.GenerationTaskView, error)

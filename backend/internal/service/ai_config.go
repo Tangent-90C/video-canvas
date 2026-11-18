@@ -77,7 +77,7 @@ func (f DryRunnerFunc) DryRun(ctx context.Context, userID uint64, snap *provider
 	return f(ctx, userID, snap, input)
 }
 
-// TestTaskCreator 用试跑快照创建试跑任务（is_test，不扣积分），并查询试跑任务与它的执行追踪。
+// TestTaskCreator 用试跑快照创建试跑任务（is_test，费用由发起管理员自己的 TokenPay 钱包承担），并查询试跑任务与它的执行追踪。
 // 签名与 GenerationTaskService 一致，接线时直接把任务服务传进来。
 type TestTaskCreator interface {
 	// SubmitTest 创建试跑任务。

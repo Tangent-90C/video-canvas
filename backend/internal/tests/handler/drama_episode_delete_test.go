@@ -39,7 +39,7 @@ func TestDramaHandler_DeleteEpisode(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &httpDramaRepo{project: &model.DramaProject{BaseModel: model.BaseModel{ID: 7}, UserID: 1, CanvasID: 9, Revision: 1}}
 	canvas := &deleteEpisodeCanvas{}
-	h := handler.NewDramaHandler(service.NewDramaService(service.DramaDeps{Repo: repo, Registry: httpDramaRegistry{}, Canvas: canvas}))
+	h := handler.NewDramaHandler(service.NewDramaService(service.DramaDeps{Repo: repo, Registry: httpDramaRegistry{}, Canvas: canvas, Wallets: connectedWalletForHandler{}}))
 	r := gin.New()
 	r.Use(func(c *gin.Context) { c.Set(middleware.CtxUserIDKey, uint(1)); c.Next() })
 	r.DELETE("/dramas/:id/episodes/:no", h.DeleteEpisode)

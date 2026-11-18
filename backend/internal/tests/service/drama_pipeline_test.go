@@ -504,10 +504,10 @@ func toJSONList(v any) []any {
 	return out
 }
 func dramaTestService(r *dramaMemory, e *dramaTextStreamer, c *dramaPipelineCanvas) (*service.DramaService, *dramaRegistry) {
-	snap := &provider.Snapshot{ModelRevisionID: 9, Channel: provider.ChannelSnapshot{Key: "chan", BaseURL: "https://llm.example"}, Model: provider.ModelSnapshot{Key: "text", Kind: "agent", UpstreamModel: "upstream-chat", APIFormat: "openai", Pricing: modelcfg.Pricing{Billing: modelcfg.BillingPerCall, Unit: 5}, Capabilities: modelcfg.Capabilities{Context: &modelcfg.ContextSpec{Window: 128000, Output: 5000}}}}
-	registry := &dramaRegistry{snap: snap, models: []provider.ModelInfo{{Key: "text", Kind: "agent"}}}
-	secrets := dramaSecrets{model.ChannelSecretName("chan"): "sk-test"}
-	return service.NewDramaService(service.DramaDeps{Repo: lockedDramaMemory{r}, Settings: r, Registry: registry, Streamer: e, Secrets: secrets, Canvas: c, CanvasAssets: r, Segments: r}), registry
+	snap := &provider.Snapshot{ModelRevisionID: 9, Channel: provider.ChannelSnapshot{Key: "chan", BaseURL: "https://llm.example", Wallet: true}, Model: provider.ModelSnapshot{Key: "text", Kind: "agent", UpstreamModel: "upstream-chat", APIFormat: "openai", Capabilities: modelcfg.Capabilities{Context: &modelcfg.ContextSpec{Window: 128000, Output: 5000}}}}
+	registry := &dramaRegistry{snap: snap, models: []provider.ModelInfo{{Key: "text", Kind: "agent", Wallet: true}}}
+	secrets := dramaSecrets{model.WalletSecretName(7): "sk-wallet-test"}
+	return service.NewDramaService(service.DramaDeps{Repo: lockedDramaMemory{r}, Settings: r, Registry: registry, Streamer: e, Secrets: secrets, Canvas: c, CanvasAssets: r, Segments: r, Wallets: connectedWallet{}}), registry
 }
 func dramaCheckCode(t *testing.T, err error, code int) {
 	t.Helper()
@@ -531,7 +531,7 @@ func TestDramaPipelineJSONRetryAndNoCharge(t *testing.T) {
 		outputs              []string
 		status               string
 		code, calls, balance int
-	}{{"成功", []string{`{"script_md":"剧本正文"}`}, "succeeded", 0, 1, 995}, {"JSON重试成功", []string{`{bad`, `{"script_md":"修正后的正文"}`}, "succeeded", 0, 2, 995}, {"JSON两次失败", []string{`{bad`, `{bad`}, "failed", 67008, 2, 1000}} {
+	}{{"成功", []string{`{"script_md":"剧本正文"}`}, "succeeded", 0, 1, 1000}, {"JSON重试成功", []string{`{bad`, `{"script_md":"修正后的正文"}`}, "succeeded", 0, 2, 1000}, {"JSON两次失败", []string{`{bad`, `{bad`}, "failed", 67008, 2, 1000}} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newDramaMemory()
 			dramaAddEpisode(r, 1, "")
@@ -548,7 +548,7 @@ func TestDramaPipelineJSONRetryAndNoCharge(t *testing.T) {
 			if got.Status != tc.status || got.ErrorCode != tc.code || e.calls != tc.calls {
 				t.Fatalf("job=%+v calls=%d", got, e.calls)
 			}
-			if r.credit.Balance != tc.balance || r.credit.Frozen != 0 {
+			if r.credit.Balance != tc.balance || r.credit.Frozen != 0 || got.Credits != 0 || len(r.ledger) != 0 {
 				t.Fatalf("account=%+v", r.credit)
 			}
 			if tc.calls == 2 && !strings.Contains(e.prompts[1], "validation_error") {
@@ -668,20 +668,21 @@ func TestDramaModelFallbackAndEstimate(t *testing.T) {
 	dramaAddEpisode(r, 1, "")
 	dramaAddEpisode(r, 2, "")
 	s, registry := dramaTestService(r, &dramaTextStreamer{}, nil)
-	registry.models = []provider.ModelInfo{{Key: "unavailable", Kind: "agent"}, {Key: "text", Kind: "agent"}}
+	registry.models = []provider.ModelInfo{{Key: "unavailable", Kind: "agent"}, {Key: "text", Kind: "agent", Wallet: true}}
 	registry.unavailable = map[string]bool{"unavailable": true}
 	credits, err := s.Estimate(context.Background(), 7, 1, &model.DramaJobReq{Step: "scripts"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if credits != 10 || len(registry.requested) != 2 || registry.requested[1] != "text" {
+	if credits != 0 || len(registry.requested) != 1 || registry.requested[0] != "text" {
 		t.Fatalf("estimate=%d requested=%v", credits, registry.requested)
 	}
 	r.credit.Balance = 0
-	_, err = s.CreateJob(context.Background(), 7, 1, &model.DramaJobReq{Step: "scripts"})
-	dramaCheckCode(t, err, 40001)
-	if len(r.jobs) != 0 {
-		t.Fatal("余额不足不得入队")
+	if _, err = s.CreateJob(context.Background(), 7, 1, &model.DramaJobReq{Step: "scripts"}); err != nil {
+		t.Fatalf("钱包模型不应因平台积分为 0 被拒绝：%v", err)
+	}
+	if len(r.jobs) != 1 {
+		t.Fatal("钱包任务应正常入队")
 	}
 }
 
@@ -845,8 +846,8 @@ func TestDramaBreakdownRunsBatchesInParallelAndPromptsEachBatch(t *testing.T) {
 	if c.applied != 3 || len(c.prompts) != 3 || c.prompts["node-角色13"] == "" {
 		t.Fatalf("三批各写一次画布并写好提示词：applied=%d prompts=%v", c.applied, c.prompts)
 	}
-	if got.Credits != 30 || r.credit.Balance != 970 || r.credit.Frozen != 0 {
-		t.Fatalf("三次拆解加三次提示词共 30 积分：credits=%d account=%+v", got.Credits, r.credit)
+	if got.Credits != 0 || r.credit.Balance != 1000 || r.credit.Frozen != 0 || len(r.ledger) != 0 {
+		t.Fatalf("钱包调用不应扣平台积分：credits=%d account=%+v ledger=%+v", got.Credits, r.credit, r.ledger)
 	}
 }
 
@@ -883,12 +884,12 @@ func TestDramaBreakdownResumesFromCommittedBatches(t *testing.T) {
 			t.Fatal("重跑不应再处理第一批")
 		}
 	}
-	if got := r.jobs[0]; got.Status != "succeeded" || got.Credits != 20 || len(c.prompts) != 2 {
-		t.Fatalf("两批各一次拆解加一次提示词共 20 积分：status=%s credits=%d prompts=%v", got.Status, got.Credits, c.prompts)
+	if got := r.jobs[0]; got.Status != "succeeded" || got.Credits != 0 || len(c.prompts) != 2 || r.credit.Balance != 1000 || len(r.ledger) != 0 {
+		t.Fatalf("钱包任务应成功且不扣平台积分：status=%s credits=%d prompts=%v account=%+v", got.Status, got.Credits, c.prompts, r.credit)
 	}
 }
 
-// 拆解中途取消：已写入画布的批次保留，只扣这些批次的积分，其余退回。
+// 拆解中途取消：已写入画布的批次保留，平台积分不变。
 func TestDramaBreakdownCancelKeepsCommittedBatchesAndChargesThem(t *testing.T) {
 	m := &dramaFakeModel{}
 	e := &dramaTextStreamer{respond: m.respond}
@@ -911,8 +912,8 @@ func TestDramaBreakdownCancelKeepsCommittedBatchesAndChargesThem(t *testing.T) {
 	if got.Status != "canceled" || c.applied != 1 || !c.hasPrompt("node-角色1") {
 		t.Fatalf("取消后保留第一批：status=%s applied=%d", got.Status, c.applied)
 	}
-	if got.Credits != 10 || r.credit.Balance != 990 || r.credit.Frozen != 0 {
-		t.Fatalf("只扣第一批的拆解和提示词 10 积分：credits=%d account=%+v", got.Credits, r.credit)
+	if got.Credits != 0 || r.credit.Balance != 1000 || r.credit.Frozen != 0 || len(r.ledger) != 0 {
+		t.Fatalf("钱包调用取消也不应扣平台积分：credits=%d account=%+v ledger=%+v", got.Credits, r.credit, r.ledger)
 	}
 }
 
@@ -936,7 +937,7 @@ func TestDramaPromptsIsolateFilteredAssets(t *testing.T) {
 		t.Fatalf("提示词任务只处理被过滤的资产：%s", r.jobs[1].InputJSON)
 	}
 
-	// 接续任务里苏星阳这次通过、苏星月仍被过滤：写入苏星阳，任务以安全过滤失败并只扣成功的那次。
+	// 接续任务里苏星阳这次通过、苏星月仍被过滤：写入苏星阳，任务以安全过滤失败，平台积分不变。
 	m.filter("苏星月")
 	balance := r.credit.Balance
 	if err := s.HandleDrama(context.Background(), 7, 1, r.jobs[1].ID); err != nil {
@@ -949,8 +950,8 @@ func TestDramaPromptsIsolateFilteredAssets(t *testing.T) {
 	if follow.Status != "failed" || follow.ErrorCode != errcode.ErrDramaContentFiltered.Code || !strings.Contains(follow.ErrorMessage, "苏星月") {
 		t.Fatalf("应以安全过滤失败并点名资产：%s %d %q", follow.Status, follow.ErrorCode, follow.ErrorMessage)
 	}
-	if follow.Credits != 5 || r.credit.Balance != balance-5 || r.credit.Frozen != 0 {
-		t.Fatalf("只扣成功写入的那次：credits=%d account=%+v", follow.Credits, r.credit)
+	if follow.Credits != 0 || r.credit.Balance != balance || r.credit.Frozen != 0 || len(r.ledger) != 0 {
+		t.Fatalf("钱包调用失败也不应扣平台积分：credits=%d account=%+v ledger=%+v", follow.Credits, r.credit, r.ledger)
 	}
 
 	// 重试只处理仍没有提示词的苏星月。

@@ -20,22 +20,22 @@ import (
 func TestSettingsService_RegisterSettings(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("库里没有值时回落代码常量（并发 4、初始积分 50），注册开关默认开", func(t *testing.T) {
+	t.Run("库里没有值时回落代码常量（并发 4），注册开关默认开", func(t *testing.T) {
 		svc := NewSettingsService(newFakeSettingsRepo(), &fakeAudit{})
 		v, err := svc.RegisterSettings(ctx)
-		if err != nil || !v.RegisterEnabled || v.InitialCredits != DefaultInitialCredits || v.DefaultMaxActiveTasks != DefaultMaxActiveTasks {
+		if err != nil || !v.RegisterEnabled || v.DefaultMaxActiveTasks != DefaultMaxActiveTasks {
 			t.Fatalf("%+v %v", v, err)
 		}
-		if v.InitialCredits != 50 || v.DefaultMaxActiveTasks != 4 || v.QueueMultiplier != 5 || v.QueueMaxWaitMinutes != 60 {
-			t.Fatalf("常量应为初始积分 50、并发 4、排队倍数 5、排队超时 60 分钟：%+v", v)
+		if v.DefaultMaxActiveTasks != 4 || v.QueueMultiplier != 5 || v.QueueMaxWaitMinutes != 60 {
+			t.Fatalf("常量应为并发 4、排队倍数 5、排队超时 60 分钟：%+v", v)
 		}
 	})
-	t.Run("库值优先；非法的库值被忽略", func(t *testing.T) {
+	t.Run("库值优先；历史积分设置被忽略", func(t *testing.T) {
 		repo := newFakeSettingsRepo()
 		repo.kv = map[string]string{model.SettingRegisterEnabled: "false", model.SettingInitialCredits: "8", model.SettingDefaultMaxActiveTasks: "abc"}
 		svc := NewSettingsService(repo, &fakeAudit{})
 		v, _ := svc.RegisterSettings(ctx)
-		if v.RegisterEnabled || v.InitialCredits != 8 || v.DefaultMaxActiveTasks != DefaultMaxActiveTasks {
+		if v.RegisterEnabled || v.DefaultMaxActiveTasks != DefaultMaxActiveTasks {
 			t.Fatalf("%+v", v)
 		}
 	})
@@ -54,11 +54,11 @@ func TestSettingsService_UpdateRegisterSettings(t *testing.T) {
 	t.Run("成功：写库并写审计（含前后值）", func(t *testing.T) {
 		repo, audit := newFakeSettingsRepo(), &fakeAudit{}
 		svc := NewSettingsService(repo, audit)
-		v, err := svc.UpdateRegisterSettings(ctx, 7, &model.RegisterSettingsView{RegisterEnabled: false, InitialCredits: 0, DefaultMaxActiveTasks: 5, QueueMultiplier: 3, QueueMaxWaitMinutes: 90})
+		v, err := svc.UpdateRegisterSettings(ctx, 7, &model.RegisterSettingsView{RegisterEnabled: false, DefaultMaxActiveTasks: 5, QueueMultiplier: 3, QueueMaxWaitMinutes: 90})
 		if err != nil || v.RegisterEnabled || v.DefaultMaxActiveTasks != 5 || v.QueueMultiplier != 3 || v.QueueMaxWaitMinutes != 90 {
 			t.Fatalf("%+v %v", v, err)
 		}
-		if repo.kv[model.SettingRegisterEnabled] != "false" || repo.kv[model.SettingInitialCredits] != "0" || repo.kv[model.SettingDefaultMaxActiveTasks] != "5" ||
+		if repo.kv[model.SettingRegisterEnabled] != "false" || repo.kv[model.SettingDefaultMaxActiveTasks] != "5" ||
 			repo.kv[model.SettingQueueMultiplier] != "3" || repo.kv[model.SettingQueueMaxWaitMinutes] != "90" || repo.by != 7 {
 			t.Fatalf("库值不对：%v by=%d", repo.kv, repo.by)
 		}
@@ -68,13 +68,12 @@ func TestSettingsService_UpdateRegisterSettings(t *testing.T) {
 	})
 	t.Run("参数越界返回 ErrInvalidParams，不写库不写审计", func(t *testing.T) {
 		for _, req := range []*model.RegisterSettingsView{
-			{InitialCredits: -1, DefaultMaxActiveTasks: 2, QueueMultiplier: 5, QueueMaxWaitMinutes: 60},
-			{InitialCredits: 1, DefaultMaxActiveTasks: 0, QueueMultiplier: 5, QueueMaxWaitMinutes: 60},
-			{InitialCredits: 1, DefaultMaxActiveTasks: 65, QueueMultiplier: 5, QueueMaxWaitMinutes: 60},
-			{InitialCredits: 1, DefaultMaxActiveTasks: 2, QueueMultiplier: 0, QueueMaxWaitMinutes: 60},
-			{InitialCredits: 1, DefaultMaxActiveTasks: 2, QueueMultiplier: 21, QueueMaxWaitMinutes: 60},
-			{InitialCredits: 1, DefaultMaxActiveTasks: 2, QueueMultiplier: 5, QueueMaxWaitMinutes: 4},
-			{InitialCredits: 1, DefaultMaxActiveTasks: 2, QueueMultiplier: 5, QueueMaxWaitMinutes: 1441},
+			{DefaultMaxActiveTasks: 0, QueueMultiplier: 5, QueueMaxWaitMinutes: 60},
+			{DefaultMaxActiveTasks: 65, QueueMultiplier: 5, QueueMaxWaitMinutes: 60},
+			{DefaultMaxActiveTasks: 2, QueueMultiplier: 0, QueueMaxWaitMinutes: 60},
+			{DefaultMaxActiveTasks: 2, QueueMultiplier: 21, QueueMaxWaitMinutes: 60},
+			{DefaultMaxActiveTasks: 2, QueueMultiplier: 5, QueueMaxWaitMinutes: 4},
+			{DefaultMaxActiveTasks: 2, QueueMultiplier: 5, QueueMaxWaitMinutes: 1441},
 		} {
 			repo, audit := newFakeSettingsRepo(), &fakeAudit{}
 			if _, err := NewSettingsService(repo, audit).UpdateRegisterSettings(ctx, 1, req); codeOf(err) != errcode.ErrInvalidParams.Code {
@@ -88,7 +87,7 @@ func TestSettingsService_UpdateRegisterSettings(t *testing.T) {
 	t.Run("写库失败透传", func(t *testing.T) {
 		repo := newFakeSettingsRepo()
 		repo.setErr = errBoom
-		_, err := NewSettingsService(repo, &fakeAudit{}).UpdateRegisterSettings(ctx, 1, &model.RegisterSettingsView{InitialCredits: 1, DefaultMaxActiveTasks: 2, QueueMultiplier: 5, QueueMaxWaitMinutes: 60})
+		_, err := NewSettingsService(repo, &fakeAudit{}).UpdateRegisterSettings(ctx, 1, &model.RegisterSettingsView{DefaultMaxActiveTasks: 2, QueueMultiplier: 5, QueueMaxWaitMinutes: 60})
 		if !errors.Is(err, errBoom) {
 			t.Fatalf("%v", err)
 		}

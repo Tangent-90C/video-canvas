@@ -81,7 +81,7 @@ export interface WalletUsage {
 
 /**
  * 查询调用记录（Bearer 是用户自己的 TokenDance Key，后端代理 + 60 秒缓存）。
- * 钱包任务不扣平台积分，「花了多少钱」只认这里的逐条真实花费。
+ * 钱包任务的「花了多少钱」只认这里的逐条真实花费。
  * 未启用 / 未连接返回空列表，上游失败返回旧缓存并标 stale。
  */
 export const getWalletUsage = () => service.get<WalletUsage>("/wallet/tokenpay/usage");

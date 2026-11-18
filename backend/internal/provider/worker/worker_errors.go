@@ -59,7 +59,7 @@ func failureOfResult(res *provider.QueryResult) failure {
 	return failure{class: class, code: res.ErrorCode, upstream: res.ErrorMessage, raw: res.ErrorMessage}
 }
 
-// fail 把任务置为 failed 并退款。给用户看的文案与错误码走 failureFor：有上游原文给原文，否则给固定文案；
+// fail 把任务置为 failed。给用户看的文案与错误码走 failureFor：有上游原文给原文，否则给固定文案；
 // 完整错误串只进日志和失败事件。
 // snap 为 nil 表示快照本身损坏，日志里就没有渠道与插件信息。
 func (w *Worker) fail(ctx context.Context, t *model.GenerationTask, snap *provider.Snapshot, f failure) {
@@ -73,13 +73,13 @@ func (w *Worker) fail(ctx context.Context, t *model.GenerationTask, snap *provid
 	switch {
 	case f.pluginFault:
 		// 插件抛异常、超时、返回值不合规、runner 崩溃：是插件或运维问题，用户只看到“平台繁忙”，必须告警
-		log.Error("【告警】插件级失败，任务已失败并退积分", append(fields, pluginFields(snap)...)...)
+		log.Error("【告警】插件级失败，任务已失败", append(fields, pluginFields(snap)...)...)
 	case f.class == provider.ClassProviderBalance && !t.Wallet:
 		// 平台渠道的上游账户余额不足是运维问题，必须告警；钱包任务扣的是用户自己的余额，不算运维告警
 		log.Error("【告警】上游账户余额不足，请尽快充值", append(fields, pluginFields(snap)...)...)
 	case f.class == provider.ClassSubmitUnknown:
 		// 提交读超时，上游可能已经创建了任务并计费，需要人工核对
-		log.Warn("提交结果未知（读超时），任务已失败并退积分，请人工核对上游是否产生了任务", fields...)
+		log.Warn("提交结果未知（读超时），任务已失败，请人工核对上游是否产生了任务", fields...)
 	default:
 		log.Warn("任务失败", fields...)
 	}
@@ -104,7 +104,7 @@ func pluginFields(snap *provider.Snapshot) []zap.Field {
 
 // handleRunnerError 处理与 plugin-runner 进程相关的错误，处理了返回 true。提交、轮询、转存查询三处共用：
 //   - runner 连不上：不消耗重试次数、不失败，任务留在原状态稍后再试（pending 就停在 pending），由任务 deadline 兜底；
-//   - 调用中 runner 崩溃：重试一次，连续第二次崩溃就失败退积分（按插件级失败告警）。
+//   - 调用中 runner 崩溃：重试一次，连续第二次崩溃就失败（按插件级失败告警）。
 func (w *Worker) handleRunnerError(ctx context.Context, t *model.GenerationTask, snap *provider.Snapshot, err error) bool {
 	switch provider.CodeOf(err) {
 	case provider.CodeRunnerUnavailable:
@@ -164,9 +164,9 @@ func (w *Worker) forgetTask(id uint64) {
 	w.memMu.Unlock()
 }
 
-// expire 处理超过 deadline_at 的任务：先尽力通知上游取消（忽略错误），再迁移到 expired 并退款。
+// expire 处理超过 deadline_at 的任务：先尽力通知上游取消（忽略错误），再迁移到 expired。
 func (w *Worker) expire(ctx context.Context, t *model.GenerationTask, snap *provider.Snapshot) {
-	w.taskLog(t).Warn("任务超时，置为 expired 并退款", zap.String("status", t.Status), zap.Time("deadline_at", t.DeadlineAt))
+	w.taskLog(t).Warn("任务超时，置为 expired", zap.String("status", t.Status), zap.Time("deadline_at", t.DeadlineAt))
 	w.forgetTask(t.ID)
 	if t.ProviderTaskID != "" {
 		w.cancelProvider(ctx, t, snap, taskRef(t, w.providerState(t)))

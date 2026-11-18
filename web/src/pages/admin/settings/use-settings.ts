@@ -1,12 +1,8 @@
 import { useAdminConfigChanged } from "@/hooks/use-admin-config-changed";
 import { useCallback, useEffect, useState } from "react";
 
-import { getPricingSettings, getRegisterSettings, getSmtpSettings } from "@/api/admin/settings";
-import type {
-  PricingSettingsView,
-  RegisterSettings,
-  SmtpSettings,
-} from "@/api/admin/settings/type.d";
+import { getRegisterSettings, getSmtpSettings } from "@/api/admin/settings";
+import type { RegisterSettings, SmtpSettings } from "@/api/admin/settings/type.d";
 
 import { useAliveRef, type LoadStatus } from "../use-admin";
 
@@ -52,6 +48,3 @@ export const useSmtpSettings = () => {
   useAdminConfigChanged("smtp_settings", () => void settings.reload());
   return settings;
 };
-
-/** 定价设置（积分换算、默认加价率、汇率覆盖与当前汇率） */
-export const usePricingSettings = () => useSettings<PricingSettingsView>(getPricingSettings);

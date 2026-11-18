@@ -17,7 +17,6 @@ import (
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/provider"
-	"video-canvas/internal/provider/modelcfg"
 )
 
 // callDrama JSON校验失败只重试一次，失败请求不计入扣费。
@@ -101,12 +100,11 @@ func (s *DramaService) dramaAttempt(ctx context.Context, j *model.DramaJob, snap
 		}
 		return nil, 0, invalid, nil
 	}
-	var usage *modelcfg.Usage
-	if !result.UsageMissing {
-		usage = &modelcfg.Usage{InputTokens: max(0, result.Usage.InputTokens), OutputTokens: max(0, result.Usage.OutputTokens)}
+	if snap.Channel.Wallet {
+		return decoded, 0, nil, nil
 	}
-	quoted := modelcfg.Quote(snap.Model.Pricing, snap.Model.Capabilities, modelcfg.Spec{PromptChars: chars, Params: map[string]any{}})
-	return decoded, modelcfg.Settle(snap.Model.Pricing, quoted, usage), nil, nil
+	// 平台积分已停用；历史非钱包调用也只返回兼容值 0，不能产生平台扣费。
+	return decoded, 0, nil, nil
 }
 
 // dramaTemplate 选择本次调用的模板与正文：用户自写或技能提示词是「替换正文、Schema 固定」，始终用用户正文；
@@ -122,19 +120,25 @@ func dramaTemplate(step string, setting model.DramaPromptSetting) (template, bod
 
 // streamDramaText 经LLM网关向Agent模型的渠道发一次对话请求；请求期间任务被取消会中断上游调用。
 func (s *DramaService) streamDramaText(ctx context.Context, j *model.DramaJob, snap *provider.Snapshot, prompt string) (*llmgateway.Result, error) {
-	return s.streamText(ctx, snap, prompt, func(c context.Context) error { return s.ensureDramaActive(c, j) })
+	return s.streamText(ctx, j.UserID, snap, prompt, func(c context.Context) error { return s.ensureDramaActive(c, j) })
 }
 
 // streamText 是 streamDramaText 的核心：active 每秒调用一次，返回错误就中断上游请求并把该错误交给调用方。
 // 预检这类还没有任务的调用传一个只看 ctx 的 active。
-func (s *DramaService) streamText(ctx context.Context, snap *provider.Snapshot, prompt string, active func(context.Context) error) (*llmgateway.Result, error) {
+func (s *DramaService) streamText(ctx context.Context, userID uint64, snap *provider.Snapshot, prompt string, active func(context.Context) error) (*llmgateway.Result, error) {
 	if s.streamer == nil || s.secrets == nil {
 		return nil, errcode.ErrInternal
 	}
-	key, e := s.secrets.Get(ctx, model.ChannelSecretName(snap.Channel.Key))
+	if !snap.Channel.Wallet {
+		return nil, errcode.ErrDramaNoTextModel.WithMsg("该模型未接入 TokenPay 钱包")
+	}
+	if userID == 0 {
+		return nil, errcode.ErrWalletNotConnected
+	}
+	key, e := s.secrets.Get(ctx, model.WalletSecretName(userID))
 	if e != nil {
-		logger.Warn("短剧模型渠道Key读取失败", zap.String("channel", snap.Channel.Key), zap.Error(e))
-		return nil, errcode.ErrDramaNoTextModel.WithMsg("模型渠道暂不可用")
+		logger.Warn("短剧模型 Key 读取失败", zap.String("channel", snap.Channel.Key), zap.Uint64("user_id", userID), zap.Error(e))
+		return nil, errcode.ErrWalletNotConnected
 	}
 	tg := llmgateway.Target{ChannelKey: snap.Channel.Key, BaseURL: snap.Channel.BaseURL, APIKey: key, Headers: snap.Channel.Headers, UpstreamModel: snap.Model.UpstreamModel,
 		Format: snap.Model.APIFormat, PathPrefix: snap.Model.PathPrefix, RPS: snap.Channel.RateLimit.RPS, MaxConcurrency: snap.Channel.RateLimit.MaxConcurrency, IdleTimeout: snap.Model.IdleTimeout.D()}

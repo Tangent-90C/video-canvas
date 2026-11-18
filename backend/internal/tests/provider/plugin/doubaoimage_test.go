@@ -51,7 +51,7 @@ func newDoubaoimageEnv(t *testing.T) *doubaoimageEnv {
 func (e *doubaoimageEnv) snapshot(baseURL, kind, upstream string) *provider.Snapshot {
 	return &provider.Snapshot{
 		Model: provider.ModelSnapshot{Key: "m", Kind: kind, UpstreamModel: upstream, Capabilities: doubaoimageCaps(kind)},
-		Channel: provider.ChannelSnapshot{
+		Channel: provider.ChannelSnapshot{Wallet: true,
 			Key: "doubao-image-main", PluginKey: "doubao-image", PluginVersionID: 1, BaseURL: baseURL,
 		},
 		Plugin:          provider.PluginSnapshot{Key: "doubao-image", Version: e.meta.Version, SHA256: e.sha, Meta: *e.meta},

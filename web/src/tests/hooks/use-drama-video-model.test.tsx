@@ -28,6 +28,7 @@ const video = (key: string) =>
     key,
     kind: "video",
     label: key,
+    wallet: true,
     pricing: {},
     capabilities: {
       ops: ["i2v"],

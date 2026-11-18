@@ -413,14 +413,14 @@ func TextModel(key string, vision, video bool, unit int) *provider.Snapshot {
 	return &provider.Snapshot{Model: provider.ModelSnapshot{
 		Key: key, Kind: modelcfg.KindAgent, Capabilities: modelcfg.Capabilities{Vision: vision, Video: video},
 		Pricing: modelcfg.Pricing{Billing: modelcfg.BillingPerCall, Unit: unit},
-	}}
+	}, Channel: provider.ChannelSnapshot{Key: "wallet", Wallet: true}}
 }
 
 // ListModels 返回全部模型信息。
 func (m *Models) ListModels(context.Context, string) ([]provider.ModelInfo, error) {
 	var out []provider.ModelInfo
 	for k, s := range m.Snapshots {
-		out = append(out, provider.ModelInfo{Key: k, Kind: s.Model.Kind})
+		out = append(out, provider.ModelInfo{Key: k, Kind: s.Model.Kind, Wallet: s.Channel.Wallet, UpstreamModel: s.Model.UpstreamModel})
 	}
 	return out, nil
 }

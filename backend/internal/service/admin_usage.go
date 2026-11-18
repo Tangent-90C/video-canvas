@@ -32,7 +32,7 @@ type AdminUsageRepo interface {
 	List(ctx context.Context, f repository.UsageFilter) ([]model.UsageRow, error)
 	// Count 返回满足筛选条件的总数，翻页用。
 	Count(ctx context.Context, f repository.UsageFilter) (int64, error)
-	// Summary 按状态分组统计任务数与实扣积分，筛选条件与 List 相同。
+	// Summary 按状态分组统计任务数，筛选条件与 List 相同。
 	Summary(ctx context.Context, f repository.UsageFilter) ([]model.UsageStatusCount, error)
 	// GetTaskByRef 按任务编号取任务（含试跑），不存在返回 repository.ErrNotFound。
 	GetTaskByRef(ctx context.Context, ref string) (*model.GenerationTask, error)
@@ -40,8 +40,6 @@ type AdminUsageRepo interface {
 	GetUser(ctx context.Context, id uint64) (*model.User, error)
 	// ListEvents 返回任务的状态时间线，id 升序；老任务没有事件，返回空切片。
 	ListEvents(ctx context.Context, taskID uint64) ([]model.GenerationTaskEvent, error)
-	// ListTaskLedger 返回任务的积分流水，id 升序。
-	ListTaskLedger(ctx context.Context, taskID uint64) ([]model.CreditLedger, error)
 }
 
 // AdminUsageService 实现后台使用记录的查询。
@@ -98,12 +96,12 @@ func usageItem(r model.UsageRow) model.UsageItem {
 	return model.UsageItem{
 		ID: r.ID, TaskRef: r.TaskRef, User: model.UsageUser{ID: r.UserID, Username: r.Username},
 		Kind: r.Kind, ModelKey: r.ModelKey, ModelName: r.ModelName, Status: r.Status,
-		Credits: r.Credits, ChargedCredits: r.ChargedCredits, ErrorCode: r.ErrorCode, ErrorMessage: r.ErrorMessage,
+		Credits: 0, ChargedCredits: nil, ErrorCode: r.ErrorCode, ErrorMessage: r.ErrorMessage,
 		DurationMs: r.DurationMs, IsTest: r.IsTest, CreatedAt: r.CreatedAt,
 	}
 }
 
-// Summary 返回与列表同一组筛选条件下的任务数与实扣积分；failed 只含 failed，取消与超时各自计数。
+// Summary 返回与列表同一组筛选条件下的任务数；failed 只含 failed，取消与超时各自计数。
 func (s *AdminUsageService) Summary(ctx context.Context, req *model.UsageFilterReq) (*model.UsageSummary, error) {
 	// 1. 与列表共用同一个筛选解析，保证摘要和列表口径一致
 	f, err := s.filter(req)
@@ -118,7 +116,6 @@ func (s *AdminUsageService) Summary(ctx context.Context, req *model.UsageFilterR
 	sum := &model.UsageSummary{}
 	for _, r := range rows {
 		sum.Total += r.Count
-		sum.ChargedCredits += r.Charged
 		switch r.Status {
 		case model.TaskSucceeded:
 			sum.Succeeded += r.Count
@@ -186,7 +183,7 @@ func (s *AdminUsageService) timeRange(fromStr, toStr string) (from, to time.Time
 	return from, to, nil
 }
 
-// Get 返回一个任务的完整详情：基础信息、用户、输入、产物、失败原因（含上游错误原文）、状态时间线、积分流水和试跑追踪。
+// Get 返回一个任务的完整详情：基础信息、用户、输入、产物、失败原因（含上游错误原文）、状态时间线和试跑追踪。
 func (s *AdminUsageService) Get(ctx context.Context, ref string) (*model.UsageDetail, error) {
 	// 1. 按任务编号取任务（不限用户，含试跑）；编号不存在或格式不对都是“任务不存在”
 	t, err := s.repo.GetTaskByRef(ctx, strings.ToLower(strings.TrimSpace(ref)))
@@ -205,12 +202,8 @@ func (s *AdminUsageService) Get(ctx context.Context, ref string) (*model.UsageDe
 	case !errors.Is(err, repository.ErrNotFound):
 		return nil, err
 	}
-	// 3. 状态时间线与积分流水
+	// 3. 状态时间线
 	events, err := s.repo.ListEvents(ctx, t.ID)
-	if err != nil {
-		return nil, err
-	}
-	ledger, err := s.repo.ListTaskLedger(ctx, t.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -220,17 +213,13 @@ func (s *AdminUsageService) Get(ctx context.Context, ref string) (*model.UsageDe
 		Input:   decodeObject(t.InputJSON),
 		Outputs: decodeOutputs(t.OutputJSON),
 		Events:  make([]model.UsageEvent, len(events)),
-		Ledger:  make([]model.UsageLedger, len(ledger)),
+		Ledger:  []model.UsageLedger{},
 	}
 	for i, e := range events {
 		d.Events[i] = model.UsageEvent{
 			ID: e.ID, Event: e.Event, FromStatus: e.FromStatus, ToStatus: e.ToStatus,
 			Detail: decodeNullableObject(e.DetailJSON), CreatedAt: e.CreatedAt,
 		}
-	}
-	for i, l := range ledger {
-		// 与用户抽屉的积分流水同一口径：freeze / settle 为负，refund 为正
-		d.Ledger[i] = model.UsageLedger{ID: l.ID, Type: l.Type, Amount: signedLedgerAmount(l.Type, l.Amount), CreatedAt: l.CreatedAt}
 	}
 	// 4. 失败信息：用户文案来自任务；上游错误原文来自失败类事件（宿主已遮掉渠道 Key），没有就是 null
 	d.Error = model.UsageError{Code: t.ErrorCode, Message: t.ErrorMessage, Upstream: upstreamOf(d.Events)}
@@ -245,7 +234,7 @@ func (s *AdminUsageService) Get(ctx context.Context, ref string) (*model.UsageDe
 func usageTask(t *model.GenerationTask) model.UsageTask {
 	out := model.UsageTask{
 		ID: t.ID, TaskRef: t.TaskRef, Kind: t.Kind, ModelKey: t.ModelKey, ModelName: t.ModelKey, NodeID: t.NodeID,
-		Status: t.Status, Progress: t.Progress, Credits: t.Credits, ChargedCredits: t.ChargedCredits,
+		Status: t.Status, Progress: t.Progress, Credits: 0, ChargedCredits: nil,
 		ErrorCode: t.ErrorCode, ErrorMessage: t.ErrorMessage, IsTest: t.IsTest, CreatedAt: t.CreatedAt,
 		SubmittedAt: t.SubmittedAt, FinishedAt: t.FinishedAt, DeadlineAt: t.DeadlineAt,
 	}

@@ -35,8 +35,13 @@ func TestJSONSchema(t *testing.T) {
 		t.Error("应禁止未知字段")
 	}
 	req, _ := m["required"].([]any)
-	if len(req) != 5 {
-		t.Errorf("required = %v", req)
+	if len(req) != 4 {
+		t.Errorf("required = %v，pricing 只应作为历史兼容字段存在，不再必填", req)
+	}
+	for _, item := range req {
+		if item == "pricing" {
+			t.Fatal("pricing 不应再是必填字段")
+		}
 	}
 }
 

@@ -19,11 +19,15 @@ import (
 func aicRunSetup(t *testing.T) (*AIConfigService, *aiconfigfake.MemRepo, *aiconfigfake.DryRunner, *aiconfigfake.TestTasks) {
 	t.Helper()
 	svc, repo, _ := aicNewSvc()
-	dry := &aiconfigfake.DryRunner{Result: map[string]any{"url": "https://example.com/run", "headers": map[string]any{"X-Echo": "Bearer sk-c1"}}}
+	ctx := context.Background()
+	dry := &aiconfigfake.DryRunner{Result: map[string]any{"url": "https://example.com/run", "headers": map[string]any{"X-Echo": "Bearer sk-wallet-9"}}}
 	tasks := &aiconfigfake.TestTasks{Views: map[uint64]aiconfigfake.TestView{}}
 	svc.SetDryRunner(dry)
 	svc.SetTestTaskCreator(tasks)
 	aicSeedChannel(t, svc, repo, "c1", true)
+	if err := svc.SetSecret(ctx, model.WalletSecretName(9), "sk-wallet-9", 9); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := aicSave(svc, "", true, aicModelBody("m1", "c1", "")); err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +58,7 @@ func TestAIConfigService_DryRun(t *testing.T) {
 		if !ok {
 			t.Fatalf("结果应是通用 JSON 结构：%T", res)
 		}
-		if strings.Contains(strings.ToLower(aicJSON(m)), "sk-c1") || !strings.Contains(aicJSON(m), "***") {
+		if strings.Contains(strings.ToLower(aicJSON(m)), "sk-wallet-9") || !strings.Contains(aicJSON(m), "***") {
 			t.Fatalf("响应里不得出现凭证明文：%v", m)
 		}
 	})
@@ -111,10 +115,10 @@ func TestAIConfigService_DryRun(t *testing.T) {
 
 	t.Run("宿主渲染失败返回配置错误且错误信息脱敏", func(t *testing.T) {
 		svc, _, dry, _ := aicRunSetup(t)
-		dry.Err = errors.New("render failed near sk-c1")
+		dry.Err = errors.New("render failed near sk-wallet-9")
 		_, err := svc.DryRun(ctx, 9, "m1", map[string]any{"prompt": "x"})
 		aicWantCode(t, err, errcode.ErrConfigInvalid.Code)
-		if strings.Contains(err.Error(), "sk-c1") {
+		if strings.Contains(err.Error(), "sk-wallet-9") {
 			t.Fatalf("错误信息不得泄露凭证：%v", err)
 		}
 	})
@@ -148,7 +152,7 @@ func TestAIConfigService_TestRun(t *testing.T) {
 		input    map[string]any
 		wantCode int
 	}{
-		{"渠道 Key 未设置（50015）", func(_ *aiconfigfake.TestTasks, repo *aiconfigfake.MemRepo) { delete(repo.Secrets, "channel:c1") }, map[string]any{"prompt": "x"}, errcode.ErrChannelSecretUnset.Code},
+		{"钱包模型不要求产品方渠道 Key", func(_ *aiconfigfake.TestTasks, repo *aiconfigfake.MemRepo) { delete(repo.Secrets, "channel:c1") }, map[string]any{"prompt": "x"}, 0},
 		{"输入不合法", nil, map[string]any{}, errcode.ErrTaskInput.Code},
 		{"渠道已停用", func(_ *aiconfigfake.TestTasks, repo *aiconfigfake.MemRepo) { repo.Channels["c1"].Enabled = false }, map[string]any{"prompt": "x"}, errcode.ErrChannelDisabled.Code},
 		{"任务服务返回业务错误时透传", func(tasks *aiconfigfake.TestTasks, _ *aiconfigfake.MemRepo) { tasks.Err = errcode.ErrTooManyTasks }, map[string]any{"prompt": "x"}, errcode.ErrTooManyTasks.Code},

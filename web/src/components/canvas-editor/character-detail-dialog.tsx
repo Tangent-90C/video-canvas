@@ -36,7 +36,7 @@ import {
 } from "@/utils/characters/node-character";
 import { setVoiceFromHistory } from "@/utils/characters/voice-history";
 
-import { priceLabel } from "@/utils/pricing/quote";
+import { modelPriceLabel } from "@/utils/pricing/model-price";
 
 import { LibraryPickerForCharacter } from "./character-library-picker";
 import { VoiceHistoryList } from "./voice-history-list";
@@ -316,9 +316,7 @@ export function CharacterDetailDialog({
                   <SelectContent>
                     {voiceGen.models.map((item) => (
                       <SelectItem key={item.key} value={item.key}>
-                        {/* 钱包模型不扣平台积分，平台积分价对它没有意义 */}
-                        {item.label}
-                        {item.wallet ? "" : ` · ${priceLabel(item.pricing)}`}
+                        {item.label} · {modelPriceLabel(item)}
                       </SelectItem>
                     ))}
                   </SelectContent>

@@ -23,6 +23,7 @@ import { getToken, setToken } from "@/utils/storage/token";
 
 import { AuthPanel, type AuthMode } from "./auth-panel";
 import { IdeaDock } from "./idea-dock";
+import { LoginFeatureCarousel } from "./login-feature-carousel";
 import { LoginStage } from "./login-stage";
 import { WordSwapTitle } from "./word-swap-title";
 
@@ -202,7 +203,7 @@ export default function Login() {
         >
           写下脑海里的画面，AI 帮你拆分镜、生成镜头，在一张画布上连成故事。
         </p>
-        <div className="mt-9">
+        <div className="mt-9 flex flex-col items-center">
           <IdeaDock
             open={cardOpen}
             idea={idea}
@@ -227,6 +228,11 @@ export default function Login() {
               onRegistered={handleRegistered}
             />
           </IdeaDock>
+          {!cardOpen && (
+            <div className="mt-6 w-[min(600px,calc(100vw-32px))]">
+              <LoginFeatureCarousel active={!cardOpen} />
+            </div>
+          )}
         </div>
       </div>
 

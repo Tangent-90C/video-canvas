@@ -36,7 +36,7 @@ describe("fieldOfPath：校验问题定位到字段", () => {
   test("其他顶层字段按页签分", () => {
     expect(fieldOfPath("kind")?.tab).toBe("basic");
     expect(fieldOfPath("capabilities.params.a")?.tab).toBe("params");
-    expect(fieldOfPath("pricing.unit")?.tab).toBe("price");
+    expect(fieldOfPath("pricing.unit")).toBeNull();
     expect(fieldOfPath("nope")).toBeNull();
   });
 });
@@ -46,6 +46,7 @@ describe("modelChecks：启用前待办", () => {
     key: "main",
     name: "主渠道",
     enabled: true,
+    wallet_enabled: true,
     secret_set: true,
   } as ChannelView;
 
@@ -89,15 +90,18 @@ describe("modelChecks：启用前待办", () => {
       { path: "channels[0].protocol", message: "Agent 模型不需要选择协议" },
       { path: "pricing.unit", message: "价格不对" },
     ]);
-    expect(checks.filter((item) => item.path !== "pricing").map((item) => item.tab)).toEqual([
-      "basic",
-      "price",
-    ]);
+    expect(checks.some((item) => item.path === "pricing.unit")).toBe(false);
   });
 });
 
 describe("modelChecks：红点（阻止保存）与黄点（建议）", () => {
-  const channel = { key: "main", name: "主渠道", enabled: true, secret_set: true } as ChannelView;
+  const channel = {
+    key: "main",
+    name: "主渠道",
+    enabled: true,
+    wallet_enabled: true,
+    secret_set: true,
+  } as ChannelView;
   const base = {
     key: "m",
     label: "L",
@@ -123,34 +127,6 @@ describe("modelChecks：红点（阻止保存）与黄点（建议）", () => {
     expect(run(base).filter((item) => item.level === "error")).toEqual([]);
   });
 
-  test("删掉规格后，积分里还引用它的规格价格是红点，落在积分页签", () => {
-    const body = {
-      ...base,
-      capabilities: {
-        ...base.capabilities,
-        params: { quality: { ...base.capabilities.params.quality, options: ["1k"] } },
-      },
-    };
-    const errors = run(body).filter((item) => item.level === "error");
-    expect(errors.map((item) => [item.tab, item.path])).toEqual([
-      ["price", "pricing.tiers[0].when"],
-    ]);
-    expect(errors[0].text).toContain("2k");
-  });
-
-  test("规格价格没有条件是合法的（所有请求都适用）", () => {
-    const body = {
-      ...base,
-      pricing: { ...base.pricing, tiers: [{ on: true, when: {}, unit: 5 }] },
-    };
-    expect(run(body).find((item) => item.level === "error")).toBeUndefined();
-  });
-
-  test("按秒计费但没有 duration 参数是红点", () => {
-    const body = { ...base, pricing: { billing: "per_second", per_second: 2 } };
-    expect(run(body).find((item) => item.level === "error")?.path).toBe("pricing.billing");
-  });
-
   test("提示词字数上限超出范围、自定义超时格式不对都是红点，落在能力与参数页签", () => {
     const body = {
       ...base,
@@ -164,9 +140,9 @@ describe("modelChecks：红点（阻止保存）与黄点（建议）", () => {
     ]);
   });
 
-  test("没有定价的模型，积分页签有黄点", () => {
+  test("没有平台定价的模型也能保存，不再提示积分页签", () => {
     const { pricing: _p, ...rest } = base;
-    expect(run(rest).find((item) => item.tab === "price")?.level).toBe("warning");
+    expect(run(rest).some((item) => item.tab === "price")).toBe(false);
   });
 
   test("必填项没填是红点；选填项用默认值是黄点", () => {
@@ -178,7 +154,7 @@ describe("modelChecks：红点（阻止保存）与黄点（建议）", () => {
     ]);
   });
 
-  test("后端返回的问题降为黄点；与本地红点同一位置的不重复", () => {
+  test("后端返回的历史定价问题在积分页签停用后不再展示", () => {
     const body = {
       ...base,
       pricing: { ...base.pricing, tiers: [{ on: true, when: { quality: "3k" }, unit: 5 }] },
@@ -187,10 +163,7 @@ describe("modelChecks：红点（阻止保存）与黄点（建议）", () => {
       { path: "pricing.tiers[0].when", message: "条件不对" },
       { path: "pricing.unit", message: "价格不对" },
     ]);
-    expect(checks.map((item) => [item.path, item.level])).toEqual([
-      ["pricing.tiers[0].when", "error"],
-      ["pricing.unit", "warning"],
-    ]);
+    expect(checks.filter((item) => item.path?.startsWith("pricing."))).toEqual([]);
   });
 });
 
@@ -202,7 +175,13 @@ describe("modelChecks：产品模型标识由后端生成", () => {
       kind: "image",
       channels: [{ channel: "main", upstream_model: "u" }],
     };
-    const channel = { key: "main", name: "主渠道", enabled: true, secret_set: true } as ChannelView;
+    const channel = {
+      key: "main",
+      name: "主渠道",
+      enabled: true,
+      wallet_enabled: true,
+      secret_set: true,
+    } as ChannelView;
     const checks = modelChecks(body, resolveModelChannel(body, [channel], []), [], false);
     expect(checks.find((item) => item.path === "key")).toBeUndefined();
   });

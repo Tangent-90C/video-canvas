@@ -64,7 +64,7 @@ func (r *httpDramaRepo) Jobs(_ context.Context, userID, dramaID uint64, active b
 func httpDramaRouter() *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	repo := &httpDramaRepo{project: &model.DramaProject{BaseModel: model.BaseModel{ID: 7}, UserID: 1, Title: "母亲", CanvasID: 9, StyleKey: "real_city_film", Ratio: "9:16", Revision: 1}, episode: &model.DramaEpisode{BaseModel: model.BaseModel{ID: 10}, UserID: 1, DramaID: 7, No: 1, Title: "归来", ScriptMD: "正文", ScriptStatus: "ready", Revision: 1}, credit: model.UserCredit{UserID: 1, Balance: 100}}
-	h := handler.NewDramaHandler(service.NewDramaService(service.DramaDeps{Repo: repo, Registry: httpDramaRegistry{}}))
+	h := handler.NewDramaHandler(service.NewDramaService(service.DramaDeps{Repo: repo, Registry: httpDramaRegistry{}, Wallets: connectedWalletForHandler{}}))
 	r := gin.New()
 	r.Use(func(c *gin.Context) { c.Set(middleware.CtxUserIDKey, uint(1)); c.Next() })
 	r.GET("/drama-styles", h.Styles)

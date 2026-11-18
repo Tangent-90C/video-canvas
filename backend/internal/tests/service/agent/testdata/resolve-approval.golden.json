@@ -69,14 +69,14 @@
   },
   "生成：不限预算": {
     "code": 0,
-    "decision": "{\"decision\":\"approve\",\"items\":[{\"node_id\":\"n1\",\"label\":\"林夏\",\"model_key\":\"seedream\",\"model_name\":\"Seedream\",\"price\":8,\"count\":2},{\"node_id\":\"n2\",\"label\":\"老周\",\"model_key\":\"seedream\",\"model_name\":\"Seedream\",\"price\":8,\"count\":1}]}",
+    "decision": "{\"decision\":\"approve\",\"items\":[{\"node_id\":\"n1\",\"label\":\"林夏\",\"model_key\":\"seedream\",\"model_name\":\"Seedream\",\"price\":0,\"count\":2},{\"node_id\":\"n2\",\"label\":\"老周\",\"model_key\":\"seedream\",\"model_name\":\"Seedream\",\"price\":0,\"count\":1}]}",
     "gen": [
       {
         "node_id": "n1",
         "label": "林夏",
         "model_key": "seedream",
         "model_name": "Seedream",
-        "price": 8,
+        "price": 0,
         "count": 2
       },
       {
@@ -84,17 +84,34 @@
         "label": "老周",
         "model_key": "seedream",
         "model_name": "Seedream",
-        "price": 8,
+        "price": 0,
         "count": 1
       }
     ],
     "node_ids": null,
-    "quote": 24
+    "quote": 0
   },
   "生成：已花的也算进预算": {
-    "code": 60008,
-    "decision": "",
-    "gen": null,
+    "code": 0,
+    "decision": "{\"decision\":\"approve\",\"items\":[{\"node_id\":\"n1\",\"label\":\"林夏\",\"model_key\":\"seedream\",\"model_name\":\"Seedream\",\"price\":0,\"count\":2},{\"node_id\":\"n2\",\"label\":\"老周\",\"model_key\":\"seedream\",\"model_name\":\"Seedream\",\"price\":0,\"count\":1}]}",
+    "gen": [
+      {
+        "node_id": "n1",
+        "label": "林夏",
+        "model_key": "seedream",
+        "model_name": "Seedream",
+        "price": 0,
+        "count": 2
+      },
+      {
+        "node_id": "n2",
+        "label": "老周",
+        "model_key": "seedream",
+        "model_name": "Seedream",
+        "price": 0,
+        "count": 1
+      }
+    ],
     "node_ids": null,
     "quote": 0
   },
@@ -114,19 +131,19 @@
   },
   "生成：张数只能少不能多": {
     "code": 0,
-    "decision": "{\"decision\":\"approve\",\"items\":[{\"node_id\":\"n2\",\"label\":\"老周\",\"model_key\":\"seedream\",\"model_name\":\"Seedream\",\"price\":8,\"count\":1}]}",
+    "decision": "{\"decision\":\"approve\",\"items\":[{\"node_id\":\"n2\",\"label\":\"老周\",\"model_key\":\"seedream\",\"model_name\":\"Seedream\",\"price\":0,\"count\":1}]}",
     "gen": [
       {
         "node_id": "n2",
         "label": "老周",
         "model_key": "seedream",
         "model_name": "Seedream",
-        "price": 8,
+        "price": 0,
         "count": 1
       }
     ],
     "node_ids": null,
-    "quote": 8
+    "quote": 0
   },
   "生成：拒绝": {
     "code": 0,
@@ -144,30 +161,30 @@
   },
   "生成：数量 0 表示按申请的": {
     "code": 0,
-    "decision": "{\"decision\":\"approve\",\"items\":[{\"node_id\":\"n1\",\"label\":\"林夏\",\"model_key\":\"seedream\",\"model_name\":\"Seedream\",\"price\":8,\"count\":2}]}",
+    "decision": "{\"decision\":\"approve\",\"items\":[{\"node_id\":\"n1\",\"label\":\"林夏\",\"model_key\":\"seedream\",\"model_name\":\"Seedream\",\"price\":0,\"count\":2}]}",
     "gen": [
       {
         "node_id": "n1",
         "label": "林夏",
         "model_key": "seedream",
         "model_name": "Seedream",
-        "price": 8,
+        "price": 0,
         "count": 2
       }
     ],
     "node_ids": null,
-    "quote": 16
+    "quote": 0
   },
   "生成：整体批准": {
     "code": 0,
-    "decision": "{\"decision\":\"approve\",\"items\":[{\"node_id\":\"n1\",\"label\":\"林夏\",\"model_key\":\"seedream\",\"model_name\":\"Seedream\",\"price\":8,\"count\":2},{\"node_id\":\"n2\",\"label\":\"老周\",\"model_key\":\"seedream\",\"model_name\":\"Seedream\",\"price\":8,\"count\":1}]}",
+    "decision": "{\"decision\":\"approve\",\"items\":[{\"node_id\":\"n1\",\"label\":\"林夏\",\"model_key\":\"seedream\",\"model_name\":\"Seedream\",\"price\":0,\"count\":2},{\"node_id\":\"n2\",\"label\":\"老周\",\"model_key\":\"seedream\",\"model_name\":\"Seedream\",\"price\":0,\"count\":1}]}",
     "gen": [
       {
         "node_id": "n1",
         "label": "林夏",
         "model_key": "seedream",
         "model_name": "Seedream",
-        "price": 8,
+        "price": 0,
         "count": 2
       },
       {
@@ -175,30 +192,47 @@
         "label": "老周",
         "model_key": "seedream",
         "model_name": "Seedream",
-        "price": 8,
+        "price": 0,
         "count": 1
       }
     ],
     "node_ids": null,
-    "quote": 24
+    "quote": 0
   },
   "生成：超出本轮预算": {
-    "code": 60008,
-    "decision": "",
-    "gen": null,
+    "code": 0,
+    "decision": "{\"decision\":\"approve\",\"items\":[{\"node_id\":\"n1\",\"label\":\"林夏\",\"model_key\":\"seedream\",\"model_name\":\"Seedream\",\"price\":0,\"count\":2},{\"node_id\":\"n2\",\"label\":\"老周\",\"model_key\":\"seedream\",\"model_name\":\"Seedream\",\"price\":0,\"count\":1}]}",
+    "gen": [
+      {
+        "node_id": "n1",
+        "label": "林夏",
+        "model_key": "seedream",
+        "model_name": "Seedream",
+        "price": 0,
+        "count": 2
+      },
+      {
+        "node_id": "n2",
+        "label": "老周",
+        "model_key": "seedream",
+        "model_name": "Seedream",
+        "price": 0,
+        "count": 1
+      }
+    ],
     "node_ids": null,
     "quote": 0
   },
   "生成：追加预算后够了": {
     "code": 0,
-    "decision": "{\"decision\":\"approve\",\"items\":[{\"node_id\":\"n1\",\"label\":\"林夏\",\"model_key\":\"seedream\",\"model_name\":\"Seedream\",\"price\":8,\"count\":2},{\"node_id\":\"n2\",\"label\":\"老周\",\"model_key\":\"seedream\",\"model_name\":\"Seedream\",\"price\":8,\"count\":1}]}",
+    "decision": "{\"decision\":\"approve\",\"items\":[{\"node_id\":\"n1\",\"label\":\"林夏\",\"model_key\":\"seedream\",\"model_name\":\"Seedream\",\"price\":0,\"count\":2},{\"node_id\":\"n2\",\"label\":\"老周\",\"model_key\":\"seedream\",\"model_name\":\"Seedream\",\"price\":0,\"count\":1}]}",
     "gen": [
       {
         "node_id": "n1",
         "label": "林夏",
         "model_key": "seedream",
         "model_name": "Seedream",
-        "price": 8,
+        "price": 0,
         "count": 2
       },
       {
@@ -206,27 +240,27 @@
         "label": "老周",
         "model_key": "seedream",
         "model_name": "Seedream",
-        "price": 8,
+        "price": 0,
         "count": 1
       }
     ],
     "node_ids": null,
-    "quote": 24
+    "quote": 0
   },
   "生成：部分批准且改张数": {
     "code": 0,
-    "decision": "{\"decision\":\"approve\",\"items\":[{\"node_id\":\"n1\",\"label\":\"林夏\",\"model_key\":\"seedream\",\"model_name\":\"Seedream\",\"price\":8,\"count\":1}]}",
+    "decision": "{\"decision\":\"approve\",\"items\":[{\"node_id\":\"n1\",\"label\":\"林夏\",\"model_key\":\"seedream\",\"model_name\":\"Seedream\",\"price\":0,\"count\":1}]}",
     "gen": [
       {
         "node_id": "n1",
         "label": "林夏",
         "model_key": "seedream",
         "model_name": "Seedream",
-        "price": 8,
+        "price": 0,
         "count": 1
       }
     ],
     "node_ids": null,
-    "quote": 8
+    "quote": 0
   }
 }

@@ -16,8 +16,6 @@ type AdminManagedUsers interface {
 	List(context.Context, *model.ListAdminUserReq) ([]model.AdminUserListItem, int64, pagination.Query, error)
 	// Get 返回不含密码的用户详情。
 	Get(context.Context, uint64) (*model.AdminUserDetail, error)
-	// AdjustCredits 复用积分账户行锁与流水。
-	AdjustCredits(context.Context, uint64, uint64, *model.AdjustCreditsReq) (*model.AdminCreditView, error)
 	// SetMaxActiveTasks 设置覆盖值，nil 恢复默认。
 	SetMaxActiveTasks(context.Context, uint64, uint64, *int) error
 	// SetStatus 复用封禁保护和取消退款规则。

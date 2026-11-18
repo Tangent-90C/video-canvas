@@ -7,7 +7,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { motion } from "motion/react";
-import { ArrowUp, Coins, Loader2 } from "lucide-react";
+import { ArrowUp, Loader2, Wallet } from "lucide-react";
 
 import { ModelMenu } from "@/components/drama/video-model-menu";
 import { useMarketingComposer } from "@/hooks/use-marketing-composer";
@@ -17,6 +17,7 @@ import { useMarketingComposerStore } from "@/store/marketing-composer";
 import { modelSummary } from "@/utils/drama/video-models";
 import { angleLabel, refVideoMaxSeconds } from "@/utils/marketing/composer";
 import type { Project } from "@/api/marketing/type";
+import { modelPriceLabel } from "@/utils/pricing/model-price";
 
 import { AngleMenu, ParamsMenu, PlatformMenu } from "./composer-menus";
 import { ComposerSlots } from "./composer-slots";
@@ -29,7 +30,7 @@ const MAX_HEIGHT = 240;
 
 /**
  * 营销生成框：三个上传块（商品 / 模特 / 参考视频）+ 描述 + 参数条（平台、角度、视频模型、参数）+
- * 写脚本预估积分与圆形发送键；不能发送时下方状态行写原因。
+ * 圆形发送键；不能发送时下方状态行写原因。
  * 外观照首页 Composer（半透明大圆角卡片，page 带一圈慢转的光环，dock 不带）；
  * 状态在 store/marketing-composer，列表页和详情页共用一份设置。
  * @param project 详情页传当前项目：商品图固定为项目的，发送在这个项目里开新一轮；列表页不传，发送新建项目
@@ -97,7 +98,7 @@ export function MarketingComposer({ project }: { project?: Project }) {
       : `${model.label} 不支持参考视频`;
   const refMax = refVideoMaxSeconds(videoCaps) ?? options.refVideoMaxSeconds;
   const refHint = `上传爆款参考视频（可选${refMax ? `，≤${refMax} 秒` : ""}）`;
-  const insufficient = state.hint?.startsWith("余额") ?? false;
+  const upstreamPrice = model ? modelPriceLabel(model) : "按 TokenDance 实际账单";
 
   return (
     <form
@@ -186,7 +187,9 @@ export function MarketingComposer({ project }: { project?: Project }) {
           model={model}
           onPick={(key) => useMarketingComposerStore.getState().setVideoModel(key)}
           support={composer.support}
-          summary={modelSummary}
+          summary={(info) =>
+            [modelSummary(info), modelPriceLabel(info)].filter(Boolean).join(" · ")
+          }
           kindName="视频"
           variant="bar"
           title="写完脚本后出片用的视频模型"
@@ -202,16 +205,11 @@ export function MarketingComposer({ project }: { project?: Project }) {
 
         <div className="flex-1" />
         <span
-          title={`写脚本预估积分（各环节之和），出片另计${
-            composer.available === null ? "" : `；可用 ${composer.available}`
-          }`}
-          className={cn(
-            "mr-1 inline-flex items-center gap-1 text-[13px] tabular-nums",
-            insufficient ? "text-destructive font-medium" : "text-muted-foreground",
-          )}
+          title="TokenDance 公开价目；实际费用以调用记录为准"
+          className={cn("mr-1 inline-flex items-center gap-1 text-[13px] tabular-nums")}
         >
-          <Coins className="size-3.5" />
-          {composer.credits ?? "–"}
+          <Wallet className="size-3.5" />
+          {upstreamPrice}
         </span>
         <motion.button
           type="submit"

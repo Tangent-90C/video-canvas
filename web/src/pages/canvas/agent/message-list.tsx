@@ -636,7 +636,7 @@ function Card({
   );
 }
 
-/** 运行的非正常收尾：失败、停止、暂停；可继续的给「继续」，早先设过额度又用完的旧运行可以追加额度 */
+/** 运行的非正常收尾：失败、停止、暂停；可继续的给「继续」。历史额度状态直接继续即可。 */
 function StatusCard({
   item,
   ctl,
@@ -659,11 +659,6 @@ function StatusCard({
       actions={
         resumable && (
           <>
-            {item.status === "budget_exhausted" && (
-              <Button size="sm" variant="outline" onClick={() => void ctl.resume(item.runId, 20)}>
-                追加 20 积分并继续
-              </Button>
-            )}
             <Button size="sm" variant="outline" onClick={() => void ctl.resume(item.runId)}>
               <Play /> 继续
             </Button>

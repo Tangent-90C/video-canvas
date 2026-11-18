@@ -3,7 +3,7 @@
 // 这些由 provider/queue（基于 River 的任务队列）负责，它取出任务后调用 Handle。
 //
 // 本包不依赖数据库：所有状态迁移都通过 Store（provider.TaskStore，由 service.GenerationTaskService 实现），
-// 事务与积分逻辑只在 service + repository 里；也不认识任何协议：上游调用全部经 provider.Executor（插件宿主）。
+// 事务逻辑只在 service + repository 里；也不认识任何协议：上游调用全部经 provider.Executor（插件宿主）。
 // 任务状态全部在 DB 里，worker 自己没有需要独占的进程内状态（内存里只有转存进度与 runner 连续崩溃计数，
 // 都只是优化，丢了最多让任务多转存一次或多重试一次），所以任务换实例执行也不影响正确性。
 //
@@ -145,7 +145,7 @@ func (w *Worker) Handle(ctx context.Context, t model.GenerationTask) {
 		}
 	}()
 
-	// 1. 解析创建任务时冻结的配置快照：worker 只读快照，不读当前配置。快照损坏无法恢复，直接失败退款
+	// 1. 解析创建任务时冻结的配置快照：worker 只读快照，不读当前配置。快照损坏无法恢复，直接失败
 	snap, err := decodeSnapshot(t.ConfigSnapshot)
 	if err != nil {
 		log.Error("任务配置快照损坏，直接失败", zap.Error(err))
@@ -188,7 +188,7 @@ func (w *Worker) Handle(ctx context.Context, t model.GenerationTask) {
 	}
 }
 
-// Expire 让一个已经超过截止时间、还没拿到名额的 pending 任务直接走超时流程（置为 expired 并退款）。
+// Expire 让一个已经超过截止时间、还没拿到名额的 pending 任务直接走超时流程（置为 expired）。
 // 队列在“排队等名额”时用它：这样的任务不会进入 Handle 的提交分支，也就不会去请求上游。
 func (w *Worker) Expire(ctx context.Context, t model.GenerationTask) {
 	log := w.taskLog(&t)

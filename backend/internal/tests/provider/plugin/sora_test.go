@@ -55,7 +55,7 @@ func newSoraEnv(t *testing.T, mod func(*plugin.Options)) *soraEnv {
 func (e *soraEnv) snapshot(baseURL string, caps modelcfg.Capabilities) *provider.Snapshot {
 	return &provider.Snapshot{
 		Model: provider.ModelSnapshot{Key: "m", Kind: "video", UpstreamModel: "sora-2", Capabilities: caps},
-		Channel: provider.ChannelSnapshot{
+		Channel: provider.ChannelSnapshot{Wallet: true,
 			Key: "sora-main", PluginKey: "sora", PluginVersionID: 1, BaseURL: baseURL,
 		},
 		Plugin:          provider.PluginSnapshot{Key: "sora", Version: e.meta.Version, SHA256: e.sha, Meta: *e.meta},

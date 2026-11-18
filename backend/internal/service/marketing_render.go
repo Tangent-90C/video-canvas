@@ -63,6 +63,9 @@ func mergeParams(base, over map[string]any) map[string]any {
 // 旁白有问题（软问题非空）68006；视频模型不可用 68004；提示词超长 68008；积分不足 40001。
 // 同一个 idempotency_key 重复提交返回第一次的结果。
 func (s *MarketingService) Render(ctx context.Context, userID, id uint64, req *model.RenderMarketingScriptReq) (*model.MarketingScriptView, error) {
+	if err := s.ensureWallet(ctx, userID); err != nil {
+		return nil, err
+	}
 	c, err := s.loadScript(ctx, userID, id)
 	if err != nil {
 		return nil, err
@@ -99,7 +102,7 @@ func (s *MarketingService) Render(ctx context.Context, userID, id uint64, req *m
 }
 
 // buildRenderInput 校验模型支持全能参考，拼出片提示词（超长 68008），组装任务输入。
-// 需要转写的模型（H3）用转写稿：没有或过期时先转写（预检余额时把出片费一起算上）。
+// 需要转写的模型（H3）用转写稿：没有或过期时先转写。
 func (s *MarketingService) buildRenderInput(ctx context.Context, userID uint64, c *scriptCtx, st model.MarketingSettings,
 	snap *provider.Snapshot, params map[string]any) (map[string]any, error) {
 	caps := snap.Model.Capabilities
@@ -117,12 +120,7 @@ func (s *MarketingService) buildRenderInput(ctx context.Context, userID uint64, 
 func (s *MarketingService) renderPrompt(ctx context.Context, userID uint64, c *scriptCtx, st model.MarketingSettings, snap *provider.Snapshot) (string, error) {
 	caps := snap.Model.Capabilities
 	if marketing.NeedsAdapt(caps.PromptFormat) {
-		images := productCount(c.project)
-		if c.round.ModelAssetID != nil {
-			images++
-		}
-		reserve := s.renderCredits(ctx, st, images, c.round.RefVideoAssetID != nil)
-		prompt, err := s.ensureAdapted(ctx, userID, c, st, snap, reserve, false)
+		prompt, err := s.ensureAdapted(ctx, userID, c, st, snap, false)
 		if err != nil {
 			return "", err
 		}
@@ -200,8 +198,11 @@ func flagSummary(flags []model.MarketingFlagView) string {
 
 // RenderRound 给轮次里能出片的脚本全部出片：旁白有问题、正在重写或出片、已出过片的跳过并说明原因。
 // 需要转写的模型先并发转写（见 preAdapt），转写失败的跳过。
-// 积分不足时已经出的保留，剩下的跳过；一份都没出成且是积分不足则返回 40001。
+// 单个脚本失败时保留已提交的出片，其余脚本继续尝试。
 func (s *MarketingService) RenderRound(ctx context.Context, userID, roundID uint64, req *model.RenderMarketingRoundReq) (*model.MarketingRenderAll, error) {
+	if err := s.ensureWallet(ctx, userID); err != nil {
+		return nil, err
+	}
 	r, err := s.repo.Round(ctx, userID, roundID, false)
 	if mktNotFound(err) {
 		return nil, errcode.ErrMarketingNotFound
@@ -216,26 +217,17 @@ func (s *MarketingService) RenderRound(ctx context.Context, userID, roundID uint
 	statuses, eligible := batchEligible(scripts, byNode)
 	failed := s.preAdapt(ctx, userID, r, eligible)
 	out := &model.MarketingRenderAll{Skipped: []model.MarketingSkipped{}}
-	created, noCredits := 0, false
 	for i := range scripts {
 		sc := &scripts[i]
-		reason := batchSkipReason(sc, statuses[i], noCredits)
+		reason := batchSkipReason(sc, statuses[i])
 		if reason == "" {
-			var short bool
-			if reason, short, err = s.batchRender(ctx, userID, sc.ID, req.IdempotencyKey, failed[sc.ID]); err != nil {
+			if reason, err = s.batchRender(ctx, userID, sc.ID, req.IdempotencyKey, failed[sc.ID]); err != nil {
 				return nil, err
-			}
-			noCredits = noCredits || short
-			if reason == "" {
-				created++
 			}
 		}
 		if reason != "" {
 			out.Skipped = append(out.Skipped, model.MarketingSkipped{ScriptID: hexID(sc.ID), Reason: reason})
 		}
-	}
-	if noCredits && created == 0 {
-		return nil, errcode.ErrInsufficientCredits
 	}
 	if out.Round, err = s.roundViewByID(ctx, userID, roundID); err != nil {
 		return nil, err
@@ -249,7 +241,7 @@ func batchEligible(scripts []model.MarketingScript, byNode map[string][]model.Ge
 	var eligible []uint64
 	for i := range scripts {
 		statuses[i], _ = deriveScriptStatus(scripts[i].Status, byNode[marketingNode(scripts[i].ID)])
-		if batchSkipReason(&scripts[i], statuses[i], false) == "" {
+		if batchSkipReason(&scripts[i], statuses[i]) == "" {
 			eligible = append(eligible, scripts[i].ID)
 		}
 	}
@@ -257,7 +249,7 @@ func batchEligible(scripts []model.MarketingScript, byNode map[string][]model.Ge
 }
 
 // batchRender 出一份：转写已经失败的直接按失败原因跳过，否则出片。
-func (s *MarketingService) batchRender(ctx context.Context, userID, scriptID uint64, batchKey string, adaptErr error) (string, bool, error) {
+func (s *MarketingService) batchRender(ctx context.Context, userID, scriptID uint64, batchKey string, adaptErr error) (string, error) {
 	if adaptErr != nil {
 		return skipOf(adaptErr)
 	}
@@ -287,7 +279,7 @@ func (s *MarketingService) preAdapt(ctx context.Context, userID uint64, r *model
 			defer func() { <-sem }()
 			c, err := s.loadScript(ctx, userID, id)
 			if err == nil {
-				_, err = s.ensureAdapted(ctx, userID, c, st, video, 0, false)
+				_, err = s.ensureAdapted(ctx, userID, c, st, video, false)
 			}
 			if err != nil {
 				mu.Lock()
@@ -322,10 +314,8 @@ func (s *MarketingService) roundTasks(ctx context.Context, userID, roundID uint6
 }
 
 // batchSkipReason 返回全部出片时这份脚本被跳过的原因；能出片返回空串。
-func batchSkipReason(sc *model.MarketingScript, status string, noCredits bool) string {
+func batchSkipReason(sc *model.MarketingScript, status string) string {
 	switch {
-	case noCredits:
-		return "积分不足"
 	case status == model.MarketingScriptRewriting:
 		return "正在重写"
 	case status == model.MarketingScriptRendering:
@@ -338,21 +328,21 @@ func batchSkipReason(sc *model.MarketingScript, status string, noCredits bool) s
 	return ""
 }
 
-// renderOne 给批量出片里的一份脚本出片：成功返回空原因；业务错误作为跳过原因返回（积分不足时 noCredits 为真）；其他错误原样返回。
-func (s *MarketingService) renderOne(ctx context.Context, userID, scriptID uint64, batchKey string) (reason string, noCredits bool, err error) {
+// renderOne 给批量出片里的一份脚本出片：成功返回空原因；业务错误作为跳过原因返回。
+func (s *MarketingService) renderOne(ctx context.Context, userID, scriptID uint64, batchKey string) (reason string, err error) {
 	key := batchKey + ":" + idcodec.Encode(scriptID)
 	_, err = s.Render(ctx, userID, scriptID, &model.RenderMarketingScriptReq{IdempotencyKey: key})
 	if err == nil {
-		return "", false, nil
+		return "", nil
 	}
 	return skipOf(err)
 }
 
-// skipOf 把批量出片里一份的错误转成跳过原因：业务错误作为原因（积分不足时 noCredits 为真），其他错误原样返回。
-func skipOf(err error) (reason string, noCredits bool, _ error) {
+// skipOf 把批量出片里一份的错误转成跳过原因；其他错误原样返回。
+func skipOf(err error) (reason string, _ error) {
 	var biz *errcode.Error
 	if errors.As(err, &biz) {
-		return biz.Msg, biz.Code == errcode.ErrInsufficientCredits.Code, nil
+		return biz.Msg, nil
 	}
-	return "", false, err
+	return "", err
 }

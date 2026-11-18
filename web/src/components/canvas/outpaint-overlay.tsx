@@ -14,8 +14,8 @@ import { useCanvasHistoryContext } from "@/hooks/use-canvas-history";
 import { useImageSize } from "@/hooks/use-image-size";
 import { toModelOption, useRemoteModels } from "@/hooks/use-models";
 import { DURATION, EASE_OUT } from "@/lib/motion";
-import { useCreditsStore } from "@/store/credits";
 import { useOutpaintStore } from "@/store/outpaint";
+import { useWalletStore } from "@/store/wallet";
 import type { CanvasEdge, CanvasNode, CanvasNodeData } from "@/types";
 import { useCurrentCanvasId } from "@/utils/canvas/canvas-id";
 import { planCompose } from "@/utils/canvas/outpaint-compose";
@@ -34,7 +34,7 @@ import {
   resolveRatioParam,
 } from "@/utils/canvas/outpaint-node";
 import { outpaintRunner } from "@/utils/canvas/outpaint-run";
-import { fanoutCount, quote } from "@/utils/pricing/quote";
+import { fanoutCount } from "@/utils/pricing/quote";
 import { buildTaskInput, priceSpecOf } from "@/utils/tasks/capabilities";
 
 /** 默认先扩到原比例的 1.5 倍（照原型） */
@@ -44,7 +44,7 @@ const DEFAULT_MULT = 1.5;
 const PREVIEW_IMAGE_ID = "1";
 
 /**
- * 扩图模式（设计稿 6.17）：原图节点上画出可拖的框，下方是比例条 + 提示词栏（模型、积分、发送）。
+ * 扩图模式（设计稿 6.17）：原图节点上画出可拖的框，下方是比例条 + 提示词栏（模型、公开价目、发送）。
  * 进入时只摆这些，不生成任何图片；点发送才建结果节点、合成、上传、提交。
  * 取代这个节点平时的功能区和生成面板。
  */
@@ -59,7 +59,7 @@ export function OutpaintOverlay({ id, data }: { id: string; data: CanvasNodeData
   const { width, shift } = usePanelPlacement(id);
   const paneBusy = usePaneBusy();
   const zoom = useStore((state: ReactFlowState) => state.transform[2]);
-  const availableCredits = useCreditsStore((state) => state.credits?.available ?? null);
+  const walletConnected = useWalletStore((state) => !!state.view?.connected);
   const remote = useRemoteModels("image");
 
   // 原图节点此刻的大小（画布坐标）：正文按宽高比撑开，标题行在卡片外，所以就是图的大小
@@ -111,26 +111,21 @@ export function OutpaintOverlay({ id, data }: { id: string; data: CanvasNodeData
   const price = useMemo(() => {
     if (!model || !preview) return null;
     const spec = priceSpecOf(caps, preview.built.input);
-    const one = quote(model.pricing, caps, spec);
     const count = fanoutCount(caps, spec.params);
-    return {
-      total: one * count,
-      count,
-      isMax: model.pricing?.billing === "token",
-      detail: model.pricing?.billing === "token" ? "按 Token 预估上限" : `${one} 积分`,
-    };
+    return { total: 0, count, isMax: false, detail: "TokenDance 实际账单" };
   }, [caps, model, preview]);
 
   const firstError = preview ? Object.values(preview.built.errors)[0] : undefined;
-  const lowCredits = !!price && availableCredits !== null && price.total > availableCredits;
   const blockedReason =
     remote.status === "loading" || remote.status === "idle"
       ? "正在加载模型清单"
       : !model
         ? "暂无支持图生图的模型"
-        : !origin || !currentFrame || !data.src
-          ? "原图还没有准备好"
-          : (firstError ?? (lowCredits ? "积分不足" : null));
+        : model.wallet && !walletConnected
+          ? "请先连接 TokenPay 钱包"
+          : !origin || !currentFrame || !data.src
+            ? "原图还没有准备好"
+            : (firstError ?? null);
 
   if (!origin || !currentFrame) return null;
 
@@ -204,11 +199,7 @@ export function OutpaintOverlay({ id, data }: { id: string; data: CanvasNodeData
             modelId={model?.key ?? ""}
             onModelChange={setModelKey}
             modelLabel={remote.status === "ready" && !model ? "暂无支持图生图的模型" : undefined}
-            credits={price?.total}
-            creditsIsMax={price?.isMax}
-            creditsDetail={price?.detail}
             count={price?.count}
-            availableCredits={availableCredits}
             onSubmit={submit}
             canSubmit={!blockedReason}
             hint={blockedReason ?? "开始扩图"}

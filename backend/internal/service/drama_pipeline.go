@@ -322,10 +322,10 @@ func (s *DramaService) commitDrama(ctx context.Context, run *dramaRun, result *d
 	s.publishDrama(ctx, run.job.UserID, run.job.DramaID)
 	if failedCode != 0 && completed.Status == "failed" {
 		logger.RunOf(ctx).End(logger.StatusFailed, zap.Int("error_code", failedCode), zap.String("error_message", failedMessage),
-			zap.String("error_type", dramaErrorType(result.failure)), zap.Int("credits", completed.Credits), zap.Int("refunded", completed.FrozenCredits-completed.Credits))
+			zap.String("error_type", dramaErrorType(result.failure)))
 	}
 	if finished {
-		fields := []zap.Field{zap.Int("credits", completed.Credits), zap.Int("frozen_credits", completed.FrozenCredits)}
+		fields := []zap.Field{}
 		if following != nil {
 			fields = append(fields, zap.String("next_job_id", idcodec.Encode(following.ID)))
 		}
@@ -363,7 +363,7 @@ func (s *DramaService) continueDrama(ctx context.Context, tx repository.DramaTx,
 		}
 		selected = selectedEpisodes(eps, current.Episodes)
 	}
-	following, e := s.enqueue(ctx, tx, p, req, snap, selected, 0, nil)
+	following, e := s.enqueue(ctx, tx, p, req, snap, selected, nil)
 	if e != nil {
 		return nil, e
 	}

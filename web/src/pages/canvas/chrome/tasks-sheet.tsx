@@ -124,7 +124,7 @@ function TaskList({ onPicked }: { onPicked: () => void }) {
               <span className="flex shrink-0 flex-col items-end gap-0.5 text-xs">
                 <span className={cn("font-medium", status.tone)}>{status.label}</span>
                 <span className="text-muted-foreground font-mono tabular-nums">
-                  {view.charged_credits ?? view.credits} 积分
+                  TokenDance 账单
                 </span>
               </span>
             </button>

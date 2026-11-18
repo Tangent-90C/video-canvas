@@ -134,8 +134,6 @@ function SheetBody({
         trial: trials.run?.cand ?? null,
       })
     : { disabled: true, reason: "" };
-  const cost = trials.run ? trials.run.cand.credits + (trials.run.base?.credits ?? 0) : 0;
-
   const start = () => {
     if (!detail || !sampleKey || !textModel) return;
     void trials.start(trialInput(candidate, sampleKey, textModel, compare && !candidateIsCurrent));
@@ -240,9 +238,7 @@ function SheetBody({
         ) : (
           <>
             <span className="text-muted-foreground text-xs tabular-nums">
-              {trials.run && !running
-                ? `本次试跑 ✦${cost}，记在你的账户`
-                : "试跑费用记在操作人账户"}
+              {running ? "试跑中，费用按 TokenDance 实际账单" : "费用按 TokenDance 实际账单"}
             </span>
             <span className="flex-1" />
             <Button

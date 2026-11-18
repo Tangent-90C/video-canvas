@@ -49,12 +49,12 @@ describe("FailedPlaceholder", () => {
     expect(out).toContain('role="alert"');
   });
 
-  test("退款说明和任务编号按需出现", () => {
+  test("任务编号按需出现，不再展示平台积分退款", () => {
     const plain = renderToStaticMarkup(<FailedPlaceholder message="失败" />);
     expect(plain).not.toContain("积分已退回");
     expect(plain).not.toContain("任务 ID");
-    const full = renderToStaticMarkup(<FailedPlaceholder message="失败" refunded taskRef="fd36" />);
-    expect(full).toContain("积分已退回");
+    const full = renderToStaticMarkup(<FailedPlaceholder message="失败" taskRef="fd36" />);
+    expect(full).not.toContain("积分已退回");
     expect(full).toContain("fd36");
   });
 

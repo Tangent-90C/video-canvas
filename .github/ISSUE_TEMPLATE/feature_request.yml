@@ -40,7 +40,7 @@ body:
         - 3D 导演台
         - 资产库
         - 管理后台
-        - 积分 / 支付
+        - TokenPay 钱包 / 支付
         - 部署 / 升级
         - 其他
   - type: dropdown

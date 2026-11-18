@@ -14,15 +14,14 @@ import (
 	"video-canvas/internal/stepkit"
 )
 
-// trialDraft 是待写入的一条试跑：候选加按预估冻结的积分。
+// trialDraft 是待写入的一条试跑候选。
 type trialDraft struct {
-	cand   stepCandidate
-	frozen int
+	cand stepCandidate
 }
 
 // CreateTrials 发起试跑：用候选方法在所选样例上各跑一遍，对比时再加一条「当前生效方法」，两条 compare_of 互指。
-// 试跑走 River 异步执行；费用从操作的管理员账户按预估冻结，结束按用量结算。
-// 环节不存在 68012；技能或版本不可用 68014；该环节已有进行中的试跑 68017；积分不足 40001。
+// 试跑走 River 异步执行；模型费用由运行时的 TokenPay 钱包直接结算。
+// 环节不存在 68012；技能或版本不可用 68014；该环节已有进行中的试跑 68017。
 func (s *StepAdminService) CreateTrials(ctx context.Context, actorID uint64, key string, req *model.CreateStepTrialReq) (*model.StepTrialList, error) {
 	// 1. 环节、样例、候选、模型都在事务外校验清楚，事务里只做写入。
 	st, ok := s.reg.Get(key)
@@ -37,8 +36,7 @@ func (s *StepAdminService) CreateTrials(ctx context.Context, actorID uint64, key
 	if err != nil {
 		return nil, err
 	}
-	snap, err := s.textModel(ctx, st, req.TextModel)
-	if err != nil {
+	if _, err := s.textModel(ctx, st, req.TextModel); err != nil {
 		return nil, err
 	}
 	ix, err := s.loadSkills(ctx)
@@ -54,24 +52,18 @@ func (s *StepAdminService) CreateTrials(ctx context.Context, actorID uint64, key
 		}
 		cands = append(cands, cur)
 	}
-	// 2. 按预估冻结：用样例输入拼一次提示词，乘以最多调用次数（首次加重写）。
-	input, err := sample.Build(ctx)
-	if err != nil {
+	// 2. 构造样例并校验候选方法可运行。
+	if _, err := sample.Build(ctx); err != nil {
 		return nil, fmt.Errorf("构造试跑样例 %s 失败：%w", sample.Key, err)
 	}
 	drafts := make([]trialDraft, 0, len(cands))
 	for _, c := range cands {
-		method, err := s.methodOf(ctx, st, c)
-		if err != nil {
+		if _, err := s.methodOf(ctx, st, c); err != nil {
 			return nil, err
 		}
-		est, err := stepkit.Estimate(snap, st, method, input)
-		if err != nil {
-			return nil, err
-		}
-		drafts = append(drafts, trialDraft{cand: c, frozen: est})
+		drafts = append(drafts, trialDraft{cand: c})
 	}
-	// 3. 同一事务内：环节锁 → 进行中检查 → 冻结积分 → 写试跑 → 入队。
+	// 3. 同一事务内：环节锁 → 进行中检查 → 写试跑 → 入队。
 	rows, err := s.insertTrials(ctx, actorID, st.Key, sample.Key, req.TextModel, drafts)
 	if err != nil {
 		return nil, err
@@ -85,19 +77,11 @@ func (s *StepAdminService) CreateTrials(ctx context.Context, actorID uint64, key
 	return out, nil
 }
 
-// insertTrials 在一个事务里写入试跑并冻结积分、入队。
+// insertTrials 在一个事务里写入试跑并入队；平台不再冻结积分。
 func (s *StepAdminService) insertTrials(ctx context.Context, actorID uint64, stepKey, sampleKey, modelKey string, drafts []trialDraft) ([]model.StepTrial, error) {
-	initial, err := s.credit.InitialCredits(ctx)
-	if err != nil {
-		return nil, err
-	}
-	total := 0
-	for _, d := range drafts {
-		total += d.frozen
-	}
 	now := s.now()
 	rows := make([]model.StepTrial, len(drafts))
-	err = s.repo.WithTx(ctx, func(tx repository.StepTx) error {
+	err := s.repo.WithTx(ctx, func(tx repository.StepTx) error {
 		// 环节锁串行化同一环节的发起与生效：并发提交时只有一个能通过进行中检查。
 		if err := tx.LockStep(ctx, stepKey); err != nil {
 			return err
@@ -108,9 +92,6 @@ func (s *StepAdminService) insertTrials(ctx context.Context, actorID uint64, ste
 		}
 		if busy > 0 {
 			return errcode.ErrStepTrialBusy
-		}
-		if err := freezeStepCredits(ctx, tx, actorID, initial, total); err != nil {
-			return err
 		}
 		for i, d := range drafts {
 			if err := insertOneTrial(ctx, tx, actorID, rows, i, newTrialRow(stepKey, sampleKey, modelKey, actorID, d, now)); err != nil {
@@ -131,7 +112,7 @@ func (s *StepAdminService) insertTrials(ctx context.Context, actorID uint64, ste
 	return rows, nil
 }
 
-// insertOneTrial 写入第 i 条试跑：第二条起 compare_of 指向第一条；随后写冻结流水并入队。结果放进 rows[i]。
+// insertOneTrial 写入第 i 条试跑：第二条起 compare_of 指向第一条；随后入队。结果放进 rows[i]。
 func insertOneTrial(ctx context.Context, tx repository.StepTx, actorID uint64, rows []model.StepTrial, i int, row model.StepTrial) error {
 	rows[i] = row
 	if i > 0 {
@@ -141,16 +122,13 @@ func insertOneTrial(ctx context.Context, tx repository.StepTx, actorID uint64, r
 	if err := tx.InsertTrial(ctx, &rows[i]); err != nil {
 		return err
 	}
-	if err := recordFreeze(ctx, tx, actorID, &rows[i]); err != nil {
-		return err
-	}
 	return tx.EnqueueTrial(ctx, rows[i].ID)
 }
 
 // newTrialRow 构造一条 queued 的试跑行。
 func newTrialRow(stepKey, sampleKey, modelKey string, actorID uint64, d trialDraft, now time.Time) model.StepTrial {
 	t := model.StepTrial{StepKey: stepKey, Source: d.cand.Source, SampleKey: sampleKey, TextModelID: modelKey,
-		Status: model.StepTrialQueued, Errors: []byte("[]"), Flags: []byte("[]"), Frozen: d.frozen, CreatedBy: actorID, CreatedAt: now}
+		Status: model.StepTrialQueued, Errors: []byte("[]"), Flags: []byte("[]"), Frozen: 0, Credits: 0, CreatedBy: actorID, CreatedAt: now}
 	if d.cand.Source == stepkit.SourceSkill {
 		id, v := d.cand.SkillID, d.cand.Version
 		t.SkillID, t.SkillVersion = &id, &v
@@ -158,39 +136,10 @@ func newTrialRow(stepKey, sampleKey, modelKey string, actorID uint64, d trialDra
 	return t
 }
 
-// freezeStepCredits 在账户锁内检查可用积分够不够冻结，不够返回 40001。冻结额为 0（免费模型）时不动账户。
-func freezeStepCredits(ctx context.Context, tx repository.StepTx, userID uint64, initial, total int) error {
-	if total <= 0 {
-		return nil
-	}
-	if err := tx.EnsureCredit(ctx, userID, initial); err != nil {
-		return err
-	}
-	credit, err := tx.LockCredit(ctx, userID)
-	if err != nil {
-		return err
-	}
-	if credit.Balance-credit.Frozen < total {
-		return errcode.ErrInsufficientCredits
-	}
-	return nil
-}
-
-// recordFreeze 为一条试跑写冻结流水并增加账户冻结额；流水关联试跑，(step_trial_id, type) 唯一保证幂等。
-func recordFreeze(ctx context.Context, tx repository.StepTx, userID uint64, t *model.StepTrial) error {
-	if t.Frozen <= 0 {
-		return nil
-	}
-	if _, err := tx.InsertLedger(ctx, &model.CreditLedger{UserID: userID, StepTrialID: &t.ID, Type: model.LedgerFreeze, Amount: t.Frozen}); err != nil {
-		return err
-	}
-	return tx.AddCredit(ctx, userID, 0, t.Frozen)
-}
-
-// textModel 取试跑用的文本模型快照：必须是可用的 agent 类模型，并且满足环节的媒体需求（看图 / 看视频）。
+// textModel 取试跑用的文本模型快照：必须是可用的 Agent 钱包模型，并且满足环节的媒体需求（看图 / 看视频）。
 func (s *StepAdminService) textModel(ctx context.Context, st stepkit.Step, key string) (*provider.Snapshot, error) {
 	snap, err := s.models.Snapshot(ctx, key)
-	if errors.Is(err, provider.ErrModelUnavailable) || (err == nil && (snap == nil || snap.Model.Kind != modelcfg.KindAgent)) {
+	if errors.Is(err, provider.ErrModelUnavailable) || (err == nil && (snap == nil || snap.Model.Kind != modelcfg.KindAgent || !snap.Channel.Wallet)) {
 		return nil, errcode.ErrInvalidParams.WithMsg("所选文本模型不可用")
 	}
 	if err != nil {

@@ -176,7 +176,7 @@ export interface ChannelView {
   sort: number;
   /** 是否启用 */
   enabled: boolean;
-  /** 钱包渠道：任务用发起用户自己的 TokenDance Key 支付，不扣平台积分 */
+  /** 钱包渠道：任务用发起用户自己的 TokenDance Key 支付 */
   wallet_enabled: boolean;
   /** API Key 是否已设置（只写不读） */
   secret_set: boolean;

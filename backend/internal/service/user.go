@@ -50,8 +50,6 @@ type RegisterCodeStore interface {
 type RegisterPolicy interface {
 	// RegisterEnabled 注册开关是否打开。
 	RegisterEnabled(ctx context.Context) (bool, error)
-	// InitialCredits 新用户初始积分。
-	InitialCredits(ctx context.Context) (int, error)
 }
 
 // RegisterMail 提供注册需要的邮件能力（真实实现是 SMTPService）。

@@ -1,3 +1,5 @@
+import type { Capabilities, UpstreamPricing } from "@/api/model/type";
+
 import type { NodeKind } from "./node-library";
 
 /** 模型清单里的一条，形状和输入框里的选项一致 */
@@ -6,9 +8,7 @@ export type ModelOption = {
   id: string;
   /** 模型显示名 */
   label: string;
-  /** 最低单价（积分），用来比较与兜底显示 */
-  credits: number;
-  /** 价格文案，如「10 积分」「2 积分/秒起」「按 Token」；没有时显示「credits 积分」 */
+  /** TokenDance 公开价目文案；没有时显示「按 TokenDance 实际账单」 */
   priceLabel?: string;
   /** 下拉里的一行小字 */
   hint?: string;
@@ -16,10 +16,16 @@ export type ModelOption = {
   vendor?: string;
   /** 展示标签 */
   tags?: readonly string[];
-  /** 钱包模型：用用户自己的 TokenDance 额度，不消耗平台积分 */
+  /** 钱包模型：用用户自己的 TokenDance 额度支付 */
   wallet?: boolean;
   /** 上游模型名；钱包模型用它匹配 TokenDance 调用记录，算真实花费 */
   upstream_model?: string;
+  /** 原始能力：调用方需要按规格重新报价时保留 */
+  capabilities?: Capabilities;
+  /** 后端模型种类（text / image / video / audio） */
+  kind?: string;
+  /** 钱包模型的上游公开价目 */
+  upstream_pricing?: UpstreamPricing;
 };
 
 /**

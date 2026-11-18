@@ -1,5 +1,7 @@
 # AI 管理接口（协议插件设计落地后）
 
+> **计费状态（2026-11-18）**：平台积分体系已停用。本文涉及积分、冻结、结算、退款、充值、商城、后台调账或平台定价的内容均为历史设计；当前统一使用用户自己的 TokenPay 钱包，详见 `docs/design/TokenPay钱包/TokenPay钱包.md`。
+
 > 路径前缀 `/api/v1/admin/ai`，都需要登录（JWT）。角色：`user` / `admin`（运营）/ `super_admin`（运维）。
 > 权限：**读、模型相关的写、拉取与导入模型、渠道内模型排序 = `admin` 或 `super_admin`；写插件 / 渠道（上传、启停、删除、批量升级模型、建渠道、改渠道、设 Key / Secret Key、渠道排序）= 仅 `super_admin`**。
 > `admin` 调用 super_admin 接口返回 403（错误码 10004）；普通用户调用任何管理接口都是 403；没带有效 token 是 401（10003 / 10006）。
@@ -107,7 +109,7 @@
 }
 ```
 
-`rate_limit` 里 0 表示不限：`rps` / `max_concurrency` 限制发往上游的 HTTP 请求（每秒数、同时数）；`max_running` 限制**同时在上游生成的任务数**（跨实例，由 worker 领取任务时在数据库里执行），超出的任务留在 `pending`（用户看到“排队中”），等有空位再提交；排队超过任务的 `deadline_at` 会置为 `expired`（文案“排队超时，积分已退回”）。任务真正提交给上游时，`deadline_at` 会从提交时刻重新计算一个完整的模型超时。
+`rate_limit` 里 0 表示不限：`rps` / `max_concurrency` 限制发往上游的 HTTP 请求（每秒数、同时数）；`max_running` 限制**同时在上游生成的任务数**（跨实例，由 worker 领取任务时在数据库里执行），超出的任务留在 `pending`（用户看到“排队中”），等有空位再提交；排队超过任务的 `deadline_at` 会置为 `expired`；费用以 TokenDance 实际账单为准，平台不退积分。任务真正提交给上游时，`deadline_at` 会从提交时刻重新计算一个完整的模型超时。
 
 | 方法   | 路径                          | 说明                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | ------ | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -153,7 +155,7 @@
 | GET / PUT  | `/models/:key` | 详情 `{ key, kind, enabled, sort, body, updated_at }`（没有版本历史，每个模型只有一份配置）/ 更新配置。**已启用的模型保存即生效**，所以保存前要过和启用时一样的检查，不通过 400/409 拒绝、不落库 |
 | POST       | `/models/:key/validate` | 校验：不传 body 校验已保存的配置（模型不存在 404 / 40011），传 body 校验传入内容 |
 | POST       | `/models/:key/dry-run`                                  | `{ "input": {} }` → 渲染出**插件返回的请求描述**（宿主校验后的 method / url / query / headers / body 等），不发送。**不含宿主注入后的鉴权头**（Key 在 dry-run 里不解析，鉴权注入处以 `***` 占位），响应经过脱敏，所以不要把它当成“最终请求”                                                                                 |
-| POST       | `/models/:key/test-run`                                 | `{ "input": {} }` → 试跑任务视图（is_test，不扣积分）                                                                                                                                                                                                                                                                       |
+| POST       | `/models/:key/test-run`                                 | `{ "input": {} }` → 试跑任务视图（is_test，费用由当前管理员自己的 TokenPay 钱包按 TokenDance 实际账单结算）                                                                                                                                                                                                                                                                       |
 | GET        | `/test-runs/:id`                                        | 试跑任务视图（只能查自己创建的，查不到 404 / 40004）                                                                                                                                                                                                                                                                        |
 | GET        | `/test-runs/:id/trace`                                  | 试跑追踪：`{ "steps": [TraceStep] }`（每次钩子的输入 / 输出 / `utils.log`，每次 HTTP 的请求与响应，均已脱敏）；任务还没有追踪时 `steps: []`；归属规则同上，别人的任务 / 不存在 / 非试跑任务统一 404（40004）                                                                                                                |
 | PUT        | `/models/:key/enabled`、`/models/:key/sort` | 启用 / 停用、排序：`{ "enabled": true }`、`{ "sort": 5 }`；**启用前检查已保存的配置**（见下），不通过不能启用；用户只能看到并使用已启用的模型 |
@@ -227,24 +229,19 @@
     "context": { "window": 128000, "output": 8192 }, // 仅 text
     "system": "…", // 仅 text，固定系统提示，不下发给画布
   },
-  "pricing": {
-    // 定价：价格一律是整数积分（取代旧的 credits）
-    "billing": "per_second", // per_call 按次 / per_second 按秒（× 参数 duration）/ token 按 Token（仅 text，用 token.in / token.out，积分 / 百万 Token）
-    "per_second": 2,
-    "tiers": [{ "on": true, "when": { "resolution": "1080P" }, "unit": 4 }], // 规格价格：键是 spec 参数名、op 或 ref_video；条件最多的一条胜出
-    "cost": { "on": true, "per_second": 1 }, // 积分成本，仅管理端，不下发给画布
-  },
 }
 ```
 
+历史正文里可能仍带 `pricing`；服务会宽容读取以兼容旧库，但它不再参与校验、启用、预算或扣费，新模型不要填写。
+
 保存时的跨对象检查以 `issues` 报出，不阻塞保存：渠道存在且启用的问题挂在 `channels[0].channel`；协议插件存在且启用、固定的版本存在、版本支持该 kind、协议设置合法的问题挂在 `channels[0].protocol`。没选协议的“待配置”模型照常保存。
 
-启用（`PUT /models/:key/enabled`，以及保存已启用的模型）的前置检查，不满足分别返回：正文无校验问题（400 / 40010，没选能力或协议的“待配置”模型在这里被拦下）→ 渠道存在（404 / 50011）且启用（409 / 50014）→ **Agent 模型**：渠道 API Key 已设置（409 / 50015）即通过，不看协议；其他模型：协议已选（400 / 40010）→ 协议插件存在（400 / 40010）且启用（409 / 50004）→ 模型固定的插件版本存在（400 / 40010）→ 版本的 `endpoints` 里有这个模型的 `kind`（400 / 40010）→ 协议设置按版本的 `channelSettings` 校验（400 / 40010）→ 版本的 `auth.type` 不是 `none` 时渠道 API Key 已设置（409 / 50015）。
+启用（`PUT /models/:key/enabled`，以及保存已启用的模型）的前置检查，不满足分别返回：正文无校验问题（400 / 40010，没选能力或协议的“待配置”模型在这里被拦下）→ 渠道存在（404 / 50011）且启用（409 / 50014）→ 渠道必须是 TokenPay 钱包渠道（400 / 40010）→ **Agent 模型**不看协议；其他模型：协议已选（400 / 40010）→ 协议插件存在（400 / 40010）且启用（409 / 50004）→ 模型固定的插件版本存在（400 / 40010）→ 版本的 `endpoints` 里有这个模型的 `kind`（400 / 40010）→ 协议设置按版本的 `channelSettings` 校验（400 / 40010）。产品方渠道 Key 只用于目录同步，模型运行和启用都不要求它。
 
 ## 面向画布的接口（变化）
 
-- `GET /api/v1/models?kind=video|image|audio|text|agent`（登录即可，不要求管理员）：`kind` 取值之外 400；返回字段为 `key / kind / label / hint / vendor / tags / capabilities / pricing`（`capabilities` 不含 `system`，`pricing` 不含 `cost`）（`vendor` 无则为空串，`tags` 无则为 `[]`），仍然不含渠道 / 插件信息。
-- `POST /generation-tasks`：请求新增 `node_ids`（长度等于生成数量，第 i 个任务绑定第 i 个节点；只生成 1 个时可以只传 `node_id`），积分按 `pricing` 计算；响应改为 `{ "items": [ { "node_id", "task" } | { "node_id", "error": { "status", "code", "message" } } ] }`，按节点逐项给出，某个节点失败（402 积分不足、429 并发已满……）不影响其它节点。幂等键覆盖全部任务：第 i 个任务用 `Idempotency-Key#i`（i=0 不加后缀）。任务视图新增 `charged_credits`（实际扣的积分，Token 计费可能小于冻结额）。
+- `GET /api/v1/models?kind=video|image|audio|text|agent`（登录即可，不要求管理员）：`kind` 取值之外 400；只返回 TokenPay 钱包模型，字段为 `key / kind / label / hint / vendor / tags / capabilities / wallet / upstream_model / upstream_pricing`（`capabilities` 不含 `system`；价目来自 TokenDance 公开实时目录），仍然不含渠道 / 插件信息或平台积分 `pricing`。
+- `POST /generation-tasks`：请求新增 `node_ids`（长度等于生成数量，第 i 个任务绑定第 i 个节点；只生成 1 个时可以只传 `node_id`）；所有任务必须绑定钱包渠道且用户已连接钱包，费用由用户自己的 TokenPay 钱包结算；响应改为 `{ "items": [ { "node_id", "task" } | { "node_id", "error": { "status", "code", "message" } } ] }`，按节点逐项给出，某个节点失败（402 积分不足、429 并发已满……）不影响其它节点。幂等键覆盖全部任务：第 i 个任务用 `Idempotency-Key#i`（i=0 不加后缀）。任务视图的 `credits` / `charged_credits` 只保留历史兼容值 0。
 - `POST /generation-tasks` 的 `kind` 新增 `text`；文本任务成功后 `outputs` 是 `[{ "media_type": "text", "text": "正文" }]`（没有 `asset_id` 与 `url`）。
 - `TaskOutput` 新增 `text` 字段，`asset_id` / `url` 在文本产物里不出现。
 - 平台回调 `POST /webhooks/:provider/:secret` 已删除。
@@ -289,12 +286,12 @@
 - **能力**：必须设置 `capabilities.context`（`window`、`output`）；`capabilities.vision` 声明能不能看图；`capabilities.video` 声明能不能理解视频画面和声音，只允许 Gemini 格式的 Agent 开启，与看图独立。`capabilities.prompt.max_length` 在这里表示**用户单条消息的字数上限**；没有 `ops`、`refs`、`params`，也不能设 `system`（系统提示词由平台维护）。
 - **文本模型也可以声明看图**：`kind=text` 的 `capabilities.vision=true` 用于营销/环节协议层的多模态文本调用；它的执行凭证仍按渠道类型决定，钱包渠道使用 `wallet:<uid>`。这不是把 text 模型变成 Agent，也不会给文本节点增加 Agent 工具。
 - **识别建议**：`GET /admin/ai/models/limits?name=&channel=` 附带内置模型库的 `vision` / `video` 建议；未识别时省略这两个字段。后台“应用识别值”只改上下文规格，输入能力仍由运营确认；渠道一键同步会对模型库识别的多模态文本自动写入 `vision=true`，Registry 对升级前已入库的 `text` 模型按 `upstream_model` 计算有效 `vision`，未知模型不猜测。OpenAI 格式不应用视频建议。
-- **视频理解**：`canvas_inspect_video` 对当前模型发起独立子请求；本地视频传 inlineData（原文件最大 20 MB），对象存储传签名 URL。失败时只有支持看图且 ffmpeg 可用才退回抽帧，明确注明「音频未分析」。子请求按 Token 计费，用途为 `video`，计入本轮积分，不计入主对话上下文大小。
-- **计费**：只能 `pricing.billing = "token"`，`token.in` / `token.out` 是每百万 Token 的积分价。
+- **视频理解**：`canvas_inspect_video` 对当前模型发起独立子请求；本地视频传 inlineData（原文件最大 20 MB），对象存储传签名 URL。失败时只有支持看图且 ffmpeg 可用才退回抽帧，明确注明「音频未分析」。子请求由用户自己的 TokenPay 钱包按 TokenDance 实际账单计费，用途为 `video`，不计入主对话上下文大小。
+- **计费**：Agent 模型只能按 Token 记录用量；实际费用由用户 TokenPay 钱包在上游结算。历史 `pricing` 字段只作兼容，不再参与预算或扣费。
 - 上架后出现在 `GET /api/v1/models?kind=agent` 和 `GET /api/v1/agent/models`。
 
-## 未定价测试草稿
+## 历史 pricing 兼容
 
-新平台接入可保存 `enabled=false`、`pricing={"billing":"per_call","pending":true}` 的测试草稿。`pending` 表示售价尚未确认，不是免费；不能同时填写占位售价或规格价格。能力、渠道与协议仍按正常配置校验。管理员 dry-run / 真实试跑可使用该草稿，真实试跑继续经过审批并可能产生上游费用。公开启用接口会拒绝未定价配置，填写实际售价并移除 `pending` 后才能上架。
+平台积分定价已停用。旧配置里的 `pricing` 会继续被宽容读取，但不参与结构校验、启用检查、模型选择、预算或扣费；新模型和渠道同步不再写入该字段。可启用模型必须绑定 TokenPay 钱包渠道；管理员 dry-run 不收费，真实试跑仍须审批并由管理员自己的 TokenPay 钱包结算。
 
 后台助手的 `admin_get_recent_errors` 可按 `channel_key`、`model_key`、编码后的 `task_id`、`hours`（默认 24、最多 168）查询当前管理员自己的失败生成/试跑记录，默认 5 条、最多 10 条。试跑附带脱敏 HTTP 路径、状态与响应摘要；不返回请求头、请求体或钩子输入。普通生成可能没有详细 trace；没有查询结果不等于凭证错误。

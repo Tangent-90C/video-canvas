@@ -70,8 +70,6 @@ const baseSend = {
   ref: null,
   videoModel: model("a"),
   visionModels: [model("t")],
-  credits: 11,
-  available: 100,
   sending: false,
 };
 
@@ -250,14 +248,13 @@ describe("发送禁用原因（按优先级）", () => {
     expect(ev({ visionModels: [model("t")] }, { textModel: "t" }).canSend).toBe(true);
   });
 
-  test("优先级：文本模型 > 上传中 > 上传失败 > 参考视频 > 图片上限 > 余额", () => {
+  test("优先级：文本模型 > 上传中 > 上传失败 > 参考视频 > 图片上限", () => {
     const all = {
       visionModels: [],
       uploading: true,
       uploadFailed: true,
       ref: { sizeBytes: 500 * 1024 * 1024 },
       productCount: 12,
-      credits: 500,
     };
     expect(ev(all).hint).toContain("看图");
     expect(ev({ ...all, visionModels: [model("t")] }).hint).toBe("素材还在上传");
@@ -282,16 +279,12 @@ describe("发送禁用原因（按优先级）", () => {
         uploadFailed: false,
         ref: null,
         productCount: 1,
-      }).hint,
-    ).toContain("余额不足");
+      }).canSend,
+    ).toBe(true);
   });
 
-  test("余额不足写还差多少；没有预估或没拿到余额时不拦（交后端兜底）", () => {
-    const low = ev({ credits: 30, available: 12 });
-    expect(low).toMatchObject({ canSend: false, tone: "bad" });
-    expect(low.hint).toBe("余额不足，还差 18 积分");
-    expect(ev({ credits: null, available: 3 }).canSend).toBe(true);
-    expect(ev({ credits: 30, available: null }).canSend).toBe(true);
+  test("平台积分余额不再参与发送前判断", () => {
+    expect(ev({ productCount: 1 }).canSend).toBe(true);
   });
 
   test("上传中是警告语气，其余是错误语气", () => {

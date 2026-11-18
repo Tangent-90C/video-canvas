@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import type { RecordDto } from "@/api/conversation/type";
 import type { TaskView } from "@/api/generation-task/type";
 import type { WalletUsageItem } from "@/api/wallet";
-import { estimateCost, formatYuan, matchRecordCost } from "@/utils/wallet/cost";
+import { formatYuan, matchRecordCost } from "@/utils/wallet/cost";
 
 /** 一条调用记录；时间用 UTC（上游 created_at 就是 UTC） */
 /**
@@ -182,29 +182,6 @@ describe("matchRecordCost：把 TokenDance 调用记录对到本站记录上", (
 
   test("调用记录还没拉到（未连接 / 上游挂）：null", () => {
     expect(matchRecordCost(record(1, ["2026-11-17T12:00:00Z"]), [], [], SEEDREAM)).toBeNull();
-  });
-});
-
-describe("estimateCost：下单前的预估（同模型最近真实花费的均价）", () => {
-  const items = [
-    usage(SEEDREAM, "2026-11-17T20:15:40Z", 0.22),
-    usage(SEEDREAM, "2026-11-17T18:08:10Z", 0.22),
-    usage(SEEDREAM, "2026-11-17T17:21:17Z", 0, false), // 失败的不算进均价
-  ];
-
-  test("均价 × 生成数量", () => {
-    expect(estimateCost(items, SEEDREAM, 1)).toBeCloseTo(0.22, 10);
-    expect(estimateCost(items, SEEDREAM, 4)).toBeCloseTo(0.88, 10);
-  });
-
-  test("没有同模型的历史记录：null（界面显示「—」，不拿别的模型顶数）", () => {
-    expect(estimateCost(items, "seedream-6.0", 1)).toBeNull();
-  });
-
-  test("只有失败记录：null（花费 0 不能当单价）", () => {
-    expect(
-      estimateCost([usage(SEEDREAM, "2026-11-17T17:21:17Z", 0, false)], SEEDREAM, 1),
-    ).toBeNull();
   });
 });
 

@@ -7,7 +7,7 @@ import { useDramaJobsStore } from "@/store/drama";
 import { composeNotice } from "@/utils/drama/compose";
 
 /**
- * 提交「合成整集」（契约 §14）：服务端 ffmpeg 拼接，不扣积分，进度走 drama.job 推送 + 任务卡。
+ * 提交「合成整集」（契约 §14）：服务端 ffmpeg 拼接，不调用模型，进度走 drama.job 推送 + 任务卡。
  * 67010（没有可合成的片段）/ 67004（已有进行中的任务）等错误给出明确文案。
  * 返回 compose(no)：提交成功为 true；pending 是正在提交的集号。
  */

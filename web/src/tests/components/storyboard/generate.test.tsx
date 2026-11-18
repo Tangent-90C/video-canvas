@@ -125,7 +125,7 @@ const imageModels = (...keys: string[]) =>
   ({
     status: "ready",
     loadedAt: Date.now(),
-    models: keys.map((key) => ({ key, label: key, vendor: "x" })),
+    models: keys.map((key) => ({ key, label: key, vendor: "x", wallet: true })),
   }) as never;
 
 beforeEach(() => {
@@ -614,6 +614,7 @@ describe("按行生成视频（AC10）", () => {
     key: "vid-1",
     label: "vid-1",
     vendor: "x",
+    wallet: true,
     pricing: {},
     capabilities: {
       ops,

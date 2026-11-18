@@ -353,7 +353,7 @@ func TestObserve_Stats(t *testing.T) {
 	approx("失败结束率", h9.FailEndRate, 0.5)       // failed + step_limit
 	approx("耗时中位数", h9.MedianDurationMs, 2500) // 1000,2000,3000,4000
 	approx("步数中位数", h9.MedianSteps, 25)
-	approx("平均积分", h9.AvgCredits, 25)
+	approx("历史积分均值", h9.AvgCredits, 0)
 	if h9.PromptVersion != 9 {
 		t.Errorf("按 harness_key 分组时带上提示词版本：%+v", h9)
 	}

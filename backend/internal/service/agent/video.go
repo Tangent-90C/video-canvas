@@ -136,7 +136,7 @@ func (b *AgentBridge) toolInspectVideo(ctx context.Context, tc *toolCall) (*tool
 	if count < 1 || count > maxVideoFrames {
 		return nil, fail("count 需要 1 到 %d", maxVideoFrames)
 	}
-	snap, key, err := b.resolveModel(ctx, tc.sess.modelKey)
+	snap, key, err := b.resolveModel(ctx, tc.sess.modelKey, tc.run.UserID)
 	if err != nil {
 		return nil, err
 	}

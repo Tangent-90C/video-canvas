@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { CheckCircle2, LoaderCircle, QrCode, RefreshCw, Wallet } from "lucide-react";
 
-import { CheckoutQr } from "@/components/payment/checkout-qr";
+import { CheckoutQr } from "@/components/wallet/checkout-qr";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Dialog,

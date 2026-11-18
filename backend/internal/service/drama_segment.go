@@ -30,7 +30,7 @@ type DramaSegmentRepo interface {
 
 // DramaSegmentTaskCreator 直接复用现有生成任务提交逻辑。
 type DramaSegmentTaskCreator interface {
-	// Create 校验生成参数、冻结积分并返回逐项创建结果。
+	// Create 校验生成参数、TokenPay 钱包并返回逐项创建结果。
 	Create(context.Context, uint64, string, *model.CreateGenerationTaskReq) (*model.CreateGenerationTaskResp, error)
 }
 

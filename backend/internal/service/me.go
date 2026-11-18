@@ -170,7 +170,7 @@ func (s *MeService) Stats(ctx context.Context, userID uint64) (*model.MeStatsVie
 		return nil, err
 	}
 	return &model.MeStatsView{
-		Total: st.Total, Success: st.Success, Failed: st.Failed, Last7d: st.Last7d, SpentCredits: st.SpentCredits, CanvasCount: n,
+		Total: st.Total, Success: st.Success, Failed: st.Failed, Last7d: st.Last7d, CanvasCount: n,
 	}, nil
 }
 

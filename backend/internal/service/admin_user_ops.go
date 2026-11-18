@@ -186,66 +186,9 @@ func creditDelta(mode string, amount int, acc *model.UserCredit) (int, error) {
 	return 0, errcode.ErrCreditAdjustInvalid.WithMsg("不支持的调整方式")
 }
 
-// AdjustCredits 调整用户的积分，返回调整后的 {balance, frozen, available}。
-// 与任务冻结 / 结算并发安全：整个“读余额 → 算 delta → 改余额 → 写流水”在一个事务里，并先对积分账户行加锁。
+// AdjustCredits 是历史平台积分入口，现已停用；只保留方法签名供旧装配代码编译。
 func (s *AdminUserService) AdjustCredits(ctx context.Context, actorID, targetID uint64, req *model.AdjustCreditsReq) (*model.AdminCreditView, error) {
-	// 1. 校验入参：amount 不能缺（缺字段与 0 要区分，否则漏传的 set 会被当成“设为 0”）、不能为负；备注必填 1..100 字
-	if req.Amount == nil || *req.Amount < 0 {
-		return nil, errcode.ErrCreditAdjustInvalid.WithMsg("数值必须是不小于 0 的整数")
-	}
-	amount := *req.Amount
-	note, err := validCreditNote(req.Note)
-	if err != nil {
-		return nil, err
-	}
-	// 2. 目标必须存在，并按权限规则判断操作人能否调整
-	actor, _, err := s.loadAndAuthorize(ctx, actorID, targetID, actCredit)
-	if err != nil {
-		return nil, err
-	}
-	// 3. 读初始积分（事务外读：事务里不做别的读取；只在老用户还没有积分账户时才会用到）
-	initial, err := s.defaults.InitialCredits(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	// 4. 事务：确保账户存在（无账户则建并写 initial 流水）→ 行锁 → 算 delta → 改余额 → 写 admin_adjust 流水。
-	//    LockCredit 与任务冻结、结算用的是同一把行锁，所以并发的冻结 / 结算会等调整提交后再基于新余额计算，不会丢更新。
-	//    校验失败（如扣减超过可用）直接返回错误，整个事务回滚，连同刚建的账户一起撤销
-	var view *model.AdminCreditView
-	var delta int
-	err = s.ctl.Credits.WithTx(ctx, func(tx repository.GenerationTaskTx) error {
-		if err := tx.EnsureCredit(ctx, targetID, initial); err != nil {
-			return err
-		}
-		acc, err := tx.LockCredit(ctx, targetID)
-		if err != nil {
-			return err
-		}
-		if delta, err = creditDelta(req.Mode, amount, acc); err != nil {
-			return err
-		}
-		if err := tx.AddCredit(ctx, targetID, delta, 0); err != nil {
-			return err
-		}
-		// task_id 为空：管理员调整不属于任何任务，不受 (task_id, type) 唯一索引约束，不会被当成重复流水吞掉
-		if _, err := tx.InsertLedger(ctx, &model.CreditLedger{
-			UserID: targetID, Type: model.LedgerAdminAdjust, Amount: delta, OperatorID: &actor.ID, Note: note,
-		}); err != nil {
-			return err
-		}
-		balance := acc.Balance + delta // 账户行已加锁，这个值就是提交后的真实余额
-		view = &model.AdminCreditView{Balance: balance, Frozen: acc.Frozen, Available: balance - acc.Frozen}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	// 5. 提交后写审计：detail 记 {mode, amount, delta, note}（前端用 note 展示）
-	adminAudit(ctx, s.audit, actorID, model.AdminAuditCreditAdjust, model.AdminAuditTargetUser, targetID,
-		map[string]any{"mode": req.Mode, "amount": amount, "delta": delta, "note": note})
-	return view, nil
+	return nil, errcode.ErrForbidden.WithMsg("平台积分已停用，请使用 TokenPay 钱包")
 }
 
 // SetMaxActiveTasks 设置单用户并发上限；nil 表示改回全局默认。允许 1..64。
@@ -373,27 +316,9 @@ func batchItem(id uint64, err error) model.BatchItem {
 	return model.BatchItem{ID: id, Error: msgItemInternal}
 }
 
-// BatchAddCredits 给多个用户各增加 amount 积分（只增不减）。每个用户独立判断权限、独立事务，
-// 不存在 / 无权限 / 执行失败只写进对应项，不整体失败；整体参数不合法（空列表、超过 200 个、amount<=0、备注不合法）才返回错误。
+// BatchAddCredits 是历史平台积分入口，现已停用。
 func (s *AdminUserService) BatchAddCredits(ctx context.Context, actorID uint64, ids []uint64, amount int, note string) (*model.BatchResult, error) {
-	// 1. 整体参数校验与去重
-	ids, err := dedupeIDs(ids)
-	if err != nil {
-		return nil, err
-	}
-	if amount <= 0 {
-		return nil, errcode.ErrCreditAdjustInvalid.WithMsg("增加的积分必须大于 0")
-	}
-	if _, err := validCreditNote(note); err != nil {
-		return nil, err
-	}
-	// 2. 逐个用户调用单用户流程：权限、事务、审计与单个调整完全一致
-	res := &model.BatchResult{Results: make([]model.BatchItem, 0, len(ids))}
-	for _, id := range ids {
-		_, err := s.AdjustCredits(ctx, actorID, id, &model.AdjustCreditsReq{Mode: model.CreditModeAdd, Amount: &amount, Note: note})
-		res.Results = append(res.Results, batchItem(id, err))
-	}
-	return res, nil
+	return nil, errcode.ErrForbidden.WithMsg("平台积分已停用，请使用 TokenPay 钱包")
 }
 
 // BatchSetStatus 批量封禁 / 启用。不支持取消任务（要取消请逐个处理）；每个用户独立判断权限，失败只写进对应项。

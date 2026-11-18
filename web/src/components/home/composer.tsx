@@ -10,7 +10,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { motion } from "motion/react";
-import { ArrowUp, AtSign, ChevronDown, Loader2, Sparkle, Wallet } from "lucide-react";
+import { ArrowUp, AtSign, ChevronDown, Loader2, Wallet } from "lucide-react";
 
 import type { SubmitTarget } from "@/api/conversation/type";
 import { ComposerRefs } from "@/components/home/composer-refs";
@@ -31,10 +31,9 @@ import { useRemoteModels } from "@/hooks/use-models";
 import { TAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useComposerStore } from "@/store/composer";
-import { useCreditsStore } from "@/store/credits";
 import { takeComposerDraft } from "@/utils/home/carry";
 import { evaluateSend, type ComposerRef } from "@/utils/conversation/submission";
-import { useWalletCostEstimate } from "@/hooks/use-wallet-cost";
+import { useWalletPriceLabel } from "@/hooks/use-wallet-cost";
 
 /** 输入框最多长到多高（px），再长就在框里滚动 */
 const MAX_HEIGHT = 240;
@@ -47,10 +46,10 @@ const BAR_BUTTON =
   "text-foreground hover:bg-muted focus-visible:ring-ring/50 inline-flex h-8 items-center gap-1.5 rounded-[10px] px-2.5 text-[13px] outline-none focus-visible:ring-3 disabled:opacity-60";
 
 /**
- * 创作页和对话页共用的输入卡片：左侧参考图，中间输入框，底部依次是模式、模型、参数、引用、积分和发送。
+ * 创作页和对话页共用的输入卡片：左侧参考图，中间输入框，底部依次是模式、模型、参数、公开价目和发送。
  * 模式、模型、参数、草稿和参考图都在 useComposerStore 里，两个页面各渲一份也不会丢。
  * 发送一次提交一条生成记录（见 hooks/use-conversation-submit.ts）：
- * 发送键旁显示预估积分，余额不足、参考图没传完、提示词不合法时禁用并写明原因。
+ * 发送键旁显示 TokenDance 公开价目，钱包未连接、参考图没传完、提示词不合法时禁用并写明原因。
  * 创作页上的大卡片（page）静止时边框有一段光慢慢转圈，聚焦输入后淡出；对话页的 dock 不带。
  * 引用资产（@）要等素材列表接口，先禁用；Agent 只在画布里，这里没有。
  * @param placement page 是创作页里的大卡片；dock 是对话页贴在底部的那一份，菜单向上弹、输入框矮一点
@@ -75,8 +74,6 @@ export function Composer({
   const setParam = useComposerStore((state) => state.setParam);
   const setText = useComposerStore((state) => state.setText);
   const addRef = useComposerStore((state) => state.addRef);
-  const available = useCreditsStore((state) => state.credits?.available ?? null);
-  const refreshCredits = useCreditsStore((state) => state.refresh);
 
   const { models, status } = useRemoteModels(mode);
   /** 记住的模型已下线或没记过：取清单第一个（后台的排序） */
@@ -120,21 +117,14 @@ export function Composer({
   const current = CREATION_MODES.find((item) => item.id === mode) ?? CREATION_MODES[0];
 
   const state = useMemo(
-    () => evaluateSend({ model, text, params, refs, available, sending }),
-    [model, text, params, refs, available, sending],
+    () => evaluateSend({ model, text, params, refs, sending }),
+    [model, text, params, refs, sending],
   );
   /**
-   * 钱包模型：不显示平台积分，显示这次大约花多少钱（元）——取同模型最近几次真实花费的均价。
-   * 记录已经生成出来的，卡片上显示的是匹配到的真实花费（见 conversation/record-view）。
+   * 钱包模型只显示 TokenDance 公开实时价目；生成后的记录卡片再显示匹配到的真实花费。
    */
   const isWalletModel = !!model?.wallet;
-  const walletEstimate = useWalletCostEstimate(model?.upstream_model, state.count);
-  const showCredits = !!model && !isWalletModel && state.creditsTotal > 0;
-
-  /** 余额没拿到时拉一次：发送前要知道够不够 */
-  useEffect(() => {
-    if (available === null) void refreshCredits();
-  }, [available, refreshCredits]);
+  const walletPrice = useWalletPriceLabel(model);
 
   /** 输入框随内容长高，到 MAX_HEIGHT 为止 */
   useLayoutEffect(() => {
@@ -302,29 +292,15 @@ export function Composer({
         </SoonTip>
 
         <div className="flex-1" />
-        {isWalletModel && walletEstimate ? (
+        {isWalletModel && walletPrice ? (
           <span
-            title="预估花费：按你最近的 TokenDance 实际扣费估算；生成后记录卡片上显示真实花费"
+            title="TokenDance 公开实时价目；生成后记录卡片上显示真实花费"
             className="text-muted-foreground mr-1 inline-flex items-center gap-1 text-[13px] tabular-nums"
           >
             <Wallet className="size-3.5" />
-            {walletEstimate}
+            {walletPrice}
           </span>
         ) : null}
-        {showCredits && (
-          <span
-            title={`预估积分，以实际扣费为准${available === null ? "" : `；可用 ${available}`}`}
-            className={cn(
-              "mr-1 inline-flex items-center gap-1 text-[13px] tabular-nums",
-              state.tone === "bad" && state.hint?.startsWith("余额")
-                ? "text-destructive font-medium"
-                : "text-muted-foreground",
-            )}
-          >
-            <Sparkle className="size-3.5" />
-            {state.creditsTotal}
-          </span>
-        )}
         <motion.button
           type="submit"
           whileTap={TAP}

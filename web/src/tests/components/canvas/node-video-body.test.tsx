@@ -38,7 +38,6 @@ describe("上传失败的节点正文", () => {
   const failed: VideoNodeView = {
     phase: "failed",
     message: "上传失败，请重试",
-    refunded: false,
     taskRef: null,
   };
 
@@ -61,7 +60,7 @@ describe("节点框画幅跟着 aspect 走", () => {
     ["上传中", { phase: "uploading", progress: 10 }],
     ["即将完成", { phase: "finalizing" }],
     ["成片", { phase: "done", src: "https://example.com/a.mp4" }],
-    ["失败", { phase: "failed", message: "x", refunded: false, taskRef: null }],
+    ["失败", { phase: "failed", message: "x", taskRef: null }],
   ];
 
   for (const [name, view] of phases) {
@@ -100,7 +99,7 @@ describe("音频节点正文（设计 6.18）", () => {
       { phase: "idle" },
       { phase: "queued" },
       { phase: "running", progress: null, elapsedMs: null },
-      { phase: "failed", message: "x", refunded: false, taskRef: null },
+      { phase: "failed", message: "x", taskRef: null },
     ];
     for (const view of phases) expect(audio(view)).toContain("aspect-ratio:1");
   });

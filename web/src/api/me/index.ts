@@ -2,22 +2,12 @@ import type { LoginResponse } from "@/api/auth";
 import service from "@/utils/requests/service";
 import type {
   ActivityDto,
-  BackendLedgerItemDto,
-  BackendLedgerPageDto,
   BackendMeDto,
   BackendMeStatsDto,
   ChangePasswordRequest,
-  LedgerFilter,
-  LedgerItemDto,
-  LedgerPageDto,
-  LedgerPageSize,
   MeDto,
   MeStatsDto,
 } from "./type";
-
-/** 后端用 0 或 null 表示「没有关联」，前端统一成 null，并把数字 id 转成字符串 */
-const idOrNull = (value: number | null | undefined) =>
-  typeof value === "number" && value > 0 ? String(value) : null;
 
 /**
  * 后端 MeView 适配成前端 MeDto
@@ -45,35 +35,7 @@ export const mapStats = (raw: BackendMeStatsDto): MeStatsDto => ({
   success: raw.success ?? 0,
   failed: raw.failed ?? 0,
   last7d: raw.last7d ?? 0,
-  spentCredits: raw.spent_credits ?? 0,
   canvasCount: raw.canvas_count ?? 0,
-});
-
-/**
- * 一条后端流水适配成前端结构；不带操作人
- * @param raw 后端原始结构
- * @returns 前端使用的流水
- */
-export const mapLedgerItem = (raw: BackendLedgerItemDto): LedgerItemDto => ({
-  id: String(raw.id),
-  type: raw.type,
-  amount: raw.amount,
-  taskId: idOrNull(raw.task_id),
-  agentCallId: idOrNull(raw.agent_call_id),
-  note: raw.note ?? "",
-  createdAt: raw.created_at,
-});
-
-/**
- * 一页后端流水适配成前端结构；items 为 null 时兜底成空数组
- * @param raw 后端原始结构
- * @returns 前端使用的一页流水
- */
-export const mapLedgerPage = (raw: BackendLedgerPageDto): LedgerPageDto => ({
-  items: (raw.items ?? []).map(mapLedgerItem),
-  total: raw.total ?? 0,
-  page: raw.page,
-  pageSize: raw.page_size,
 });
 
 /**
@@ -155,21 +117,3 @@ export const getMeActivity = async (year?: number | null) => {
   });
   return { ...data, years: data.years ?? [], days: data.days ?? [] };
 };
-
-/**
- * 我的积分流水，按时间倒序的页码分页；页码超出范围时返回空 items 和真实 total
- * @param params 筛选类型、页码（从 1 开始）、每页条数
- * @returns 一页流水与总条数
- */
-export const getMeLedger = async (params: {
-  type: LedgerFilter;
-  page: number;
-  pageSize: LedgerPageSize;
-}) =>
-  mapLedgerPage(
-    await service.get<BackendLedgerPageDto>("/me/credits/ledger", {
-      type: params.type,
-      page: params.page,
-      page_size: params.pageSize,
-    }),
-  );

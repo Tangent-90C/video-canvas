@@ -1,6 +1,6 @@
 import type { TaskView } from "@/api/generation-task/type";
 import { failedBatchMembers, type BackfillEvent } from "@/utils/tasks/backfill";
-import { canceledRefunded, taskKey } from "@/utils/tasks/status";
+import { taskKey } from "@/utils/tasks/status";
 import { needsWalletRecharge } from "@/utils/wallet/recharge";
 
 import { MERGE_WINDOW_MS } from "./bubble-queue";
@@ -80,7 +80,7 @@ const failMessage = (view: TaskView) =>
 /**
  * 把一批回填事件变成提醒：
  * - 成功：每个任务一条，按画布和种类合并成「3 张图好了」；
- * - 整个节点失败（含成功但结果为空）：「生成失败，积分已退回：原因」；
+ * - 整个节点失败（含成功但结果为空）：展示失败原因和 TokenDance 账单口径；
  * - 取消、批次部分失败：沿用原 toast 的文案和 id。
  * 成功和整体失败只对 isFresh 为真的任务出；取消和批次失败保持原有行为，不看新鲜度。
  */
@@ -97,9 +97,7 @@ export function buildResultNotices(
     if (view.status === "canceled") {
       out.push({
         level: "info",
-        text: canceledRefunded(view)
-          ? "已取消生成，积分已退回"
-          : "已取消生成，已进入生成的积分不退回",
+        text: "已取消生成，最终费用以 TokenDance 实际账单为准",
         id: `canceled:${view.id}`,
         nodeIds: [nodeId],
         petOnly: false,
@@ -123,9 +121,7 @@ export function buildResultNotices(
       const reason = view.status === "succeeded" ? patch.error : failMessage(view);
       out.push({
         level: "error",
-        text: view.wallet
-          ? `生成失败：${reason || "生成失败"}`
-          : `生成失败，积分已退回：${reason || "生成失败"}`,
+        text: `生成失败：${reason || "生成失败"}`,
         id: `result:failed:${view.id}`,
         nodeIds: [nodeId],
         petOnly: true,
@@ -139,12 +135,9 @@ export function buildResultNotices(
   for (const [nodeId, messages] of Object.entries(failedBatchMembers([...events]))) {
     const nodeEvents = events.filter((event) => event.nodeId === nodeId);
     const recharge = nodeEvents.some((event) => needsWalletRecharge(event.view));
-    const refunded = nodeEvents.some((event) => !event.view.wallet);
     out.push({
       level: "warning",
-      text: refunded
-        ? `有 ${messages.length} 张生成失败，积分已退回：${messages[0]}`
-        : `有 ${messages.length} 张生成失败：${messages[0]}`,
+      text: `有 ${messages.length} 张生成失败：${messages[0]}`,
       id: `batch-failed:${nodeId}:${events.find((e) => e.nodeId === nodeId)?.view.id}`,
       nodeIds: [nodeId],
       petOnly: false,

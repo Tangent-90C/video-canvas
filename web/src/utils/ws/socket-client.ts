@@ -3,7 +3,6 @@ import type { BackendJobView, DramaEpisodeEvent, DramaSegmentEvent } from "@/api
 import type { ServerMessage, TaskView } from "@/api/generation-task/type";
 import type { MarketingRoundEvent, MarketingScriptEvent } from "@/api/marketing/type";
 import type { StoryboardSplitJob } from "@/api/storyboard/type";
-import type { PaymentWsUpdate } from "@/store/payment";
 import type { ConnectionState } from "@/store/ws";
 
 /** 客户端每隔多久发一次 ping */
@@ -104,18 +103,6 @@ export function parseServerMessage(raw: unknown): ServerMessage | null {
         typeof event.canvas_id !== "string" ||
         typeof event.seq !== "number" ||
         typeof event.type !== "string"
-      ) {
-        return null;
-      }
-      return msg as ServerMessage;
-    }
-    case "payment.updated": {
-      if (typeof data !== "object" || data === null) return null;
-      const update = data as Partial<PaymentWsUpdate>;
-      if (
-        typeof update.order_no !== "string" ||
-        typeof update.status !== "string" ||
-        typeof update.credits !== "number"
       ) {
         return null;
       }
@@ -247,8 +234,6 @@ export type SocketClientDeps = {
   onCanvasPatch?: (patch: CanvasPatchDto) => void;
   /** 收到画布 Agent 会话里的一条事件 */
   onAgentEvent?: (event: AgentEventDto) => void;
-  /** 收到支付订单状态变化 */
-  onPayment?: (update: PaymentWsUpdate) => void;
   /** 收到短剧流水线任务的状态 / 进度变化 */
   onDramaJob?: (event: { drama_id: string; job: BackendJobView }) => void;
   /** 收到短剧项目的规划阶段 / 游标变化：前端据此重新拉详情 */
@@ -415,7 +400,6 @@ export class TaskSocketClient {
       if (msg.type === "task.updated") this.deps.onTask(msg.data);
       else if (msg.type === "canvas.patch") this.deps.onCanvasPatch?.(msg.data);
       else if (msg.type === "agent.event") this.deps.onAgentEvent?.(msg.data);
-      else if (msg.type === "payment.updated") this.deps.onPayment?.(msg.data);
       else if (msg.type === "drama") this.deps.onDrama?.(msg.data);
       else if (msg.type === "drama.job") this.deps.onDramaJob?.(msg.data);
       else if (msg.type === "drama.episode") this.deps.onDramaEpisode?.(msg.data);

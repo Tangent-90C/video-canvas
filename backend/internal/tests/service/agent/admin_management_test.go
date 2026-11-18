@@ -154,12 +154,12 @@ func TestAdminManagementApprovalAndReplay(t *testing.T) {
 	for _, scenario := range []string{"批准", "拒绝", "降权", "审核中改值", "重复执行", "签名篡改"} {
 		t.Run(scenario, func(t *testing.T) {
 			e := newManagementEnv()
-			p := e.propose(t, "register_settings", "register", map[string]any{"initial_credits": float64(80)})
+			p := e.propose(t, "register_settings", "register", map[string]any{"default_max_active_tasks": float64(6)})
 			if e.settings.writes != 0 || e.ops.calls != 0 {
 				t.Fatal("提案前产生副作用")
 			}
 			if scenario == "签名篡改" {
-				p.Payload = json.RawMessage(strings.Replace(string(p.Payload), `"initial_credits":80`, `"initial_credits":999`, 1))
+				p.Payload = json.RawMessage(strings.Replace(string(p.Payload), `"default_max_active_tasks":6`, `"default_max_active_tasks":9`, 1))
 				_, err := e.b.ResolveApproval(context.Background(), e.rc, "admin_change", p.Payload, model.DecideAgentApprovalReq{Decision: "approve"})
 				if err == nil {
 					t.Fatal("篡改审批被接受")
@@ -170,7 +170,7 @@ func TestAdminManagementApprovalAndReplay(t *testing.T) {
 				e.f.user.Role = model.RoleAdmin
 			}
 			if scenario == "审核中改值" {
-				e.settings.values[model.SettingInitialCredits] = "60"
+				e.settings.values[model.SettingDefaultMaxActiveTasks] = "7"
 			}
 			decision := "approve"
 			if scenario == "拒绝" {
@@ -202,7 +202,6 @@ func TestAdminManagementPreflight(t *testing.T) {
 		target, key string
 		patch       map[string]any
 	}{
-		{"register_settings", "register", map[string]any{"initial_credits": -1}},
 		{"register_settings", "register", map[string]any{"default_max_active_tasks": 100}},
 		{"register_settings", "register", map[string]any{"register_enabled": "false"}},
 		{"register_settings", "register", map[string]any{"password": "DO_NOT_EXPOSE"}},

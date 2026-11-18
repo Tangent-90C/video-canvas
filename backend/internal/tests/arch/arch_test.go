@@ -36,7 +36,6 @@ var outboundAllowed = map[string]string{
 	"imageproc/tencent.go":             "COS SDK 只用来在本地生成预签名地址，不发请求",
 	"provider/webaccess/client.go":     "构造后立即交给 outbound.Client（SearXNG 走内网，不能用 netguard）",
 	"handler/agent/proxy.go":           "Go 把前端请求反向代理到 Agent 服务：内部进程之间的调用",
-	"initialize/payment.go":            "支付渠道接口：有独立的订单流水和回调记录，请求带签名参数，不进 payload.log",
 	"provider/fx/fx.go":                "定时拉取汇率：系统任务，不是用户运行",
 }
 

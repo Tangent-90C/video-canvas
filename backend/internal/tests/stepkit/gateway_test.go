@@ -2,9 +2,11 @@ package stepkit_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"video-canvas/internal/llmgateway"
+	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/provider"
 	"video-canvas/internal/stepkit"
@@ -67,7 +69,7 @@ func TestGatewayCallerWalletUsesAuthenticatedRequestUser(t *testing.T) {
 	}
 }
 
-func TestGatewayCallerPlainChannelUsesChannelSecret(t *testing.T) {
+func TestGatewayCallerPlainChannelFailsClosed(t *testing.T) {
 	streamer := &gatewayStreamer{}
 	caller := &stepkit.GatewayCaller{Streamer: streamer, Secrets: gatewaySecrets{
 		"channel:tokenpay": "product-key",
@@ -75,10 +77,22 @@ func TestGatewayCallerPlainChannelUsesChannelSecret(t *testing.T) {
 	}}
 	ctx, _ := logger.BeginRun(context.Background(), logger.RunRef{Kind: "mkt", UserID: 7})
 
-	if _, err := caller.Complete(ctx, gatewaySnapshot(false), nil); err != nil {
-		t.Fatal(err)
+	if _, err := caller.Complete(ctx, gatewaySnapshot(false), nil); err == nil {
+		t.Fatal("非钱包模型必须失败，不能回退到产品方渠道 Key")
 	}
-	if streamer.target.APIKey != "product-key" {
-		t.Fatalf("普通渠道应使用 channel:<key> 的 Key，实际 %q", streamer.target.APIKey)
+	if streamer.target.APIKey != "" {
+		t.Fatalf("非钱包模型不应发起请求，实际 Key %q", streamer.target.APIKey)
+	}
+}
+
+func TestGatewayCallerMissingWalletKeyReturnsConnectGuidance(t *testing.T) {
+	streamer := &gatewayStreamer{}
+	caller := &stepkit.GatewayCaller{Streamer: streamer, Secrets: gatewaySecrets{}}
+	ctx := logger.WithUser(context.Background(), 7)
+
+	_, err := caller.Complete(ctx, gatewaySnapshot(true), nil)
+	var business *errcode.Error
+	if !errors.As(err, &business) || business.Code != errcode.ErrWalletNotConnected.Code {
+		t.Fatalf("缺少用户钱包 Key 时应返回 40016 连接引导，实际 %v", err)
 	}
 }

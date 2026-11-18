@@ -24,7 +24,7 @@ import type {
 } from "@/api/agent/type";
 import { useAgentSettings } from "@/store/agent-settings";
 import { ADMIN_SESSION_SCOPE, useAgentStore } from "@/store/agent";
-import { useCreditsStore } from "@/store/credits";
+import { useWalletStore } from "@/store/wallet";
 import { visibleSessions } from "@/utils/agent/drama";
 import { activeRunId, emptySession } from "@/utils/agent/session-state";
 import { buildRunStrip, buildStatusLine, buildTimeline } from "@/utils/agent/timeline";
@@ -201,7 +201,7 @@ export function useAgentController({
         if (admin && sessionId && decided?.id) {
           useAgentStore.getState().ingestApproval(sessionId, decided);
         }
-        if (!admin) void useCreditsStore.getState().refresh();
+        if (!admin) void useWalletStore.getState().fetchBalance();
         return "ok";
       } catch {
         return "failed";
@@ -245,7 +245,7 @@ export function useAgentController({
         });
         if (admin && pageContext) setSentContexts((prev) => ({ ...prev, [run.id]: pageContext }));
         useAgentStore.getState().ingestRun(run);
-        if (!admin) void useCreditsStore.getState().refresh();
+        if (!admin) void useWalletStore.getState().fetchBalance();
         return true;
       } catch {
         return false;

@@ -26,6 +26,8 @@ export function useDramaVideoModel(dramaId: string, projectModel = "") {
     status: remote.status,
     model,
     setModel,
+    /** 是否已连接 TokenPay 钱包；未连接时生成入口应先引导连接 */
+    walletConnected: remote.walletConnected,
     /** 生成分镜脚本时给后端的单段时长上限 */
     maxSeconds: storyboardMaxSeconds(model),
   };

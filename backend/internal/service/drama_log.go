@@ -42,7 +42,7 @@ func logDramaCreated(ctx context.Context, j *model.DramaJob, parent *model.Drama
 	ref := dramaRef(j)
 	logger.NoteRun(ctx, ref.Kind, ref.ID)
 	fields := append([]zap.Field{logger.Event(logger.EventRunCreate), logger.RunField(ref.Kind, ref.ID),
-		zap.Uint64("user_id", j.UserID), zap.Int("frozen_credits", j.FrozenCredits)}, dramaFields(j)...)
+		zap.Uint64("user_id", j.UserID)}, dramaFields(j)...)
 	if parent != nil {
 		fields = append(fields, zap.String("parent_job_id", idcodec.Encode(parent.ID)))
 	}

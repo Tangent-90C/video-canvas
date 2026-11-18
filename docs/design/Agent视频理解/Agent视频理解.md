@@ -1,5 +1,7 @@
 # Agent 视频理解与 Gemini 接口格式设计
 
+> **计费状态（2026-11-18）**：平台积分体系已停用。本文涉及积分、冻结、结算、退款、充值、商城、后台调账或平台定价的内容均为历史设计；当前所有模型生成与 Agent 对话统一使用用户自己的 TokenPay 钱包，详见 `docs/design/TokenPay钱包/TokenPay钱包.md`。
+
 > **范围**：两件相互依赖的事。
 > 1. **Gemini 接口格式**：后台给 Agent 模型选「接口格式」（OpenAI / Gemini），Go 网关把 pi 的 OpenAI 请求翻译成 Gemini 原生 `streamGenerateContent`，再把响应翻译回来。
 > 2. **看视频**：Agent 模型能力新增「看视频」（只给 Gemini 格式的模型），`canvas_inspect_video` 用当前模型发一次独立子请求，理解视频的**画面和声音**；失败退回现有抽帧并注明「音频未分析」。

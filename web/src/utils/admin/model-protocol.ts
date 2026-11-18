@@ -7,7 +7,7 @@ import {
   withModelField,
   withModelPathPrefix,
 } from "./model-body";
-import { defaultCapabilities, defaultDeadline, defaultPricing } from "./model-template";
+import { defaultCapabilities, defaultDeadline } from "./model-template";
 import { compareSemver, findPluginVersion, latestVersion, metaSupportsKind } from "./plugin";
 import { initialSettingValues, settingFields, validateSettingValues } from "./settings-form";
 
@@ -262,7 +262,7 @@ export function switchModelKind(
 }
 
 /**
- * 改正文里的模型能力：能力与定价重置成新种类的默认值（生成方式、素材、参数、计费方式都不通用），
+ * 改正文里的模型能力：能力和参数重置成新种类的默认值；旧 pricing 原样保留用于历史兼容，不再重写。
  * 正文没有时限就补该种类的默认时限，协议按 switchModelKind 处理，非 Agent 清除接口格式。正文不是对象返回 null。
  */
 export function withModelKind(
@@ -274,7 +274,6 @@ export function withModelKind(
   const { protocol, notice } = switchModelKind(plugins, readModelProtocol(body), kind);
   let next = withModelField(body, "kind", kind);
   next = next && withModelField(next, "capabilities", defaultCapabilities(kind));
-  next = next && withModelField(next, "pricing", defaultPricing(kind));
   if (next && !readModelString(next, "deadline"))
     next = withModelField(next, "deadline", defaultDeadline(kind));
   next = next && withModelProtocol(next, protocol);
@@ -300,7 +299,7 @@ export const protocolSettingSchema = (
 /**
  * 批量设置能力与协议用：只改 kind 与 channels[0].protocol，不改价格。
  * 能力没变就只换协议；能力变了（含待配置的模型第一次选能力）就把能力与参数重置成新种类的默认值，
- * 价格保留，正文里没有价格或时限的才补该种类的默认值。Agent 不带协议。正文不是对象返回 null。
+ * 旧 pricing 原样保留；新模型不再写平台积分价格。正文里没有时限的才补该种类的默认值。Agent 不带协议。正文不是对象返回 null。
  */
 export function withBatchProtocol(
   body: unknown,
@@ -312,8 +311,6 @@ export function withBatchProtocol(
   if (readModelString(body, "kind") !== kind) {
     next = withModelField(next, "kind", kind);
     next = next && withModelField(next, "capabilities", defaultCapabilities(kind));
-    if (next && !isRecord(body.pricing))
-      next = withModelField(next, "pricing", defaultPricing(kind));
     if (next && !readModelString(body, "deadline"))
       next = withModelField(next, "deadline", defaultDeadline(kind));
   }

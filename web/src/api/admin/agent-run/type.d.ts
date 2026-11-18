@@ -415,7 +415,7 @@ export interface AgentStatsGroup {
   median_duration_ms: number;
   /** 步数中位数 */
   median_steps: number;
-  /** 平均每次运行花的积分 */
+  /** 历史积分字段，恒为 0；当前费用以 TokenDance 实际账单为准 */
   avg_credits: number;
   /** 这一组的提示词版本（按 harness_key 分组时唯一） */
   prompt_version: number;

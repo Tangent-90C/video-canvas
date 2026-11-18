@@ -310,13 +310,9 @@ func userMessage(err error) string {
 	return "读取素材失败，请重试" // 原始错误随结局进运行收尾行
 }
 
-// finishRun 在一个事务里落下环节结局：更新运行记录、写结果（事实卡 / 拆解 / 脚本）、结算积分。
+// finishRun 在一个事务里落下环节结局：更新运行记录并写结果（事实卡 / 拆解 / 脚本）。
 // 轮次已被取消时成功的结果不写入，运行记为取消；已被别处结算的运行（状态迁移冲突）什么都不做。
 func (s *MarketingService) finishRun(ctx context.Context, round *model.MarketingRound, run *model.MarketingStepRun, out *stepOutcome) error {
-	charged := 0
-	if out.charge && out.res != nil && out.snap != nil {
-		charged = max(stepkit.Cost(out.snap, out.res), 0)
-	}
 	return s.repo.WithTx(ctx, func(tx repository.MarketingTx) error {
 		cur, err := tx.RoundByID(ctx, round.ID, true)
 		if err != nil {
@@ -335,7 +331,7 @@ func (s *MarketingService) finishRun(ctx context.Context, round *model.Marketing
 		if err := s.applyOutcome(ctx, tx, cur, run, out, status); err != nil {
 			return err
 		}
-		return s.settleRun(ctx, tx, run, charged)
+		return nil
 	})
 }
 

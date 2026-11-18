@@ -18,10 +18,10 @@ import (
 type httpDramaRegistry struct{}
 
 func (httpDramaRegistry) ListModels(context.Context, string) ([]provider.ModelInfo, error) {
-	return []provider.ModelInfo{{Key: "http-text", Kind: "agent"}}, nil
+	return []provider.ModelInfo{{Key: "http-text", Kind: "agent", Wallet: true}}, nil
 }
 func (httpDramaRegistry) Snapshot(context.Context, string) (*provider.Snapshot, error) {
-	return &provider.Snapshot{ModelRevisionID: 1, Model: provider.ModelSnapshot{Key: "http-text", Kind: "agent", Capabilities: modelcfg.Capabilities{Context: &modelcfg.ContextSpec{Window: 128000}}, Pricing: modelcfg.Pricing{Billing: modelcfg.BillingPerCall, Unit: 2}}}, nil
+	return &provider.Snapshot{ModelRevisionID: 1, Model: provider.ModelSnapshot{Key: "http-text", Kind: "agent", Capabilities: modelcfg.Capabilities{Context: &modelcfg.ContextSpec{Window: 128000}}, Pricing: modelcfg.Pricing{Billing: modelcfg.BillingPerCall, Unit: 2}}, Channel: provider.ChannelSnapshot{Key: "wallet", Wallet: true}}, nil
 }
 func (r *httpDramaRepo) InsertProject(_ context.Context, p *model.DramaProject) error {
 	p.ID = 7

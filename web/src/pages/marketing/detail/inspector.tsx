@@ -59,7 +59,7 @@ import {
 import { stepRunOf } from "@/utils/marketing/status";
 import { formatSeconds } from "@/utils/marketing/workbench";
 
-import { useCurrentShot, useRefollowCost } from "./hooks";
+import { useCurrentShot } from "./hooks";
 import { CanvasDialog, downloadUrl, takeFileName } from "./script-dialogs";
 import { PromptPanel } from "./prompt-panel";
 import type { MarketingActions } from "./use-actions";
@@ -175,27 +175,16 @@ function useScrolledAt() {
 }
 
 /** 选中原片时的检查器：参考拆解全部字段（可改），底部恢复原稿 / 按拆解重写跟拍版 */
-export function ReverseInspector({
-  project,
-  round,
-  available,
-  actions,
-}: {
-  project: Project;
-  round: Round;
-  available: number | null;
-  actions: MarketingActions;
-}) {
+export function ReverseInspector({ round, actions }: { round: Round; actions: MarketingActions }) {
   const step = stepRunOf(round.steps, "reverse");
   const reverse = round.reverse;
-  const cost = useRefollowCost(project, round);
   const controls = useWorkbenchStore((state) => state.controls);
   const current = useCurrentShot(reverse?.shots ?? []);
   const scrolled = useScrolledAt();
   const editable = reverseEditable(round);
   const saving = actions.busy[`reverse:${round.id}`];
   const follow = round.scripts.find((item) => item.kind === "follow");
-  const refollow = refollowState(round, null, available, cost);
+  const refollow = refollowState(round, null);
   const refollowing = actions.busy[`refollow:${round.id}`];
 
   const commit = (
@@ -422,7 +411,6 @@ export function ReverseInspector({
             >
               {refollowing ? <Loader2 className="animate-spin" /> : <RefreshCw />}
               按拆解重写跟拍版
-              {cost !== null && <span className="tabular-nums opacity-70">✦{cost}</span>}
             </Button>
           )}
         </div>
@@ -436,13 +424,11 @@ export function ScriptInspector({
   project,
   round,
   script,
-  available,
   actions,
 }: {
   project: Project;
   round: Round;
   script: Script;
-  available: number | null;
   actions: MarketingActions;
 }) {
   const { angles } = useMarketingOptions();
@@ -454,7 +440,7 @@ export function ScriptInspector({
 
   const follow = script.kind === "follow";
   const busy = isScriptBusy(script.status);
-  const render = scriptRenderState(script, available);
+  const render = scriptRenderState(script);
   const rendering = actions.busy[`render:${script.id}`];
   const playing = script.status === "done" && !!controls;
   const flagsByShot = new Map<number, string[]>();
@@ -664,7 +650,6 @@ export function ScriptInspector({
             <Play />
           )}
           {render.again ? "重出" : "出片"}
-          <span className="tabular-nums opacity-70">✦{script.renderCredits}</span>
         </Button>
       </div>
       <CanvasDialog

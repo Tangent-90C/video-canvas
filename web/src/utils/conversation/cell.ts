@@ -1,7 +1,7 @@
 import type { RecordDto } from "@/api/conversation/type";
 import type { TaskOutput, TaskView } from "@/api/generation-task/type";
 import { derivePendingPhase } from "@/utils/tasks/node-view";
-import { canceledRefunded, isActiveStatus } from "@/utils/tasks/status";
+import { isActiveStatus } from "@/utils/tasks/status";
 import { needsWalletRecharge } from "@/utils/wallet/recharge";
 
 /** 结果格子的状态，由任务状态推出 */
@@ -18,10 +18,10 @@ export type CellState =
   | { kind: "finalizing" }
   /** 成功，带第一个产出 */
   | { kind: "done"; output: TaskOutput }
-  /** 失败或超时，带给用户看的原因（积分已退回）和任务编号（到后端日志里定位用，后端没给为 null） */
+  /** 失败或超时，带给用户看的原因和任务编号（到后端日志里定位用，后端没给为 null） */
   | { kind: "failed"; message: string; taskRef: string | null; walletRecharge?: boolean }
-  /** 已取消；refunded 表示积分有没有退回（排队中取消退，已进入生成取消不退） */
-  | { kind: "canceled"; refunded: boolean };
+  /** 已取消 */
+  | { kind: "canceled" };
 
 /**
  * 格子要不要走表（每秒刷新「已耗时」）：任务没结束就走，和画布节点「生成中就走表」一致。
@@ -71,7 +71,7 @@ export function deriveCell(
         : { kind: "failed", message: "没有生成出结果", taskRef: task.task_ref ?? null };
     }
     case "canceled":
-      return { kind: "canceled", refunded: canceledRefunded(task) };
+      return { kind: "canceled" };
     case "expired":
       return {
         kind: "failed",
@@ -95,19 +95,3 @@ export function deriveCell(
  */
 export const recordActive = (tasks: TaskView[]) =>
   tasks.some((task) => isActiveStatus(task.status));
-
-/**
- * 记录的积分：还有任务在跑时是冻结合计（完成后按实际结算）；全部结束后是实际扣费合计，
- * 失败、取消、超时已退回，不算。
- * @param tasks 这条记录的任务快照
- * @returns 积分数，以及它是否还只是冻结额
- */
-export function recordCredits(tasks: TaskView[]): { credits: number; frozen: boolean } {
-  if (recordActive(tasks)) {
-    return { credits: tasks.reduce((sum, task) => sum + task.credits, 0), frozen: true };
-  }
-  const credits = tasks
-    .filter((task) => task.status === "succeeded")
-    .reduce((sum, task) => sum + (task.charged_credits ?? task.credits), 0);
-  return { credits, frozen: false };
-}

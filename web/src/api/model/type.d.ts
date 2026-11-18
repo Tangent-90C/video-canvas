@@ -113,6 +113,23 @@ export interface Pricing {
   cost?: PriceCost;
 }
 
+/** 上游公开价目摘要；钱包模型选择器展示用 */
+export interface UpstreamPricing {
+  /** 币种，如 CNY */
+  currency: string;
+  /** 完整摘要，如「输入 ¥0.8 / 输出 ¥3.2 / 百万 Token」 */
+  label: string;
+  /** 文本模型输入单价，单位见 unit */
+  input?: number;
+  /** 文本模型输出单价，单位见 unit */
+  output?: number;
+  /** SKU / 协议价格区间 */
+  min?: number;
+  max?: number;
+  /** millionTokens / images / seconds / kCharacters 等 */
+  unit?: string;
+}
+
 /** GET /models 返回的一项 */
 export interface ModelInfo {
   /** 模型 key */
@@ -127,12 +144,12 @@ export interface ModelInfo {
   vendor?: string;
   /** 展示标签，没有时为空数组 */
   tags?: string[];
-  /** 定价（不含积分成本），画布据此本地计价 */
-  pricing: Pricing;
   /** 模型能力：生成方式、参考素材、提示词上限与生成参数 */
   capabilities: Capabilities;
-  /** 钱包渠道的模型：用发起用户自己的 TokenDance Key 支付，不消耗平台积分；未连接钱包的用户不展示 */
+  /** 钱包渠道的模型：用发起用户自己的 TokenDance Key 支付；未连接钱包时引导连接 */
   wallet?: boolean;
   /** 上游模型名：钱包模型用它匹配 TokenDance 调用记录的 model_id，把真实花费对到本站记录上 */
   upstream_model?: string;
+  /** 钱包模型的上游公开价目；拉取失败或没有公开价时为空 */
+  upstream_pricing?: UpstreamPricing;
 }

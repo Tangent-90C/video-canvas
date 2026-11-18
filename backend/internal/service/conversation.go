@@ -42,7 +42,7 @@ type ConversationRepo interface {
 	FindRecordByIdem(ctx context.Context, userID uint64, key string) (*model.ConversationRecord, error)
 	// ListRecords 查询对话里 id 小于 before（0 表示不限）的记录，id 倒序，最多 limit 条。
 	ListRecords(ctx context.Context, userID, convID, before uint64, limit int) ([]model.ConversationRecord, error)
-	// SaveRecordTasks 写入提交结果：每格的任务 id（失败为 null）、失败原因和冻结积分合计。
+	// SaveRecordTasks 写入提交结果：每格的任务 id（失败为 null）、失败原因和历史积分兼容值。
 	SaveRecordTasks(ctx context.Context, id uint64, taskIDs, submitErrors datatypes.JSON, quote int) error
 	// DeleteRecord 软删除记录，不存在或不属于该用户返回 repository.ErrNotFound。
 	DeleteRecord(ctx context.Context, userID, id uint64) error
@@ -54,7 +54,7 @@ type ConversationRepo interface {
 type ConversationTasks interface {
 	// Create 提交生成任务，逐项返回任务或失败原因；请求级错误整体返回 error。
 	Create(ctx context.Context, userID uint64, idempotencyKey string, req *model.CreateGenerationTaskReq) (*model.CreateGenerationTaskResp, error)
-	// Cancel 取消任务并退回冻结的积分。
+	// Cancel 取消任务；实际费用以 TokenDance 账单为准。
 	Cancel(ctx context.Context, userID, id uint64) (*model.GenerationTaskView, error)
 	// ViewsByIDs 批量查询该用户的任务快照。
 	ViewsByIDs(ctx context.Context, userID uint64, ids []uint64) ([]model.GenerationTaskView, error)
@@ -239,7 +239,7 @@ func (s *ConversationService) ListRecords(ctx context.Context, userID, convID ui
 	return page, nil
 }
 
-// Submit 提交一条生成记录：解析目标对话 → 建记录 → 创建生成任务 → 回写任务 id 和冻结积分。
+// Submit 提交一条生成记录：解析目标对话 → 建记录 → 创建生成任务 → 回写任务 id 和兼容字段。
 // 请求级错误（参数不合法、模型下线）一个任务也不会创建，并回收刚建的记录和新对话；
 // 某一格失败（积分不足、并发已满……）只让那一格为空，其余照常。
 func (s *ConversationService) Submit(ctx context.Context, userID uint64, target ConversationTarget, idempotencyKey string, req *model.SubmitConversationRecordReq) (*model.SubmitConversationRecordResp, error) {
@@ -337,8 +337,8 @@ func recordNodeIDs(recordID uint64, count int) []string {
 	return nodes
 }
 
-// summarizeItems 把任务服务的逐项结果整理成要入库的内容：成功的格子记任务 id 并累加冻结积分，
-// 失败的格子记 null 和原因。返回任务 id 数组、失败原因数组（都已编码成 JSON）和冻结积分合计。
+// summarizeItems 把任务服务的逐项结果整理成要入库的内容：成功的格子记任务 id，失败的格子记 null 和原因。
+// 返回任务 id 数组、失败原因数组（都已编码成 JSON）和历史积分兼容值（恒为 0）。
 func summarizeItems(items []model.CreateTaskItem, count int) (taskIDs, submitErrors datatypes.JSON, quote int, err error) {
 	ids := make([]*uint64, count)
 	errs := []model.RecordSubmitError{}

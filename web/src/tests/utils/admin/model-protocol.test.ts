@@ -19,10 +19,6 @@ import {
 const capsOps = (body: Record<string, unknown> | null | undefined) =>
   ((body?.capabilities ?? {}) as { ops?: string[] }).ops;
 
-/** 正文里 pricing.billing */
-const billingOf = (body: Record<string, unknown> | null | undefined) =>
-  ((body?.pricing ?? {}) as { billing?: string }).billing;
-
 /** 取正文 channels[0]（测试里 withModelProtocol 返回的一定是对象） */
 const firstChannel = (body: Record<string, unknown> | null) =>
   ((body?.channels ?? []) as Array<Record<string, unknown>>)[0];
@@ -354,12 +350,18 @@ describe("withModelKind：改正文里的能力", () => {
     pricing: { billing: "per_call", unit: 99 },
   };
 
-  test("能力与定价重置成新种类的默认值，补上默认时限", () => {
+  test("能力重置成新种类的默认值，补上默认时限；历史 pricing 原样保留", () => {
     const result = withModelKind(body, "video", plugins);
     expect(result?.body.kind).toBe("video");
     expect(capsOps(result?.body)).toContain("t2v");
-    expect(billingOf(result?.body)).toBe("per_second");
+    expect(result?.body.pricing).toEqual({ billing: "per_call", unit: 99 });
     expect(result?.body.deadline).toBe("30m");
+  });
+
+  test("新模型没有 pricing 时也不再补平台积分默认值", () => {
+    const { pricing: _, ...withoutPricing } = body;
+    const result = withModelKind(withoutPricing, "video", plugins);
+    expect(result?.body.pricing).toBeUndefined();
   });
 
   test("已有时限不覆盖；协议不支持时清空并带提示", () => {
@@ -406,7 +408,7 @@ describe("withBatchProtocol：批量设置能力与协议", () => {
     expect(next?.pricing).toEqual({ billing: "per_call", unit: 99 });
   });
 
-  test("待配置的模型第一次选能力：补能力、价格与时限的默认值", () => {
+  test("待配置的模型第一次选能力：补能力与时限，不写平台积分价格", () => {
     const pending = {
       key: "m",
       kind: "",
@@ -416,7 +418,7 @@ describe("withBatchProtocol：批量设置能力与协议", () => {
     const next = withBatchProtocol(pending, "image", protocol);
     expect(next?.kind).toBe("image");
     expect(capsOps(next)).toContain("t2i");
-    expect(billingOf(next)).toBe("per_call");
+    expect(next?.pricing).toBeUndefined();
     expect(next?.deadline).toBe("10m");
     expect(readModelProtocol(next)).toEqual(protocol);
   });

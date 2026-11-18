@@ -8,10 +8,7 @@ import (
 	"time"
 
 	"video-canvas/internal/model"
-	"video-canvas/internal/pkg/configbody"
 	"video-canvas/internal/pkg/errcode"
-	"video-canvas/internal/provider/modelcfg"
-	"video-canvas/internal/service"
 )
 
 // requireAdminRun 在平台入口使用数据库角色做后台授权。
@@ -70,9 +67,7 @@ func (b *AgentBridge) toolAdminListModels(ctx context.Context, tc *toolCall) (*t
 		if req.Q != "" && !strings.Contains(strings.ToLower(row.Key+" "+fmt.Sprint(body["label"])), strings.ToLower(req.Q)) {
 			continue
 		}
-		pricing, _ := body["pricing"].(map[string]any)
-		cost, _ := pricing["cost"].(map[string]any)
-		out = append(out, map[string]any{"key": row.Key, "kind": row.Kind, "enabled": row.Enabled, "label": body["label"], "channel": channel, "billing": pricing["billing"], "pricing": body["pricing"], "cost_configured": cost["on"] == true, "calls_7d": usage[row.Key]})
+		out = append(out, map[string]any{"key": row.Key, "kind": row.Kind, "enabled": row.Enabled, "label": body["label"], "channel": channel, "calls_7d": usage[row.Key]})
 	}
 	return adminToolOut(out)
 }
@@ -111,53 +106,6 @@ func (b *AgentBridge) toolAdminListChannels(ctx context.Context, _ *toolCall) (*
 		out = append(out, map[string]any{"key": row.Key, "name": row.Name, "base_url": row.BaseURL, "enabled": row.Enabled, "has_key": configured[model.ChannelSecretName(row.Key)], "secret_configured": configured[model.ChannelSecretName(row.Key)]})
 	}
 	return adminToolOut(out)
-}
-
-// toolAdminGetPricing 返回定价规则和只包含人工设置字段的摘要。
-func (b *AgentBridge) toolAdminGetPricing(ctx context.Context, _ *toolCall) (*toolOut, error) {
-	v, err := b.d.Admin.d.Settings.Get(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return adminToolOut(map[string]any{"settings": v, "body_sha256": configbody.SHA256(service.PricingSettingsBody(v))})
-}
-
-// toolAdminQuotePreview 补齐算价占位提示词，再使用现有输入校验和 quote.go 预览积分，不创建任务或审批。
-func (b *AgentBridge) toolAdminQuotePreview(ctx context.Context, tc *toolCall) (*toolOut, error) {
-	var req struct {
-		Key   string          `json:"key"`
-		Body  json.RawMessage `json:"body"`
-		Input map[string]any  `json:"input"`
-	}
-	if json.Unmarshal(tc.args, &req) != nil {
-		return nil, fail("参数格式不正确")
-	}
-	if len(req.Body) == 0 {
-		body, _, _, err := b.d.Admin.ReadModel(ctx, req.Key)
-		if err != nil {
-			return nil, err
-		}
-		req.Body, _ = json.Marshal(body)
-	}
-	cfg, issues := modelcfg.ParseModel(req.Body)
-	if len(issues) > 0 || cfg == nil {
-		return nil, fail("模型配置未通过校验：%v", issues)
-	}
-	// 算价允许省略提示词；用单字占位兼容最小长度上限，其余默认值和校验仍由模型能力决定。
-	if req.Input == nil {
-		req.Input = map[string]any{}
-	}
-	if prompt, ok := req.Input["prompt"].(string); req.Input["prompt"] == nil || (ok && strings.TrimSpace(prompt) == "") {
-		req.Input["prompt"] = "估"
-	}
-	normalized, errors := modelcfg.ValidateInput(cfg.Kind, cfg.Capabilities, req.Input)
-	if len(errors) > 0 {
-		return nil, fail("输入未通过校验：%v", errors)
-	}
-	spec := modelcfg.SpecFromInput(normalized, "")
-	perTask := modelcfg.Quote(cfg.Pricing, cfg.Capabilities, spec)
-	count := modelcfg.FanoutCount(cfg.Capabilities, normalized)
-	return adminToolOut(map[string]any{"per_task_credits": perTask, "count": count, "quote_credits": perTask * count, "billing": cfg.Pricing.Billing, "input": normalized})
 }
 
 // toolAdminPropose 只有至少一项可应用才出审批卡，所有快照由平台签名。

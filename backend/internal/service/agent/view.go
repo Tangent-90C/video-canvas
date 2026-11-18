@@ -31,7 +31,7 @@ type AgentRunView struct {
 // runView 转成返回给前端的结构。
 func runView(r *model.AgentRun) *AgentRunView {
 	return &AgentRunView{ID: idcodec.ID(r.ID), SessionID: idcodec.ID(r.SessionID), CanvasID: idcodec.ID(r.CanvasID),
-		Status: r.Status, Mode: r.Mode, BudgetCredits: r.BudgetCredits, SpentCredits: r.SpentCredits, ContextTokens: r.ContextTokens, Steps: r.Steps,
+		Status: r.Status, Mode: r.Mode, BudgetCredits: 0, SpentCredits: 0, ContextTokens: r.ContextTokens, Steps: r.Steps,
 		MaxSteps: r.MaxSteps, ErrorCode: r.ErrorCode, ErrorMessage: r.ErrorMessage, CreatedAt: r.CreatedAt, EndedAt: r.EndedAt}
 }
 

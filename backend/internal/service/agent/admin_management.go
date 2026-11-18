@@ -206,7 +206,7 @@ func (s *AdminAssistantService) readManagement(ctx context.Context, target, key 
 	// 2. 用户只需身份、状态、积分和并发；不把登录统计、审计正文带进审批和模型。
 	switch target {
 	case "user":
-		body = map[string]any{"id": body["id"], "username": body["username"], "role": body["role"], "status": body["status"], "balance": body["balance"], "frozen": body["frozen"], "max_active_tasks": body["max_active_tasks"]}
+		body = map[string]any{"id": body["id"], "username": body["username"], "role": body["role"], "status": body["status"], "max_active_tasks": body["max_active_tasks"]}
 		label, _ = body["username"].(string)
 	case "storage", "image_processor":
 		label, _ = body["name"].(string)

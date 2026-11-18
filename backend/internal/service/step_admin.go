@@ -44,12 +44,6 @@ type StepRepo interface {
 	StartTrial(ctx context.Context, id uint64) (*model.StepTrial, error)
 }
 
-// StepCreditPolicy 提供新积分账户的初始积分（与生成任务一致）。
-type StepCreditPolicy interface {
-	// InitialCredits 返回后台当前生效的新账户初始积分。
-	InitialCredits(ctx context.Context) (int, error)
-}
-
 // StepStats 提供环节的运行统计。营销以后接 marketing_step_runs；没有实现时失败率按 0 返回。
 type StepStats interface {
 	// FailRate7d 返回环节近 7 天的失败率（0 到 1），没有运行记录返回 0。
@@ -62,7 +56,6 @@ type StepAdminDeps struct {
 	Repo     StepRepo             // 绑定、历史、试跑
 	Skills   stepkit.SkillLibrary // 导入技能库
 	Models   provider.Registry    // 文本模型清单与快照
-	Credits  StepCreditPolicy     // 新账户初始积分
 	Audit    AdminAuditWriter     // 管理员审计；为空不写
 	Stats    StepStats            // 失败率统计；为空按 0
 	Caller   stepkit.Caller       // 调用文本模型
@@ -76,7 +69,6 @@ type StepAdminService struct {
 	repo   StepRepo
 	skills stepkit.SkillLibrary
 	models provider.Registry
-	credit StepCreditPolicy
 	audit  AdminAuditWriter
 	stats  StepStats
 	runner *stepkit.Runner
@@ -91,7 +83,7 @@ func NewStepAdminService(d StepAdminDeps) *StepAdminService {
 	if now == nil {
 		now = time.Now
 	}
-	return &StepAdminService{reg: d.Registry, repo: d.Repo, skills: d.Skills, models: d.Models, credit: d.Credits,
+	return &StepAdminService{reg: d.Registry, repo: d.Repo, skills: d.Skills, models: d.Models,
 		audit: d.Audit, stats: d.Stats, runner: stepkit.NewRunner(d.Caller), now: now}
 }
 

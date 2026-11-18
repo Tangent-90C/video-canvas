@@ -94,7 +94,7 @@ func TestAIConfigService_Registry_ListModels(t *testing.T) {
 	t.Run("公开字段完整", func(t *testing.T) {
 		list, _ := svc.ListModels(ctx, "video")
 		m := list[0]
-		if m.Label != "模型-m-b" || m.Hint != "提示" || m.Pricing.Unit != 5 || m.Pricing.Cost != nil || m.Kind != "video" {
+		if m.Label != "模型-m-b" || m.Hint != "提示" || m.Kind != "video" {
 			t.Fatalf("公开字段不符合预期：%+v", m)
 		}
 		if m.Capabilities.Prompt.MaxLength != 2000 || len(m.Capabilities.Ops) != 1 {
@@ -102,7 +102,7 @@ func TestAIConfigService_Registry_ListModels(t *testing.T) {
 		}
 		b, _ := json.Marshal(list)
 		// upstream_model 是公开字段（钱包模型用它匹配 TokenDance 调用记录），不再当泄露
-		for _, bad := range []string{"channel", "instanceType", "sk-c1"} {
+		for _, bad := range []string{"channel", "instanceType", "sk-c1", "pricing"} {
 			if strings.Contains(string(b), bad) {
 				t.Fatalf("清单不应泄露 %q：%s", bad, b)
 			}

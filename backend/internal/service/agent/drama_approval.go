@@ -70,14 +70,6 @@ func (b *AgentBridge) resolveDramaApproval(ctx context.Context, rc RunContext, k
 		if req.Answer != "" {
 			o.Decision["answer"] = req.Answer
 		}
-	} else if rc.BudgetCredits > 0 {
-		run, err := b.platformRunState(ctx, rc)
-		if err != nil {
-			return nil, err
-		}
-		if p.Estimate > run.BudgetCredits+req.AddBudget-run.SpentCredits {
-			return nil, errcode.ErrAgentOverBudget
-		}
 	}
 	o.DramaSignature = b.dramaOutcomeSignature(rc.run(), kind, *o)
 	return o, nil

@@ -197,7 +197,7 @@ func TestUserService_Register(t *testing.T) {
 		}
 	})
 
-	t.Run("首个账号成为 super_admin：免验证码（SMTP 未配），建积分账户并写 initial 流水与 register 记录，注册即登录", func(t *testing.T) {
+	t.Run("首个账号成为 super_admin：免验证码（SMTP 未配），不建积分账户，写 register 记录并注册即登录", func(t *testing.T) {
 		repo := newFakeUserRepo()
 		svc, _, _, _ := newUserSvc(repo, nil)
 		view, err := svc.Register(ctx, regReq("alice", "Alice@X.com", ""), regMeta)
@@ -220,8 +220,8 @@ func TestUserService_Register(t *testing.T) {
 		if bc := u.Password; bc == "" || bc == "Str0ng-Pass" {
 			t.Fatal("密码必须是哈希")
 		}
-		if repo.credits[u.ID] == nil || repo.credits[u.ID].Balance != 20 || len(repo.ledger) != 1 || repo.ledger[0].Type != model.LedgerInitial || repo.ledger[0].Amount != 20 {
-			t.Fatalf("积分账户 / initial 流水不对：%+v %+v", repo.credits[u.ID], repo.ledger)
+		if len(repo.credits) != 0 || len(repo.ledger) != 0 {
+			t.Fatalf("平台积分已停用，注册不应创建账户或流水：%+v %+v", repo.credits, repo.ledger)
 		}
 		if got := repo.logResults(); len(got) != 1 || got[0] != "register/ok" {
 			t.Fatalf("应写 register/ok：%v", got)
@@ -272,15 +272,15 @@ func TestUserService_Register(t *testing.T) {
 		}
 	})
 
-	t.Run("初始积分来自设置", func(t *testing.T) {
+	t.Run("历史初始积分设置不再生效", func(t *testing.T) {
 		repo := newFakeUserRepo()
 		svc, _, policy, _ := newUserSvc(repo, nil)
 		policy.initial = 0
 		if _, err := svc.Register(ctx, regReq("alice", "a@x.com", ""), regMeta); err != nil {
 			t.Fatal(err)
 		}
-		if repo.credits[1].Balance != 0 || len(repo.ledger) != 1 || repo.ledger[0].Amount != 0 {
-			t.Fatalf("初始积分 0 也要建账户并写流水：%+v %+v", repo.credits[1], repo.ledger)
+		if len(repo.credits) != 0 || len(repo.ledger) != 0 {
+			t.Fatalf("注册不应再读取或写入平台积分：%+v %+v", repo.credits, repo.ledger)
 		}
 	})
 
@@ -413,7 +413,7 @@ func TestUserService_Register(t *testing.T) {
 	})
 
 	t.Run("事务内写入失败透传内部错误", func(t *testing.T) {
-		for _, op := range []string{"Create", "CreateCredit", "InsertLoginLog"} {
+		for _, op := range []string{"Create", "InsertLoginLog"} {
 			repo := newFakeUserRepo()
 			repo.errs[op] = errBoom
 			svc, _, _, _ := newUserSvc(repo, nil)

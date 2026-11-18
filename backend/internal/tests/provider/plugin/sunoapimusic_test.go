@@ -51,7 +51,7 @@ func newSunoapimusicEnv(t *testing.T) *sunoapimusicEnv {
 func (e *sunoapimusicEnv) snapshot(baseURL, kind, upstream string) *provider.Snapshot {
 	return &provider.Snapshot{
 		Model:   provider.ModelSnapshot{Key: "m", Kind: kind, UpstreamModel: upstream, Capabilities: promptCaps},
-		Channel: provider.ChannelSnapshot{Key: "suno-main", PluginKey: "sunoapi-music", PluginVersionID: 1, BaseURL: baseURL},
+		Channel: provider.ChannelSnapshot{Wallet: true, Key: "suno-main", PluginKey: "sunoapi-music", PluginVersionID: 1, BaseURL: baseURL},
 		Plugin:  provider.PluginSnapshot{Key: "sunoapi-music", Version: e.meta.Version, SHA256: e.sha, Meta: *e.meta},
 
 		ModelRevisionID: 1,

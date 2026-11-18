@@ -34,7 +34,7 @@ type AdminActionPayload struct {
 	Signature        string             `json:"signature"`
 }
 
-// AdminTestEstimate 成本价预估，缺少成本或换算比例时使用 null。
+// AdminTestEstimate 只用于解码历史审批载荷；新试跑不再计算或展示平台积分预估。
 type AdminTestEstimate struct {
 	Credits *int     `json:"credits"`
 	Yuan    *float64 `json:"yuan"`
@@ -127,12 +127,8 @@ func (b *AgentBridge) toolAdminTestRun(ctx context.Context, tc *toolCall) (*tool
 		return nil, fail("已达试跑上限")
 	}
 	left := 3 - attempt
-	estimate, err := b.d.Admin.estimateAdminTrial(ctx, cfg, input)
-	if err != nil {
-		return nil, err
-	}
 	prompt, _ := input["prompt"].(string)
-	p := AdminActionPayload{ModelKey: req.ModelKey, ModelLabel: cfg.Label, Input: input, InputSummary: fmt.Sprintf("%s · %v · 提示词 %d 字", cfg.Kind, input["op"], len([]rune(prompt))), Estimate: estimate, Attempt: &attempt, AttemptsLeft: &left, Reason: req.Reason, RequiredRole: model.RoleAdmin}
+	p := AdminActionPayload{ModelKey: req.ModelKey, ModelLabel: cfg.Label, Input: input, InputSummary: fmt.Sprintf("%s · %v · 提示词 %d 字", cfg.Kind, input["op"], len([]rune(prompt))), Attempt: &attempt, AttemptsLeft: &left, Reason: req.Reason, RequiredRole: model.RoleAdmin}
 	return b.proposeAdminAction(ctx, tc, "admin_test_run", p, "请在试跑卡片同意真实调用，可能产生上游费用。")
 }
 
@@ -298,39 +294,6 @@ func (s *AdminAssistantService) testTraceSummary(ctx context.Context, userID, ta
 		}
 	}
 	return strings.Join(lines, "；")
-}
-
-// estimateAdminTrial 只按成本积分计算试跑预估，缺少成本或积分比例时保持 null。
-func (s *AdminAssistantService) estimateAdminTrial(ctx context.Context, cfg *modelcfg.ModelConfig, input map[string]any) (*AdminTestEstimate, error) {
-	estimate := &AdminTestEstimate{}
-	if cfg.Pricing.Cost != nil && cfg.Pricing.Cost.On {
-		cost := cfg.Pricing
-		cost.Unit = cfg.Pricing.Cost.Unit
-		cost.PerSecond = cfg.Pricing.Cost.PerSecond
-		cost.Token = cfg.Pricing.Cost.Token
-		cost.Tiers = append([]modelcfg.Tier(nil), cfg.Pricing.Tiers...)
-		for i := range cost.Tiers {
-			if c := cost.Tiers[i].Cost; c != nil && c.On {
-				cost.Tiers[i].Unit = c.Unit
-				if cfg.Pricing.Billing == modelcfg.BillingPerSecond {
-					cost.Tiers[i].Unit = c.PerSecond
-				}
-			} else {
-				cost.Tiers[i].On = false
-			}
-		}
-		credits := modelcfg.Quote(cost, cfg.Capabilities, modelcfg.SpecFromInput(input, "")) * modelcfg.FanoutCount(cfg.Capabilities, input)
-		estimate.Credits = &credits
-		settings, err := s.d.Settings.Get(ctx)
-		if err != nil {
-			return nil, err
-		}
-		if settings.CreditsPerYuan != nil {
-			yuan := float64(credits) / *settings.CreditsPerYuan
-			estimate.Yuan = &yuan
-		}
-	}
-	return estimate, nil
 }
 
 // waitAdminTrial 对账原有试跑任务；十分钟从创建时间算起，重放不能重新开始计时。

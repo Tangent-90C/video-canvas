@@ -5,13 +5,13 @@ import { toast } from "sonner";
 import { getActiveStoryboardSplit, getStoryboardSplitJob, splitStoryboard } from "@/api/storyboard";
 import type { StoryboardSplitJob } from "@/api/storyboard/type";
 import { useCanvasHistoryContext } from "@/hooks/use-canvas-history";
-import { useCreditsStore } from "@/store/credits";
 import {
   IDLE,
   splitDisabledReason,
   useStoryboardSplit,
   type SplitState,
 } from "@/store/storyboard-split";
+import { useWalletStore } from "@/store/wallet";
 import type { CanvasEdge, CanvasNode } from "@/types";
 import { useCurrentCanvasId } from "@/utils/canvas/canvas-id";
 import { ApiError } from "@/utils/requests/request";
@@ -171,7 +171,7 @@ export function useStoryboardSplitSync() {
       id,
       incoming.map((s) => s.id),
     );
-    void useCreditsStore.getState().refresh();
+    void useWalletStore.getState().fetchBalance();
     // 覆盖丢掉了原来的镜头：给一个能撤销的出口（画布撤销栈已盯着分镜表的改动）
     if (mode === "replace" && existing.shots.length > 0) {
       toast.success(`已覆盖为 ${incoming.length} 个镜头`, {

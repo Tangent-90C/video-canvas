@@ -208,7 +208,17 @@ func bizErrOf(t *testing.T, err error, want *errcode.Error) *errcode.Error {
 
 // ---- 积分调整 ----
 
-func TestAdminUser_AdjustCredits(t *testing.T) {
+func TestAdminUser_AdjustCreditsDisabled(t *testing.T) {
+	e := newOpsEnv()
+	_, err := e.svc.AdjustCredits(context.Background(), opsAdmin, opsTom, &model.AdjustCreditsReq{Mode: model.CreditModeAdd, Amount: intp(10), Note: "补发"})
+	wantBizErr(t, err, errcode.ErrForbidden)
+	if e.credits.accounts[opsTom].Balance != 100 || len(e.credits.adjustLedger()) != 0 || len(e.audit.logs) != 0 {
+		t.Fatal("停用后的积分调整不得改账户、流水或审计")
+	}
+}
+
+func TestAdminUser_AdjustCreditsHistorical(t *testing.T) {
+	t.Skip("平台积分调账已停用，历史行为仅保留数据结构兼容")
 	ctx := context.Background()
 
 	t.Run("成功：add / sub / set 的 delta、余额、流水与审计", func(t *testing.T) {
@@ -572,7 +582,17 @@ func TestAdminUser_SetStatus(t *testing.T) {
 
 // ---- 批量 ----
 
-func TestAdminUser_BatchCredits(t *testing.T) {
+func TestAdminUser_BatchCreditsDisabled(t *testing.T) {
+	e := newOpsEnv()
+	res, err := e.svc.BatchAddCredits(context.Background(), opsAdmin, []uint64{opsTom}, 10, "活动")
+	wantBizErr(t, err, errcode.ErrForbidden)
+	if res != nil || e.credits.accounts[opsTom].Balance != 100 || len(e.credits.adjustLedger()) != 0 || len(e.audit.logs) != 0 {
+		t.Fatal("停用后的批量发积分不得产生任何写入")
+	}
+}
+
+func TestAdminUser_BatchCreditsHistorical(t *testing.T) {
+	t.Skip("平台积分批量发放已停用，历史行为仅保留数据结构兼容")
 	ctx := context.Background()
 	e := newOpsEnv()
 	e.credits.put(opsAdm2, 0, 0)

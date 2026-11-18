@@ -8,7 +8,7 @@
 //   - provider/plugin        宿主：Executor 的唯一实现，调钩子 → 校验请求描述 → 注入鉴权 → 发 HTTP → 解析结果
 //   - provider/netguard      出网的 SSRF 防护传输层
 //   - service                模型配置的草稿 / 发布 / 回滚，插件与渠道管理，实现 Registry 与 SecretResolver
-//   - service/generation_task + provider/worker  任务提交、状态迁移、积分事务、轮询调度、转存
+//   - service/generation_task + provider/worker  任务提交、状态迁移、轮询调度、转存
 package provider
 
 import (
@@ -26,10 +26,10 @@ type ErrorClass string
 
 const (
 	ClassRetryable       ErrorClass = "retryable"        // 网络 / 5xx / 429：退避重试
-	ClassTerminal        ErrorClass = "terminal"         // 参数 / 平台拒绝 / 插件出错：直接失败并退积分
+	ClassTerminal        ErrorClass = "terminal"         // 参数 / 平台拒绝 / 插件出错：直接失败
 	ClassModeration      ErrorClass = "moderation"       // 内容审核未通过：失败，文案“内容未通过审核”
 	ClassProviderBalance ErrorClass = "provider_balance" // 上游账户余额不足：失败，对用户显示“服务繁忙”，告警运维
-	ClassSubmitUnknown   ErrorClass = "submit_unknown"   // 提交读超时，结果未知：失败并退积分，记录告警供人工核对
+	ClassSubmitUnknown   ErrorClass = "submit_unknown"   // 提交读超时，结果未知：失败并记录告警供人工核对
 	// ClassSecretUnavailable 与 ClassKeyQuota 目前只由宿主按 TokenDance 的恢复动作响应头判定
 	// （https://tokendance.space/docs/api-key-oauth.md#recover-key）：Key 失效时重新授权，周期额度用尽时等待刷新或重新授权。
 	// 钱包任务对这两类有专属文案（worker 的 failureForWallet），普通渠道任务走 failureFor 的通用文案。
@@ -42,7 +42,7 @@ const (
 	// CodeRunnerUnavailable 表示 plugin-runner 连不上：ClassRetryable，但任务应保持 pending 直到恢复（不消耗重试次数，
 	// 由任务 deadline 兜底），恢复后继续。
 	CodeRunnerUnavailable = "plugin_runner_unavailable"
-	// CodeRunnerCrashed 表示调用进行中 runner 进程崩溃（如内存超限）：ClassRetryable，但只重试一次，再次崩溃就失败退积分。
+	// CodeRunnerCrashed 表示调用进行中 runner 进程崩溃（如内存超限）：ClassRetryable，但只重试一次，再次崩溃就失败。
 	CodeRunnerCrashed = "plugin_runner_crashed"
 	// CodePluginError 表示插件抛异常、超时被中断、返回值结构不合规、请求描述非法：ClassTerminal，告警。
 	CodePluginError = "plugin_error"
@@ -270,6 +270,18 @@ var (
 	ErrImportUnsupported = errors.New("插件不支持导入模型")
 )
 
+// UpstreamPricing 是上游模型的公开价目摘要，只用于展示，不参与本站平台积分计价。
+// 金额单位由 Currency 表示；Min / Max 覆盖同模型不同协议或 SKU 的公开价格区间。
+type UpstreamPricing struct {
+	Currency string   `json:"currency"` // 如 CNY
+	Label    string   `json:"label"`    // 面向用户的完整摘要
+	Input    *float64 `json:"input,omitempty"`
+	Output   *float64 `json:"output,omitempty"`
+	Min      *float64 `json:"min,omitempty"`
+	Max      *float64 `json:"max,omitempty"`
+	Unit     string   `json:"unit,omitempty"`
+}
+
 // ModelInfo 是面向画布的模型信息（GET /models），不含 params / 渠道 / 插件细节。
 type ModelInfo struct {
 	Key          string                `json:"key"`
@@ -278,11 +290,12 @@ type ModelInfo struct {
 	Hint         string                `json:"hint"`
 	Vendor       string                `json:"vendor"`
 	Tags         []string              `json:"tags"`
-	Pricing      modelcfg.Pricing      `json:"pricing"` // 不含积分成本
 	Capabilities modelcfg.Capabilities `json:"capabilities"`
 	Wallet       bool                  `json:"wallet,omitempty"` // 钱包渠道的模型：用发起用户自己的 TokenDance Key 支付，不扣平台积分
 	// UpstreamModel 是上游模型名：钱包模型用它匹配 TokenDance 调用记录里的 model_id，把真实花费对到本站记录上
 	UpstreamModel string `json:"upstream_model,omitempty"`
+	// UpstreamPricing 是钱包模型的上游公开价目；普通平台模型为空
+	UpstreamPricing *UpstreamPricing `json:"upstream_pricing,omitempty"`
 }
 
 // Registry 只读访问“已发布”的模型配置。实现方缓存编译结果，发布 / 回滚 / 渠道变更后热生效。

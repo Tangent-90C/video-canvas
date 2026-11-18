@@ -12,7 +12,6 @@ import (
 
 	"video-canvas/internal/llmgateway"
 	"video-canvas/internal/provider"
-	"video-canvas/internal/provider/modelcfg"
 )
 
 // maxAttempts 是一次运行最多调用模型的次数：首次加一次带原因的重写。
@@ -198,23 +197,13 @@ func buildMessage(prompt string, media []llmgateway.Part) llmgateway.Message {
 	return llmgateway.Message{Role: llmgateway.RoleUser, Parts: parts}
 }
 
-// Cost 按模型定价和实际用量算一次运行应收的积分（各次调用累加）；上游没给用量时按预估收。
-func Cost(snap *provider.Snapshot, res *Result) int {
-	var usage *modelcfg.Usage
-	if !res.UsageMissing {
-		usage = &modelcfg.Usage{InputTokens: max(0, res.Usage.InputTokens), OutputTokens: max(0, res.Usage.OutputTokens)}
-	}
-	quoted := modelcfg.Quote(snap.Model.Pricing, snap.Model.Capabilities, modelcfg.Spec{PromptChars: res.PromptChars, Params: map[string]any{}})
-	return modelcfg.Settle(snap.Model.Pricing, quoted, usage)
-}
+// Cost 只返回历史兼容值 0；上游费用由用户自己的 TokenPay 钱包直接结算。
+func Cost(_ *provider.Snapshot, _ *Result) int { return 0 }
 
-// Estimate 按提示词字数预估一次运行的最高费用（假设用满重写次数），用于冻结积分。
-func Estimate(snap *provider.Snapshot, step Step, method Method, in Input) (int, error) {
-	prompt, err := BuildPrompt(step, method, in, nil)
-	if err != nil {
+// Estimate 保留提示词构建校验；平台积分已停用，兼容返回值恒为 0。
+func Estimate(_ *provider.Snapshot, step Step, method Method, in Input) (int, error) {
+	if _, err := BuildPrompt(step, method, in, nil); err != nil {
 		return 0, err
 	}
-	chars := utf8.RuneCountInString(prompt)
-	one := modelcfg.Quote(snap.Model.Pricing, snap.Model.Capabilities, modelcfg.Spec{PromptChars: chars, Params: map[string]any{}})
-	return one * maxAttempts, nil
+	return 0, nil
 }

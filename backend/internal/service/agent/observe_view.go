@@ -124,7 +124,7 @@ func exportView(f *model.AgentExportFacts) *RunExportView {
 			req = requestSummary(b)
 		}
 		v.ModelCalls = append(v.ModelCalls, &ModelCallView{ID: idcodec.ID(m.ID), Request: req, Purpose: m.Purpose, ModelKey: m.ModelKey, ChannelKey: m.ChannelKey, UpstreamModel: m.UpstreamModel,
-			InputTokens: m.InputTokens, OutputTokens: m.OutputTokens, CachedTokens: m.CachedTokens, UsageEstimated: m.UsageEstimated, Credits: m.Credits, Charged: m.Charged,
+			InputTokens: m.InputTokens, OutputTokens: m.OutputTokens, CachedTokens: m.CachedTokens, UsageEstimated: m.UsageEstimated, Credits: 0, Charged: 0,
 			LatencyMs: m.LatencyMs, TTFTMs: m.TTFTMs, StopReason: m.StopReason, Error: m.Error, CreatedAt: m.CreatedAt})
 	}
 	for i := range f.Mutations {
@@ -134,7 +134,7 @@ func exportView(f *model.AgentExportFacts) *RunExportView {
 	}
 	for i := range f.Approvals {
 		a := &f.Approvals[i]
-		v.Approvals = append(v.Approvals, &ApprovalExport{ID: idcodec.ID(a.ID), Kind: a.Kind, ToolCallID: a.ToolCallID, Status: a.Status, QuoteCredits: a.QuoteCredits,
+		v.Approvals = append(v.Approvals, &ApprovalExport{ID: idcodec.ID(a.ID), Kind: a.Kind, ToolCallID: a.ToolCallID, Status: a.Status, QuoteCredits: 0,
 			Payload: json.RawMessage(a.PayloadJSON), Decision: json.RawMessage(a.DecisionJSON), Result: json.RawMessage(a.ResultJSON), DecidedAt: a.DecidedAt})
 	}
 	if f.Feedback != nil {

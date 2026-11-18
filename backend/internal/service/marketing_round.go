@@ -22,9 +22,12 @@ type roundSpec struct {
 	textModels  map[string]string // 环节 key → 预选的文本模型（运行时按能力再确认）
 }
 
-// CreateProject 建营销项目并开第一轮：校验素材、视频模型和文本模型 → 同事务建项目、轮次、环节运行、冻结积分并入队。
-// 错误：商品图 / 素材无效 68002、没有可用文本模型 68003、视频模型不满足 68004、参考视频超限 68005、积分不足 40001。
+// CreateProject 建营销项目并开第一轮：校验素材、视频模型和文本模型 → 同事务建项目、轮次、环节运行并入队。
+// 错误：商品图 / 素材无效 68002、没有可用文本模型 68003、视频模型不满足 68004、参考视频超限 68005。
 func (s *MarketingService) CreateProject(ctx context.Context, userID uint64, req *model.CreateMarketingProjectReq) (*model.MarketingProjectView, error) {
+	if err := s.ensureWallet(ctx, userID); err != nil {
+		return nil, err
+	}
 	st := normalizeSettings(req.Settings)
 	refID := optionalID(req.RefVideoAssetID)
 	modelID := optionalID(req.ModelAssetID)
@@ -71,7 +74,7 @@ func (s *MarketingService) CreateProject(ctx context.Context, userID uint64, req
 	return s.GetProject(ctx, userID, p.ID)
 }
 
-// prepareRound 在事务外算好一轮的预估积分和预选文本模型。
+// prepareRound 在事务外预选文本模型。历史积分成本字段保留为 0 兼容旧客户端。
 func (s *MarketingService) prepareRound(ctx context.Context, st model.MarketingSettings, refID, modelID *uint64, hasFacts bool, createCount int) (roundSpec, error) {
 	hasRef := refID != nil
 	costs, err := s.quoteSteps(ctx, st, hasRef, hasFacts, createCount)
@@ -92,7 +95,7 @@ func (s *MarketingService) prepareRound(ctx context.Context, st model.MarketingS
 	return spec, nil
 }
 
-// insertRound 在项目已加锁（或刚创建）的事务里写入一轮：轮次、环节运行、冻结积分、入队 River job。
+// insertRound 在项目已加锁（或刚创建）的事务里写入一轮：轮次、环节运行和历史兼容字段，并入队 River job。
 // 项目已有写脚本中的轮次返回 68007。
 func (s *MarketingService) insertRound(ctx context.Context, tx repository.MarketingTx, p *model.MarketingProject, sp roundSpec) (*model.MarketingRound, error) {
 	if n, err := tx.ScriptingRounds(ctx, p.ID); err != nil {
@@ -110,7 +113,7 @@ func (s *MarketingService) insertRound(ctx context.Context, tx repository.Market
 		plan++
 	}
 	round := &model.MarketingRound{UserID: p.UserID, ProjectID: p.ID, Status: model.MarketingRoundScripting, Warnings: []byte("[]"),
-		Settings: settingsJSON, RefVideoAssetID: sp.refID, ModelAssetID: sp.modelID, PlanCount: plan, Frozen: sp.costs.total()}
+		Settings: settingsJSON, RefVideoAssetID: sp.refID, ModelAssetID: sp.modelID, PlanCount: plan, Frozen: 0}
 	if err := tx.InsertRound(ctx, round); err != nil {
 		return nil, err
 	}
@@ -122,13 +125,13 @@ func (s *MarketingService) insertRound(ctx context.Context, tx repository.Market
 	if sp.hasFacts {
 		add(marketing.StepFacts, 0, model.MarketingRunReused)
 	} else {
-		add(marketing.StepFacts, sp.costs.facts, model.MarketingRunQueued)
+		add(marketing.StepFacts, 0, model.MarketingRunQueued)
 	}
 	if hasRef {
-		add(marketing.StepReverse, sp.costs.reverse, model.MarketingRunQueued)
-		add(marketing.StepFollow, sp.costs.follow, model.MarketingRunQueued)
+		add(marketing.StepReverse, 0, model.MarketingRunQueued)
+		add(marketing.StepFollow, 0, model.MarketingRunQueued)
 	}
-	add(marketing.StepCreate, sp.costs.create, model.MarketingRunQueued)
+	add(marketing.StepCreate, 0, model.MarketingRunQueued)
 	if err := s.insertRuns(ctx, tx, p.UserID, runs); err != nil {
 		return nil, err
 	}
@@ -143,57 +146,24 @@ func (s *MarketingService) insertRound(ctx context.Context, tx repository.Market
 	return round, nil
 }
 
-// insertRuns 写入环节运行并冻结它们的积分：账户锁内检查可用积分够不够（40001），每个环节一条冻结流水。
+// insertRuns 写入环节运行。费用由用户 TokenPay 钱包在上游直接结算，平台不冻结积分。
 func (s *MarketingService) insertRuns(ctx context.Context, tx repository.MarketingTx, userID uint64, runs []*model.MarketingStepRun) error {
-	total := 0
-	for _, r := range runs {
-		total += r.Frozen
-	}
-	if total > 0 {
-		initial, err := s.initialCredits(ctx)
-		if err != nil {
-			return err
-		}
-		if err := tx.EnsureCredit(ctx, userID, initial); err != nil {
-			return err
-		}
-		acc, err := tx.LockCredit(ctx, userID)
-		if err != nil {
-			return err
-		}
-		if acc.Balance-acc.Frozen < total {
-			return errcode.ErrInsufficientCredits
-		}
-	}
 	for _, r := range runs {
 		r.CreatedAt = s.now()
+		r.Frozen = 0
 		if err := tx.InsertRun(ctx, r); err != nil {
 			return err
 		}
-		if r.Frozen <= 0 {
-			continue
-		}
-		if _, err := tx.InsertLedger(ctx, &model.CreditLedger{UserID: userID, MarketingRunID: &r.ID, Type: model.LedgerFreeze, Amount: r.Frozen}); err != nil {
-			return err
-		}
-	}
-	if total > 0 {
-		return tx.AddCredit(ctx, userID, 0, total)
 	}
 	return nil
-}
-
-// initialCredits 返回新积分账户的初始积分。
-func (s *MarketingService) initialCredits(ctx context.Context) (int, error) {
-	if s.credits == nil {
-		return DefaultInitialCredits, nil
-	}
-	return s.credits.InitialCredits(ctx)
 }
 
 // NewRound 给已有项目开新一轮。不传模特图沿用项目已有的，传了就替换项目的模特图。
 // 错误：项目不存在 68001、项目正在写脚本 68007，其余同创建项目。
 func (s *MarketingService) NewRound(ctx context.Context, userID, projectID uint64, req *model.CreateMarketingRoundReq) (*model.MarketingRoundView, error) {
+	if err := s.ensureWallet(ctx, userID); err != nil {
+		return nil, err
+	}
 	p, err := s.repo.Project(ctx, userID, projectID, false)
 	if mktNotFound(err) {
 		return nil, errcode.ErrMarketingNotFound
@@ -287,7 +257,7 @@ func (s *MarketingService) CancelRound(ctx context.Context, userID, roundID uint
 	return s.viewAndPush(ctx, userID, roundID)
 }
 
-// closeRun 把一个还没结算的环节运行关掉（跳过 / 取消）并全额解冻。已被别处结算的运行不处理。
+// closeRun 把一个还没结束的环节运行关掉（跳过 / 取消）。平台不冻结、不退款。
 func (s *MarketingService) closeRun(ctx context.Context, tx repository.MarketingTx, run *model.MarketingStepRun, status, msg string) error {
 	now := s.now()
 	err := tx.UpdateRunIf(ctx, run.ID, []string{model.MarketingRunQueued, model.MarketingRunRunning},
@@ -297,38 +267,6 @@ func (s *MarketingService) closeRun(ctx context.Context, tx repository.Marketing
 	}
 	if err != nil {
 		return err
-	}
-	return s.settleRun(ctx, tx, run, 0)
-}
-
-// settleRun 结算一个环节运行的冻结：扣 charged，其余退回，写 settle / refund 流水，更新账户和轮次累计。
-// 调用方保证同一运行只结算一次（UpdateRunIf 的状态迁移）；流水唯一索引是最后一道防线。
-func (s *MarketingService) settleRun(ctx context.Context, tx repository.MarketingTx, run *model.MarketingStepRun, charged int) error {
-	charged = min(max(charged, 0), run.Frozen)
-	if run.Frozen > 0 {
-		if _, err := tx.LockCredit(ctx, run.UserID); err != nil {
-			return err
-		}
-		inserted, err := tx.InsertLedger(ctx, &model.CreditLedger{UserID: run.UserID, MarketingRunID: &run.ID, Type: model.LedgerSettle, Amount: charged})
-		if err != nil {
-			return err
-		}
-		if rest := run.Frozen - charged; rest > 0 {
-			if _, err := tx.InsertLedger(ctx, &model.CreditLedger{UserID: run.UserID, MarketingRunID: &run.ID, Type: model.LedgerRefund, Amount: rest}); err != nil {
-				return err
-			}
-		}
-		if inserted {
-			if err := tx.AddCredit(ctx, run.UserID, -charged, -run.Frozen); err != nil {
-				return err
-			}
-		}
-	}
-	if charged > 0 {
-		if err := tx.UpdateRun(ctx, run.ID, map[string]any{"charged": charged}); err != nil {
-			return err
-		}
-		return tx.UpdateRound(ctx, run.RoundID, map[string]any{"charged": repository.Add("charged", charged)})
 	}
 	return nil
 }

@@ -134,7 +134,6 @@ export function ResultCell({
           view={{
             phase: "failed",
             message: cell.message,
-            refunded: (task?.charged_credits ?? 0) === 0 && task?.credits !== 0,
             taskRef: cell.taskRef,
             ...(cell.walletRecharge ? { walletRecharge: true } : {}),
           }}
@@ -147,7 +146,7 @@ export function ResultCell({
       return (
         <div className={cn(PLACEHOLDER, size)} style={frame}>
           <div className="grid justify-items-center">
-            已取消 · {cell.refunded ? "积分已退回" : "积分不退回"}
+            已取消
             {retry}
           </div>
         </div>

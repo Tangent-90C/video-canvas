@@ -128,8 +128,9 @@ func NewAgentBridge(d BridgeDeps) *AgentBridge {
 	return &AgentBridge{d: d, platformRuns: map[uint64]*platformRun{}}
 }
 
-// resolveModel 取模型当前发布版本的快照和渠道 Key。不可用、不是 agent 种类、Key 没设置，都按「Agent 模型不可用」处理。
-func (b *AgentBridge) resolveModel(ctx context.Context, modelKey string) (*provider.Snapshot, string, error) {
+// resolveModel 取 Agent 钱包模型的快照和发起用户自己的 TokenPay Key。
+// 非钱包模型、未登录用户和 Key 不可用都拒绝；不存在平台渠道 Key 兜底。
+func (b *AgentBridge) resolveModel(ctx context.Context, modelKey string, userID uint64) (*provider.Snapshot, string, error) {
 	snap, err := b.d.Registry.Snapshot(ctx, modelKey)
 	if errors.Is(err, provider.ErrModelUnavailable) {
 		return nil, "", errcode.ErrAgentModelNA
@@ -140,10 +141,16 @@ func (b *AgentBridge) resolveModel(ctx context.Context, modelKey string) (*provi
 	if snap.Model.Kind != "agent" {
 		return nil, "", errcode.ErrAgentModelNA
 	}
-	key, err := b.d.Secrets.Get(ctx, model.ChannelSecretName(snap.Channel.Key))
+	if !snap.Channel.Wallet {
+		return nil, "", errcode.ErrAgentModelNA.WithMsg("该 Agent 模型未接入 TokenPay 钱包")
+	}
+	if userID == 0 {
+		return nil, "", errcode.ErrWalletNotConnected
+	}
+	key, err := b.d.Secrets.Get(ctx, model.WalletSecretName(userID))
 	if err != nil {
-		logger.Warn("Agent 渠道 Key 读取失败", zap.String("channel", snap.Channel.Key), zap.Error(err))
-		return nil, "", errcode.ErrAgentModelNA
+		logger.Warn("Agent 钱包 Key 读取失败", zap.String("channel", snap.Channel.Key), zap.Uint64("user_id", userID), zap.Error(err))
+		return nil, "", errcode.ErrWalletNotConnected
 	}
 	return snap, key, nil
 }

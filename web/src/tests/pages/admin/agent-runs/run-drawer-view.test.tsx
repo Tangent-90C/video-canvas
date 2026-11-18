@@ -52,7 +52,6 @@ describe("抽屉：头部、Harness、操作栏", () => {
         digest: digest({
           status: "failed",
           steps: 7,
-          spent_credits: 12,
           input_tokens: 1200,
           output_tokens: 300,
         }),
@@ -63,17 +62,9 @@ describe("抽屉：头部、Harness、操作栏", () => {
     expect(out).toContain("失败");
     expect(out).toContain("1m5s");
     expect(out).toContain(">7<");
-    expect(out).toContain(">12<");
+    expect(out).not.toContain(">积分<");
     expect(out).toContain("1,200 / 300");
-    for (const label of [
-      "状态",
-      "创建时间",
-      "结束时间",
-      "耗时",
-      "步数",
-      "积分",
-      "Token（输入 / 输出）",
-    ])
+    for (const label of ["状态", "创建时间", "结束时间", "耗时", "步数", "Token（输入 / 输出）"])
       expect(out).toContain(label);
   });
   test("时间线里没有 user 步骤：退回请求首句", () => {

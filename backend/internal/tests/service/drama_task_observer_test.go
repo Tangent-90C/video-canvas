@@ -15,16 +15,16 @@ func TestGenerationTaskService_ObserverCannotUndoSettlement(t *testing.T) {
 	for _, node := range []string{"seg:abc", "canvas-node", "rec:12:0"} {
 		t.Run(node, func(t *testing.T) {
 			env := newTaskSvcEnv(defaultTaskLimits())
-			env.repo.addCredit(1, 100, 10)
-			task := env.repo.addTask(model.GenerationTask{UserID: 1, NodeID: node, Kind: model.KindVideo, Status: model.TaskFinalizing, Credits: 10})
+			task := env.repo.addTask(model.GenerationTask{UserID: 1, NodeID: node, Kind: model.KindVideo, Status: model.TaskFinalizing, Wallet: true, Credits: 0})
 			observer := &failingTaskObserver{}
 			env.svc.SetTaskObserver(observer)
 			applied, err := env.svc.Complete(context.Background(), task, []model.TaskOutput{{AssetID: 9, MediaType: "video"}}, nil)
 			if err != nil || !applied {
 				t.Fatalf("结算失败：applied=%v err=%v", applied, err)
 			}
-			if env.repo.tasks[task.ID].Status != model.TaskSucceeded || env.repo.credits[1].Balance != 90 || env.repo.credits[1].Frozen != 0 {
-				t.Fatalf("观察者故障破坏任务或积分：task=%+v credit=%+v", env.repo.tasks[task.ID], env.repo.credits[1])
+			_, hasCredit := env.repo.credits[1]
+			if env.repo.tasks[task.ID].Status != model.TaskSucceeded || env.repo.tasks[task.ID].Credits != 0 || hasCredit || len(env.repo.ledger) != 0 {
+				t.Fatalf("观察者故障破坏任务或创建了积分账户：task=%+v credits=%v ledger=%+v", env.repo.tasks[task.ID], env.repo.credits, env.repo.ledger)
 			}
 			if observer.status != model.TaskSucceeded || observer.assetID != 9 {
 				t.Fatalf("观察者未见到已提交产物：%+v", observer)

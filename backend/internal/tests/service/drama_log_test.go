@@ -115,8 +115,8 @@ func TestDramaLog_InvalidOutputTwice(t *testing.T) {
 	}
 	wantFields(t, "run.finish", fins[0], map[string]any{"status": "failed", "level": "warn", "error_type": "invalid_output",
 		"error_code": float64(67008), "last_call_id": steps[1]["call_id"], "run_id": runID})
-	if _, ok := fins[0]["refunded"]; !ok {
-		t.Errorf("失败收尾应带退回的积分：%v", fins[0])
+	if _, ok := fins[0]["refunded"]; ok {
+		t.Errorf("平台积分退款已停用，不应再记录 refunded：%v", fins[0])
 	}
 }
 
@@ -133,7 +133,10 @@ func TestDramaLog_Success(t *testing.T) {
 	if len(fins) != 1 {
 		t.Fatalf("应有 1 行 run.finish：%v", fins)
 	}
-	wantFields(t, "run.finish", fins[0], map[string]any{"status": "succeeded", "level": "info", "credits": float64(5)})
+	wantFields(t, "run.finish", fins[0], map[string]any{"status": "succeeded", "level": "info"})
+	if _, ok := fins[0]["credits"]; ok {
+		t.Errorf("平台积分已停用，成功收尾不应再记录 credits：%v", fins[0])
+	}
 	if _, ok := fins[0]["last_call_id"]; ok {
 		t.Errorf("成功收尾不带 last_call_id：%v", fins[0])
 	}

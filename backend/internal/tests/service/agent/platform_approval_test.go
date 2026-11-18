@@ -52,10 +52,10 @@ func TestProposeApproval_GenerateQuotesWithoutCreatingAnything(t *testing.T) {
 	if err := json.Unmarshal(p.Payload, &payload); err != nil {
 		t.Fatal(err)
 	}
-	if payload.Reason != "出角色图" || len(payload.Items) != 1 || payload.Items[0].NodeID != e.imgID(t) || payload.Items[0].Price != 5 || payload.Items[0].ModelKey != "seedream" {
+	if payload.Reason != "出角色图" || len(payload.Items) != 1 || payload.Items[0].NodeID != e.imgID(t) || payload.Items[0].Price != 0 || payload.Items[0].ModelKey != "seedream" {
 		t.Errorf("审批内容: %+v", payload)
 	}
-	if p.QuoteCredits != 5 || !strings.Contains(p.Summary, "预估 5 积分") || !strings.Contains(p.Content, "等待决定") {
+	if p.QuoteCredits != 0 || !strings.Contains(p.Content, "等待决定") {
 		t.Errorf("预估积分、摘要、给模型看的文字: %+v", p)
 	}
 }
@@ -154,7 +154,7 @@ func TestProposeApproval_AskValidatesAndListsModels(t *testing.T) {
 		t.Fatal(err)
 	}
 	if a.Kind != "model" || len(a.Models) != 1 || a.Models[0].Key != "seedream" {
-		t.Errorf("选模型题要列出已发布的图片模型: %+v", a)
+		t.Errorf("选模型题只能列出已发布的 TokenPay 钱包图片模型: %+v", a)
 	}
 	for name, args := range map[string]any{
 		"问题为空":     map[string]any{"question": " ", "kind": "choice", "options": []string{"a", "b"}},
@@ -304,10 +304,10 @@ func TestResolveApproval_StatusAndExecutionPlan(t *testing.T) {
 		}
 		return out
 	}
-	if o := resolve(model.ApprovalGenerate, gen, model.DecideAgentApprovalReq{Decision: "approve"}); o.Status != model.ApprovalApproved || o.QuoteCredits != 24 || len(o.Items) != 2 {
+	if o := resolve(model.ApprovalGenerate, gen, model.DecideAgentApprovalReq{Decision: "approve"}); o.Status != model.ApprovalApproved || o.QuoteCredits != 0 || len(o.Items) != 2 {
 		t.Errorf("整体批准: %+v", o)
 	}
-	if o := resolve(model.ApprovalGenerate, gen, model.DecideAgentApprovalReq{Decision: "approve", Items: []model.ApprovalItemDecision{{Index: 0, Approve: true, Count: 1}}}); o.Status != model.ApprovalPartial || o.QuoteCredits != 8 {
+	if o := resolve(model.ApprovalGenerate, gen, model.DecideAgentApprovalReq{Decision: "approve", Items: []model.ApprovalItemDecision{{Index: 0, Approve: true, Count: 1}}}); o.Status != model.ApprovalPartial || o.QuoteCredits != 0 {
 		t.Errorf("部分批准要标成 partial: %+v", o)
 	}
 	if o := resolve(model.ApprovalGenerate, gen, model.DecideAgentApprovalReq{Decision: "reject", Answer: "太贵"}); o.Status != model.ApprovalRejected || len(o.Items) != 0 || o.QuoteCredits != 0 {
@@ -319,8 +319,7 @@ func TestResolveApproval_StatusAndExecutionPlan(t *testing.T) {
 	}
 }
 
-func TestResolveApproval_UsesModelSpendFromCallRecords(t *testing.T) {
-	// 本轮已花 = 调用方声明的 spent_extra + Go 按调用记录累加的模型调用实扣：模型调用花掉的积分也要占预算
+func TestResolveApproval_IgnoresHistoricalModelSpend(t *testing.T) {
 	b := newBridgeEnv(t)
 	rc := platformCtx(900303, "all")
 	rc.BudgetCredits = 30
@@ -331,9 +330,10 @@ func TestResolveApproval_UsesModelSpendFromCallRecords(t *testing.T) {
 	if _, err := b.br.ResolveApproval(context.Background(), rc, model.ApprovalGenerate, gen, model.DecideAgentApprovalReq{Decision: "approve"}); err != nil {
 		t.Fatalf("5 + 24 = 29 不超过预算 30: %v", err)
 	}
-	rc.SpentExtra = 2 // 再有 2 积分花在别处：5 + 2 + 24 = 31 > 30
-	_, err := b.br.ResolveApproval(context.Background(), rc, model.ApprovalGenerate, gen, model.DecideAgentApprovalReq{Decision: "approve"})
-	wantAgentCode(t, err, errcode.ErrAgentOverBudget)
+	rc.SpentExtra = 1000
+	if _, err := b.br.ResolveApproval(context.Background(), rc, model.ApprovalGenerate, gen, model.DecideAgentApprovalReq{Decision: "approve"}); err != nil {
+		t.Fatalf("历史已花积分不应拦审批：%v", err)
+	}
 }
 
 func TestResolveApproval_RejectsBadInput(t *testing.T) {
@@ -463,7 +463,7 @@ func TestExecuteApproval_GenerateSubmitsTasksWithApprovalKeysAndReplaysWithoutRe
 	if want := fmt.Sprintf("agent-%d-0", execApprovalID); len(e.tasks.keys) != 1 || e.tasks.keys[0] != want {
 		t.Errorf("任务幂等键应是 %s: %v", want, e.tasks.keys)
 	}
-	if !strings.Contains(first.OutcomeText, "用户批准了生成：角色×1") || !strings.Contains(first.OutcomeText, "预估 5 积分") || !strings.Contains(first.OutcomeText, `"task_id":"101"`) {
+	if !strings.Contains(first.OutcomeText, "用户批准了生成：角色×1") || strings.Contains(first.OutcomeText, "积分") || !strings.Contains(first.OutcomeText, `"task_id":"101"`) {
 		t.Errorf("给模型看的文字: %s", first.OutcomeText)
 	}
 	if d := node(t, e.repo, e.imgID(t)).Data(); d["taskId"] != "101" {

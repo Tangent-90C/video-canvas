@@ -85,7 +85,7 @@ func digestView(d *model.AgentRunDigest) *AgentRunDigestView {
 	return &AgentRunDigestView{RunID: idcodec.ID(d.RunID), SessionID: idcodec.ID(d.SessionID), UserID: d.UserID, CanvasID: idcodec.ID(d.CanvasID),
 		Mode: d.Mode, ModelKey: d.ModelKey, PromptVersion: d.PromptVersion, ToolsHash: d.ToolsHash, BuildSHA: d.BuildSHA, HarnessKey: d.HarnessKey, Skills: skills,
 		Status: d.Status, ErrorCode: d.ErrorCode, RequestHead: d.RequestHead, Steps: d.Steps, ToolCalls: d.ToolCalls, ToolErrors: d.ToolErrors, ModelCalls: d.ModelCalls,
-		InputTokens: d.InputTokens, OutputTokens: d.OutputTokens, SpentCredits: d.SpentCredits, DurationMs: d.DurationMs, ApprovalsTotal: d.ApprovalsTotal,
+		InputTokens: d.InputTokens, OutputTokens: d.OutputTokens, SpentCredits: 0, DurationMs: d.DurationMs, ApprovalsTotal: d.ApprovalsTotal,
 		ApprovalsRejected: d.ApprovalsRejected, SteerCount: d.SteerCount, MutationCount: d.MutationCount, Undone: d.Undone, Feedback: d.Feedback,
 		EndedAt: d.EndedAt, CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt}
 }

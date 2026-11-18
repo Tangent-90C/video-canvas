@@ -10,7 +10,7 @@ import { reconcileTaskIds } from "@/utils/ws/task-events";
 /**
  * 角色卡节点上声音任务的回填（在始终挂载的节点组件里调用一次）：
  * - 任务成功：把产出的音频绑成角色的声音，清掉 voiceTaskId；
- * - 任务取消：清掉 voiceTaskId，提示积分已退回；失败的留着，详情页要显示原因和重试；
+ * - 任务取消：清掉 voiceTaskId；失败的留着，详情页要显示原因和重试；
  * - 刷新后只有 voiceTaskId、本地没有快照：按 id 对账一次，服务端说没有这个任务就清掉记录，别让声音格一直转圈。
  * 声音任务不占节点的 status / taskId，所以不走画布的通用回填（utils/tasks/backfill）。
  * @param id 角色卡节点 id
@@ -24,19 +24,16 @@ export function useVoiceBackfill(id: string, data: CanvasNodeData): VoiceTaskVie
   const state = voiceTaskView(taskId, view);
   const phase = state.phase;
   const asset = state.phase === "done" ? state.asset : null;
-  const refunded = state.phase === "canceled" ? state.refunded : true;
 
   useEffect(() => {
     if (!taskId) return;
     if (asset) {
       updateNodeData(id, (node) => applyVoiceResult(node.data, asset));
     } else if (phase === "canceled") {
-      canvasNotice("info", `已取消生成声音，${refunded ? "积分已退回" : "积分不退回"}`, {
-        id: `voice-canceled:${taskId}`,
-      });
+      canvasNotice("info", "已取消生成声音", { id: `voice-canceled:${taskId}` });
       updateNodeData(id, { voiceTaskId: undefined });
     }
-  }, [asset, id, phase, refunded, taskId, updateNodeData]);
+  }, [asset, id, phase, taskId, updateNodeData]);
 
   useEffect(() => {
     if (!taskId || useTasksStore.getState().tasks[taskId]) return;

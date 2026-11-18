@@ -75,7 +75,7 @@ func newOpenAIImageEnvWithRunner(t *testing.T, failParse bool) *openaiimageEnv {
 func (e *openaiimageEnv) snapshot(baseURL, upstream string) *provider.Snapshot {
 	return &provider.Snapshot{
 		Model: provider.ModelSnapshot{Key: "m", Kind: "image", UpstreamModel: upstream, Capabilities: openaiimageCaps()},
-		Channel: provider.ChannelSnapshot{
+		Channel: provider.ChannelSnapshot{Wallet: true,
 			Key: "openai-image-main", PluginKey: "openai-image", PluginVersionID: 1, BaseURL: baseURL,
 		},
 		Plugin:          provider.PluginSnapshot{Key: "openai-image", Version: e.meta.Version, SHA256: e.sha, Meta: *e.meta},

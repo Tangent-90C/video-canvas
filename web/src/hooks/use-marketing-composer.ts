@@ -1,14 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 
 import { uploadAsset } from "@/api/asset";
-import { createMarketingProject, createMarketingRound, quoteMarketing } from "@/api/marketing";
+import { createMarketingProject, createMarketingRound } from "@/api/marketing";
 import type { MarketingAngle, PlatformOption, Project } from "@/api/marketing/type";
 import type { ModelInfo } from "@/api/model/type";
 import { useMarketingOptions } from "@/hooks/use-marketing-options";
 import { useRemoteModels } from "@/hooks/use-models";
-import { useCreditsStore } from "@/store/credits";
 import { useMarketingStore } from "@/store/marketing";
 import { useMarketingComposerStore, type MarketingSlot } from "@/store/marketing-composer";
 import {
@@ -29,9 +28,6 @@ import { refUploadError, toAssetNumber } from "@/utils/tasks/capabilities";
 
 /** 商品图最多几张 */
 const MAX_PRODUCTS = 4;
-
-/** 预估积分的防抖（毫秒）：设置连续变化时只问最后一次 */
-const QUOTE_DEBOUNCE_MS = 350;
 
 /** 本地预览地址：上传完成换成素材地址后要还回去 */
 const previews = new Map<string, string>();
@@ -66,8 +62,6 @@ export function useMarketingComposer(project?: Project) {
   const draft = useMarketingComposerStore((state) => state.draft);
   const videoModelKey = useMarketingComposerStore((state) => state.videoModel);
   const sending = useMarketingComposerStore((state) => state.sending);
-  const available = useCreditsStore((state) => state.credits?.available ?? null);
-  const refreshCredits = useCreditsStore((state) => state.refresh);
 
   const video = useRemoteModels("video");
   const agentText = useRemoteModels("agent");
@@ -140,40 +134,6 @@ export function useMarketingComposer(project?: Project) {
     }
   }, [videoModel, platformRatio, options.refVideoMaxSeconds]);
 
-  /** 写脚本预估积分：设置变化后防抖请求；失败不拦发送，由后端兜底 */
-  const [credits, setCredits] = useState<number | null>(null);
-  const quoteKey = useMemo(
-    () =>
-      videoModel
-        ? JSON.stringify([project?.id ?? "", hasRef, videoModel.key, draft, hasModelImage])
-        : null,
-    [videoModel, project?.id, hasRef, draft, hasModelImage],
-  );
-  useEffect(() => {
-    if (!videoModel || !quoteKey) return;
-    let alive = true;
-    const timer = window.setTimeout(() => {
-      quoteMarketing({
-        projectId: project?.id,
-        hasRef,
-        settings: toRoundSettings({ draft, hasRef, videoModel }),
-      })
-        .then((quote) => alive && setCredits(quote.credits))
-        .catch(() => alive && setCredits(null));
-    }, QUOTE_DEBOUNCE_MS);
-    return () => {
-      alive = false;
-      window.clearTimeout(timer);
-    };
-    // quoteKey 已经包含了 draft / 模型 / 参考的全部变化
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quoteKey]);
-
-  /** 余额没拿到时拉一次：发送前要知道够不够 */
-  useEffect(() => {
-    if (available === null) void refreshCredits();
-  }, [available, refreshCredits]);
-
   const state = useMemo(
     () =>
       evaluateMarketingSend(
@@ -186,8 +146,6 @@ export function useMarketingComposer(project?: Project) {
           ref: refSlot ? { durationSec: refSlot.durationSec, sizeBytes: refSlot.sizeBytes } : null,
           videoModel,
           visionModels: vision,
-          credits,
-          available,
           sending,
           scripting,
         },
@@ -202,8 +160,6 @@ export function useMarketingComposer(project?: Project) {
       refSlot,
       videoModel,
       vision,
-      credits,
-      available,
       sending,
       scripting,
       draft,
@@ -422,13 +378,12 @@ export function useMarketingComposer(project?: Project) {
         store.clearAfterProject();
         navigate(`/marketing/${created.id}`);
       }
-      void refreshCredits();
     } catch {
       // 请求层已弹错误提示（积分不足 40001、正在写脚本 68007 等），保留草稿方便重试
     } finally {
       useMarketingComposerStore.getState().setSending(false);
     }
-  }, [state.canSend, videoModel, hasRef, project, navigate, clearProducts, refreshCredits]);
+  }, [state.canSend, videoModel, hasRef, project, navigate, clearProducts]);
 
   return {
     dock,
@@ -447,8 +402,6 @@ export function useMarketingComposer(project?: Project) {
     support,
     textModels: vision,
     textStatus,
-    credits,
-    available,
     state,
     sending,
     addProductFiles,

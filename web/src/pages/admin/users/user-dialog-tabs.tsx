@@ -10,13 +10,11 @@ import {
 import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
 
-import { listUserLedger, listUserLogins, listUserTasks } from "@/api/admin/users";
+import { listUserLogins, listUserTasks } from "@/api/admin/users";
 import type {
-  LedgerFilter,
   LoginFilter,
   TaskFilter,
   UserDetail,
-  UserLedgerItem,
   UserLoginItem,
   UserTaskItem,
 } from "@/api/admin/users/type.d";
@@ -31,7 +29,6 @@ import { Segmented, SegmentedItem } from "@/components/admin-ui/segmented";
 import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
 import { formatShortTime } from "@/utils/time";
 import {
   AUDIT_ACTION_LABEL,
@@ -39,7 +36,6 @@ import {
   formatAbsolute,
   formatDurationMs,
   formatRelative,
-  LEDGER_TYPE_LABEL,
   loginResultView,
   parseUserAgent,
   taskStatusView,
@@ -189,11 +185,7 @@ function TasksTab({ userId, refreshKey }: { userId: number; refreshKey: number }
 function TaskRow({ task }: { task: UserTaskItem }) {
   const view = taskStatusView(task.status);
   const Icon = KIND_ICON[task.kind] ?? Clapperboard;
-  const cost = view.running
-    ? `冻结 ${task.credits}`
-    : task.charged_credits > 0
-      ? `-${task.charged_credits}`
-      : "0";
+  const cost = "TokenDance 账单";
   return (
     <div className="grid grid-cols-[5.5rem_1fr_auto_4rem_3rem] items-center gap-x-3 border-b py-2.5 text-sm last:border-b-0">
       <span className="text-muted-foreground text-xs tabular-nums">
@@ -220,78 +212,11 @@ function TaskRow({ task }: { task: UserTaskItem }) {
         )}
         {view.label}
       </Tag>
-      <span
-        className={cn(
-          "text-right font-mono tabular-nums",
-          task.charged_credits === 0 && !view.running && "text-muted-foreground",
-        )}
-      >
-        {cost}
-      </span>
+      <span className="text-muted-foreground text-right text-xs">{cost}</span>
       <span className="text-muted-foreground text-right text-xs tabular-nums">
         {formatDurationMs(task.duration_ms)}
       </span>
     </div>
-  );
-}
-
-const LEDGER_FILTERS: { value: LedgerFilter; label: string }[] = [
-  { value: "all", label: "全部" },
-  { value: "admin", label: "管理员调整" },
-  { value: "task", label: "任务" },
-];
-
-/** 积分页签：类型 Tag · 变动（正绿负红带正负号）· 说明 · 操作人 · 时间 */
-function CreditsTab({ userId, refreshKey }: { userId: number; refreshKey: number }) {
-  const [filter, setFilter] = useState<LedgerFilter>("all");
-  const list = useCursorList<UserLedgerItem>(`${userId}:${filter}:${refreshKey}`, (cursor) =>
-    listUserLedger(userId, { type: filter, cursor, limit: PAGE_LIMIT }),
-  );
-  return (
-    <>
-      <FilterBar
-        slideId="user-credits-filter"
-        label="积分流水筛选"
-        value={filter}
-        options={LEDGER_FILTERS}
-        onChange={setFilter}
-        count={list.state === "ready" ? `已加载 ${list.items.length} 条` : ""}
-      />
-      <ListBody list={list} empty="没有符合条件的流水">
-        {list.items.map((row) => (
-          <div
-            key={row.id}
-            className="grid grid-cols-[6.5rem_3.5rem_1fr_auto] items-center gap-x-3 border-b py-2.5 text-sm last:border-b-0"
-          >
-            <span>
-              <Tag tone={row.type === "admin_adjust" ? "warning" : "neutral"}>
-                {LEDGER_TYPE_LABEL[row.type] ?? row.type}
-              </Tag>
-            </span>
-            <span
-              className={cn(
-                "text-right font-mono font-medium tabular-nums",
-                row.amount > 0 && "text-status-success",
-                row.amount < 0 && "text-destructive",
-                row.amount === 0 && "text-muted-foreground",
-              )}
-            >
-              {row.amount > 0 ? "+" : ""}
-              {row.amount}
-            </span>
-            <span className="min-w-0 truncate">
-              {row.note || (row.task_id ? `任务 #${row.task_id}` : "—")}
-              {row.operator_name && (
-                <span className="text-muted-foreground ml-1.5 text-xs">· {row.operator_name}</span>
-              )}
-            </span>
-            <span className="text-muted-foreground text-xs tabular-nums">
-              {formatShortTime(row.created_at)}
-            </span>
-          </div>
-        ))}
-      </ListBody>
-    </>
   );
 }
 
@@ -345,13 +270,7 @@ function LoginsTab({ userId, refreshKey }: { userId: number; refreshKey: number 
 }
 
 /** 概览页签：信息格 + 最近 3 条管理员操作；详情还在加载时显示骨架 */
-function OverviewTab({
-  detail,
-  onGotoCredits,
-}: {
-  detail: UserDetail | null;
-  onGotoCredits: () => void;
-}) {
+function OverviewTab({ detail }: { detail: UserDetail | null }) {
   const [lastIp, setLastIp] = useState<string | null>(null);
   const id = detail?.id;
 
@@ -431,10 +350,6 @@ function OverviewTab({
           <DescriptionDetails className="tabular-nums">{rate}</DescriptionDetails>
         </DescriptionItem>
         <DescriptionItem>
-          <DescriptionTerm>累计消耗积分</DescriptionTerm>
-          <DescriptionDetails className="tabular-nums">{detail.spent_credits}</DescriptionDetails>
-        </DescriptionItem>
-        <DescriptionItem>
           <DescriptionTerm>近 7 天生成</DescriptionTerm>
           <DescriptionDetails className="tabular-nums">{detail.tasks_last_7d}</DescriptionDetails>
         </DescriptionItem>
@@ -451,9 +366,6 @@ function OverviewTab({
 
       <div className="mt-6 mb-2 flex items-center justify-between">
         <span className="text-sm font-medium">最近管理员操作</span>
-        <Button variant="ghost" size="xs" onClick={onGotoCredits}>
-          查看全部
-        </Button>
       </div>
       {detail.recent_audits.length > 0 ? (
         <div className="rounded-lg border">
@@ -487,4 +399,4 @@ function OverviewTab({
   );
 }
 
-export { CreditsTab, LoginsTab, OverviewTab, TasksTab };
+export { LoginsTab, OverviewTab, TasksTab };

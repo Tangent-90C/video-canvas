@@ -17,7 +17,7 @@ import type { DramaWorkspaceContext as DramaWorkspaceContextType } from "@/pages
 import type { Dialog as DialogType } from "@/components/ui/dialog";
 
 /**
- * 批量生成分镜脚本弹窗：选集、按集分别估价后加总、每集各提交一个任务并同时发出。
+ * 批量生成分镜脚本弹窗：选集、按集分别提交任务并同时发出；费用按 TokenDance 实际账单。
  */
 
 let dom: DomEnv;
@@ -117,17 +117,14 @@ describe("批量生成分镜脚本弹窗", () => {
     await m.unmount();
   });
 
-  test("积分：每集单独估价再加总（分镜接口一次只估一集）", async () => {
+  test("不再逐集估平台积分，统一显示 TokenDance 实际账单口径", async () => {
     const m = await mount(<Body initial={1} maxSeconds={15} onClose={() => {}} />);
     await dom.click(byText(m.container, "全选可用"));
     await dom.flush(400);
     const estimates = post.mock.calls.filter((c) => String(c[0]).endsWith("/estimate"));
-    expect(estimates.every((c) => (c[1] as { episodes: number[] }).episodes.length === 1)).toBe(
-      true,
-    );
-    expect(estimates.at(-1)?.[1]).toMatchObject({ step: "storyboard", max_seconds: 15 });
-    // 10 + 20 + 30
-    expect(m.container.textContent).toContain("约 60 积分");
+    expect(estimates).toHaveLength(0);
+    expect(m.container.textContent).toContain("费用按 TokenDance 实际账单");
+    expect(m.container.textContent).not.toContain("积分");
     await m.unmount();
   });
 

@@ -5,7 +5,7 @@ import "time"
 // system_settings 的键。库值优先，缺省时由 config.yaml 提供初始默认。
 const (
 	SettingRegisterEnabled       = "register_enabled"         // 是否开放注册，"true" / "false"，缺省 true
-	SettingInitialCredits        = "initial_credits"          // 新用户初始积分，缺省取 service.DefaultInitialCredits
+	SettingInitialCredits        = "initial_credits"          // 历史平台积分设置；只保留读取兼容，不再写入
 	SettingDefaultMaxActiveTasks = "default_max_active_tasks" // 默认并发上限，缺省取 service.DefaultMaxActiveTasks
 	SettingQueueMultiplier       = "queue_multiplier"         // 排队倍数：用户非终态任务数达到“并发上限 × 倍数”才拒绝新任务，缺省取 service.DefaultQueueMultiplier
 	SettingQueueMaxWaitMinutes   = "queue_max_wait_minutes"   // 排队超时（分钟）：排队等名额超过它就过期并退款，缺省取 service.DefaultQueueMaxWaitMinutes
@@ -25,7 +25,6 @@ func (SystemSetting) TableName() string { return "system_settings" }
 // RegisterSettingsView 是注册设置的读写结构：GET / PUT /admin/settings/register。
 type RegisterSettingsView struct {
 	RegisterEnabled       bool `json:"register_enabled"`                                               // 是否开放注册
-	InitialCredits        int  `json:"initial_credits" binding:"min=0,max=100000000" label:"初始积分"`     // 新用户初始积分
 	DefaultMaxActiveTasks int  `json:"default_max_active_tasks" binding:"min=1,max=64" label:"默认并发上限"` // 默认并发上限
 	QueueMultiplier       int  `json:"queue_multiplier" binding:"min=1,max=20" label:"排队倍数"`           // 排队上限 = 用户并发上限 × 倍数
 	QueueMaxWaitMinutes   int  `json:"queue_max_wait_minutes" binding:"min=5,max=1440" label:"排队超时"`   // 排队等名额的最长时间（分钟）

@@ -16,7 +16,7 @@ import (
 // TestDramaMediaIntegration_ConcurrentSegments 验证同一集的不同片段可以同时提交视频，同一片段并发提交只接受一个。
 func TestDramaMediaIntegration_ConcurrentSegments(t *testing.T) {
 	// 排队上限放宽到 5：同集两段 + 另一集一段同时在排队
-	e := newGTIEnv(t, &fakeLimits{initial: 50, defMax: 5})
+	e := newGTIEnv(t, &fakeLimits{defMax: 5})
 	if err := e.db.AutoMigrate(&model.DramaProject{}, &model.DramaEpisode{}, &model.DramaSegment{}, &model.DramaJob{}); err != nil {
 		t.Fatal(err)
 	}

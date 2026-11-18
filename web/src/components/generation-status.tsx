@@ -41,7 +41,6 @@ export function GenerationStatus({
     return (
       <FailedPlaceholder
         message={view.message}
-        refunded={view.refunded}
         taskRef={view.taskRef}
         onRecharge={
           view.walletRecharge

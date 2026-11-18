@@ -123,6 +123,20 @@ func TestUser_MarksInjectedBlocksAsData(t *testing.T) {
 	}
 }
 
+func TestSystem_BillingUsesTokenPayOnly(t *testing.T) {
+	got := prompts.System("all")
+	for _, want := range []string{"TokenPay", "TokenDance 实际账单", "未连接", "钱包"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("画布提示词应说明 TokenPay 单一计费，缺少 %q", want)
+		}
+	}
+	for _, bad := range []string{"积分在生成时先冻结", "失败或取消会退回", "预估积分"} {
+		if strings.Contains(got, bad) {
+			t.Errorf("画布提示词不应再指导平台积分结算，发现 %q", bad)
+		}
+	}
+}
+
 func TestSystemWithSkills_Catalog(t *testing.T) {
 	items := []prompts.SkillItem{{Name: "script-breakdown", Description: "剧本拆镜"}, {Name: "demo", Description: "导入的技能"}}
 	got := prompts.SystemWithSkills("all", items)

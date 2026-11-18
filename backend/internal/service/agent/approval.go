@@ -123,7 +123,7 @@ func resolveDelete(a *model.AgentApproval, req *model.DecideAgentApprovalReq) (*
 	return out, nil
 }
 
-// resolveGenerate 批准生成：逐项勾选，张数只能少不能多；按批准的内容重新算价，并检查本轮预算。
+// resolveGenerate 批准生成：逐项勾选，张数只能少不能多；兼容字段保留价格 0。
 func resolveGenerate(a *model.AgentApproval, run *model.AgentRun, req *model.DecideAgentApprovalReq) (*outcome, error) {
 	var p GeneratePayload
 	if err := json.Unmarshal(a.PayloadJSON, &p); err != nil {
@@ -147,15 +147,11 @@ func resolveGenerate(a *model.AgentApproval, run *model.AgentRun, req *model.Dec
 			out.status = model.ApprovalPartial
 		}
 		it.Count = n
+		it.Price = 0 // 兼容旧审批载荷；平台积分已停用，价格不再参与决定。
 		out.gen = append(out.gen, it)
-		out.quote += it.Price * n
 	}
 	if len(out.gen) == 0 {
 		return nil, errcode.ErrInvalidParams.WithMsg("至少批准一项")
-	}
-	// 本轮预算为 0 表示不限制：只靠账户积分约束，执行生成时账户积分不够会失败
-	if run.BudgetCredits > 0 && out.quote > run.BudgetCredits+req.AddBudget-run.SpentCredits {
-		return nil, errcode.ErrAgentOverBudget
 	}
 	out.decision["items"] = out.gen
 	return out, nil
@@ -271,7 +267,7 @@ func generateOutcome(a *model.AgentApproval, out *outcome, rejected bool) string
 	if a.Status == model.ApprovalFailed {
 		return fmt.Sprintf("%s（%s），但任务提交失败：%s。没有扣积分。", scope, strings.Join(names, "、"), resultError(a))
 	}
-	return fmt.Sprintf("%s：%s，预估 %d 积分，任务已提交：%s", scope, strings.Join(names, "、"), out.quote, string(a.ResultJSON))
+	return fmt.Sprintf("%s：%s，任务已提交：%s", scope, strings.Join(names, "、"), string(a.ResultJSON))
 }
 
 // resultError 取审批结果里记录的失败原因。

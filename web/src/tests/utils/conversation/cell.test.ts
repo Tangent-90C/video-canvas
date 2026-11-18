@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import type { RecordDto } from "@/api/conversation/type";
 import { makeTask, succeeded } from "../tasks/fixtures";
-import { cellNeedsClock, deriveCell, recordActive, recordCredits } from "@/utils/conversation/cell";
+import { cellNeedsClock, deriveCell, recordActive } from "@/utils/conversation/cell";
 
 /** 固定「现在」：任务创建 10 分钟后 */
 const NOW = Date.parse("2026-09-29T10:10:00Z");
@@ -111,26 +111,22 @@ describe("deriveCell：任务状态 → 格子状态", () => {
     });
     expect(deriveCell(record(), 0, makeTask({ status: "canceled" }), NOW)).toEqual({
       kind: "canceled",
-      refunded: true,
     });
-    expect(
-      deriveCell(record(), 0, makeTask({ status: "canceled", charged_credits: 8 }), NOW),
-    ).toEqual({ kind: "canceled", refunded: false });
   });
 
   test("没有任务：有提交失败原因就显示它，否则是任务丢失", () => {
     const rec = record({
-      submitErrors: [{ index: 1, status: 402, code: 40001, message: "积分不足" }],
+      submitErrors: [{ index: 1, status: 402, code: 40016, message: "需要连接 TokenPay 钱包" }],
     });
     expect(deriveCell(rec, 1, undefined, NOW)).toEqual({
       kind: "submit_error",
-      message: "积分不足",
+      message: "需要连接 TokenPay 钱包",
     });
     expect(deriveCell(rec, 0, undefined, NOW)).toEqual({ kind: "missing" });
   });
 });
 
-describe("recordActive / recordCredits", () => {
+describe("recordActive", () => {
   const tasks = [
     makeTask({ id: 1, status: "running", credits: 3 }),
     succeeded({ id: 2, credits: 3, charged_credits: 3 }),
@@ -140,22 +136,6 @@ describe("recordActive / recordCredits", () => {
     expect(recordActive(tasks)).toBe(true);
     expect(recordActive([succeeded({ id: 2 }), makeTask({ id: 3, status: "failed" })])).toBe(false);
     expect(recordActive([])).toBe(false);
-  });
-
-  test("进行中显示冻结合计；全部结束显示实际扣费合计，失败退回的不算", () => {
-    expect(recordCredits(tasks)).toEqual({ credits: 6, frozen: true });
-    const finished = [
-      succeeded({ id: 2, credits: 3, charged_credits: 2 }),
-      makeTask({ id: 3, status: "failed", credits: 3 }),
-    ];
-    expect(recordCredits(finished)).toEqual({ credits: 2, frozen: false });
-  });
-
-  test("成功但还没结算（charged 为 null）按冻结额算", () => {
-    expect(recordCredits([succeeded({ id: 2, credits: 4, charged_credits: null })])).toEqual({
-      credits: 4,
-      frozen: false,
-    });
   });
 });
 

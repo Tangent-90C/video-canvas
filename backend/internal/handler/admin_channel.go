@@ -29,7 +29,7 @@ type createChannelReq struct {
 	Headers   map[string]string  `json:"headers"`
 	RateLimit provider.RateLimit `json:"rate_limit"`
 	Enabled   *bool              `json:"enabled"`        // 不传按 true
-	Wallet    *bool              `json:"wallet_enabled"` // 钱包渠道：任务用发起用户自己的 TokenPay Key，不扣平台积分
+	Wallet    *bool              `json:"wallet_enabled"` // 钱包渠道：任务用发起用户自己的 TokenPay Key
 }
 
 // updateChannelReq 更新渠道：字段都可选，不传表示不改；headers 传了（含空对象）就整体替换。

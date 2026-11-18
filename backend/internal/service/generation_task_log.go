@@ -24,7 +24,7 @@ func logGenCreated(ctx context.Context, t *model.GenerationTask) {
 	logger.NoteRun(ctx, ref.Kind, ref.ID)
 	fields := []zap.Field{logger.Event(logger.EventRunCreate), logger.RunField(ref.Kind, ref.ID),
 		zap.Uint64("user_id", t.UserID), zap.String("kind", t.Kind), zap.String("model", t.ModelKey), zap.String("channel", t.Provider),
-		zap.Int("frozen_credits", t.Credits), zap.String("node_id", t.NodeID)}
+		zap.Bool("wallet", t.Wallet), zap.String("node_id", t.NodeID)}
 	if ref.ParentKind != "" {
 		fields = append(fields, zap.String("parent_kind", ref.ParentKind), zap.String("parent_id", ref.ParentID))
 	}
@@ -39,7 +39,7 @@ func logGenCreated(ctx context.Context, t *model.GenerationTask) {
 func logGenFinished(ctx context.Context, t *model.GenerationTask, target string, extra map[string]any) {
 	_, run := logger.EnsureRun(ctx, genRunRef(t))
 	fields := []zap.Field{zap.String("kind", t.Kind), zap.String("model", t.ModelKey), zap.String("channel", t.Provider),
-		zap.Int("frozen_credits", t.Credits), zap.Int("charged_credits", chargeOf(t, target))}
+		zap.Bool("wallet", t.Wallet)}
 	if t.FinishedAt != nil {
 		fields = append(fields, zap.Int64("total_ms", t.FinishedAt.Sub(t.CreatedAt).Milliseconds()))
 	}
