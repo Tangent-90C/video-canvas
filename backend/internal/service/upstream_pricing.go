@@ -144,14 +144,8 @@ func normalizeUpstreamPricing(items []upstreamPriceItem) (provider.UpstreamPrici
 			Input: input, Output: output, Unit: "millionTokens",
 		}, true
 	}
-	for _, item := range items {
-		if len(item.Plans) == 0 && len(item.SKUs) == 0 {
-			continue
-		}
-		lo, hi, unit, ok := priceRange(item)
-		if !ok {
-			continue
-		}
+	lo, hi, unit, ok := primaryOutputPrice(items)
+	if ok {
 		amount := "¥" + formatPrice(lo)
 		if hi > lo {
 			amount += "–" + formatPrice(hi)
@@ -160,6 +154,54 @@ func normalizeUpstreamPricing(items []upstreamPriceItem) (provider.UpstreamPrici
 		return provider.UpstreamPricing{Currency: "CNY", Label: label, Min: &lo, Max: &hi, Unit: unit}, true
 	}
 	return provider.UpstreamPricing{}, false
+}
+
+// primaryOutputPrice 从一组 SKU 中选用户实际购买的主产物价：优先生成图 / 输出视频，跳过输入图和参考视频秒数。
+// 同一个模型常常同时有输入素材费和输出素材费，取第一项会把 Seedream 的 ¥0.05 输入图价误显示成生成价。
+func primaryOutputPrice(items []upstreamPriceItem) (float64, float64, string, bool) {
+	bestScore := -1 << 30
+	var lo, hi float64
+	var unit string
+	ok := false
+	for _, item := range items {
+		if len(item.Plans) == 0 && len(item.SKUs) == 0 {
+			continue
+		}
+		itemLo, itemHi, itemUnit, itemOK := priceRange(item)
+		if !itemOK {
+			continue
+		}
+		score := upstreamPricePriority(item.ID, itemUnit)
+		if !ok || score > bestScore {
+			bestScore = score
+			lo, hi, unit, ok = itemLo, itemHi, itemUnit, true
+		}
+	}
+	return lo, hi, unit, ok
+}
+
+func upstreamPricePriority(id, unit string) int {
+	s := strings.ToLower(id)
+	score := 0
+	if strings.Contains(s, "input") || strings.Contains(s, "cached") || strings.Contains(s, "cache_") {
+		score -= 100
+	}
+	if strings.Contains(s, "generated") || strings.Contains(s, "output") || strings.Contains(s, "completion") {
+		score += 60
+	}
+	if strings.Contains(s, "video_seconds") || strings.Contains(s, "video-seconds") {
+		score += 50
+	}
+	if strings.Contains(s, "video_input_seconds") {
+		score -= 40
+	}
+	if unit == "seconds" {
+		score += 20
+	}
+	if strings.Contains(s, "images") {
+		score += 10
+	}
+	return score
 }
 
 func tokenRates(items []upstreamPriceItem) (input, output *float64) {

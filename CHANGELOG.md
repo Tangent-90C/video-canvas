@@ -12,6 +12,7 @@
 - 新增 TokenDance Kling、Wan/HappyHorse、MiniMax V2 三个内置视频插件；同步规则按模型细分分辨率、时长、参考素材和 `prompt_format`，不再用一套 ByteDance 能力冒充所有视频模型。
 - 本地素材转发给上游前必须是绝对 URL：未配置 `APP_STORAGE_LOCAL_BASE_URL` 时自动沿用 `APP_TOKENPAY_APP_URL`；图片/音频兜底内联为 data URL，视频无法内联时明确报错，杜绝把 `/files/...` 发给上游。
 - 登录页功能轮播改为整页宽，并在 `?next=` 自动展开登录卡片时仍然显示；桌面截图区和文字区同步放大，移动端文字移到截图下方。
+- 钱包模型选择器的实时价目优先取生成图 / 输出视频价，不再把 Seedream 的输入图价或 Kling / MiniMax 的参考素材价误显示成成片单价。
 
 ### 调整
 

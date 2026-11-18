@@ -24,12 +24,23 @@ func TestUpstreamPricingServiceNormalizesAndCaches(t *testing.T) {
 				map[string]any{"id": "openai:chat-completions:cached_tokens", "plans": []any{map[string]any{"unit": "millionTokens", "rate": "0.016"}}},
 			}}},
 			map[string]any{"slug": "seedream-5.0-lite", "pricing": map[string]any{"items": []any{
-				map[string]any{"id": "ark:image-generations:generated_images", "plans": []any{map[string]any{"unit": "images", "rate": "0.22"}}},
+				map[string]any{"id": "ark:image-generations:input_images", "plans": []any{map[string]any{"unit": "images", "rate": "0.05"}}},
+				map[string]any{"id": "ark:image-generations:generated_images", "plans": []any{
+					map[string]any{"unit": "images", "rate": "0.13"},
+					map[string]any{"unit": "images", "rate": "0.23"},
+				}},
 			}}},
 			map[string]any{"slug": "seedance-2.0", "pricing": map[string]any{"items": []any{
 				map[string]any{"id": "seedance:generations:completion_tokens", "skus": []any{
 					map[string]any{"unit": "millionTokens", "rate": "16"},
 					map[string]any{"unit": "millionTokens", "rate": "51"},
+				}},
+			}}},
+			map[string]any{"slug": "minimax-h3", "pricing": map[string]any{"items": []any{
+				map[string]any{"id": "minimax:video_generation_v2:images", "plans": []any{map[string]any{"unit": "images", "rate": "0.02"}}},
+				map[string]any{"id": "minimax:video_generation_v2:video_seconds", "plans": []any{
+					map[string]any{"unit": "seconds", "rate": "0.5"},
+					map[string]any{"unit": "seconds", "rate": "1"},
 				}},
 			}}},
 		}})
@@ -47,11 +58,14 @@ func TestUpstreamPricingServiceNormalizesAndCaches(t *testing.T) {
 	if got := prices["deepseek-v4.1-flash"].Label; got != "输入 ¥0.8 / 输出 ¥3.2 / 百万 Token" {
 		t.Fatalf("文本价目不对：%q", got)
 	}
-	if got := prices["seedream-5.0-lite"].Label; got != "¥0.22 / 张" {
+	if got := prices["seedream-5.0-lite"].Label; got != "¥0.13–0.23 / 张" {
 		t.Fatalf("图片价目不对：%q", got)
 	}
 	if got := prices["seedance-2.0"].Label; got != "¥16–51 / 百万 Token" {
 		t.Fatalf("视频 SKU 区间不对：%q", got)
+	}
+	if got := prices["minimax-h3"].Label; got != "¥0.5–1 / 秒" {
+		t.Fatalf("视频应优先输出秒价而不是参考图价：%q", got)
 	}
 
 	now = now.Add(4 * time.Minute)
