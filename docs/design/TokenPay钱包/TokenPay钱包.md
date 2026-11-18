@@ -43,7 +43,8 @@
 
 - **flow 缓存**：`backend/internal/cache/oauth_flow.go`，`OAuthFlowStore` 接口，Redis 实现（Lua GET+DEL 原子消费）+ 内存降级；存 `{verifier, userID}`，TTL 10 分钟，消费即销毁（防重放），发起人不匹配按无效处理。
 - **服务**：`backend/internal/service/user_wallet.go`：`Start / Connect / Disconnect / View / Enabled / Connected`。未配 `tokenpay.app_url` 时整个功能未启用（`ErrWalletDisabled`）。
-- **Key 存储**：`AIConfigService.SetSecret(ctx, "wallet:<user_id>", key, userID)`；`user_wallets` 表存 `provider/app_url/key_masked`，重连覆盖（上游会创建新 Key）。
+- **Key 存储**：`AIConfigService.SetSecret(ctx, "wallet:<user_id>", key, userID)`；`user_wallets` 表存 `provider/app_url/key_id`，重连覆盖（上游会创建新 Key）。授权 Key 只在密文存储中，接口与界面都不展示。
+- **公开 Key ID**：授权码交换响应只有授权 Key，不返回 Key ID；`GET /portal/api/v1/usage` 的 `items[].key_id` 是 TokenPay 后台可见的官方来源。首次读取连接状态时按「连接时间之后 + 同 App URL」解析并落库；没有调用记录时显示「首次调用后显示」，绝不回退展示 Key 掩码。
 - **上游 HTTP**：`tokenPayHTTP = outbound.Client("tokenpay", ...)`，走统一出站客户端（arch 测试约束）。
 
 ### 3.3 任务与 Agent 执行
@@ -70,7 +71,8 @@ CREATE TABLE user_wallets (
     user_id bigint PRIMARY KEY,
     provider varchar(32) NOT NULL,
     app_url varchar(512) NOT NULL DEFAULT '',
-    key_masked varchar(64) NOT NULL DEFAULT '',
+    key_masked varchar(64) NOT NULL DEFAULT '', -- 旧列，保留兼容；不再写入/返回
+    key_id varchar(32) NOT NULL DEFAULT '',     -- 0042 新增：TokenPay 后台可见的公开 Key ID
     created_at timestamptz,
     updated_at timestamptz
 );
@@ -86,7 +88,7 @@ ALTER TABLE generation_tasks ADD COLUMN wallet bool NOT NULL DEFAULT false;
 | --- | --- | --- |
 | GET | `/api/v1/wallet/tokenpay/start?next=` | 生成授权地址 |
 | POST | `/api/v1/wallet/tokenpay/connect` | `{flow, code}` 换 Key 入库 |
-| GET | `/api/v1/wallet/tokenpay/connection` | `{enabled, connected, app_url, key_masked, connected_at}` |
+| GET | `/api/v1/wallet/tokenpay/connection` | `{enabled, connected, app_url, key_id, connected_at}` |
 | GET | `/api/v1/wallet/tokenpay/balance` | `{enabled, connected, balance_yuan, used_yuan, stale}`（用户自己的 Key 查上游，60s 缓存，失败降级不报错） |
 | GET | `/api/v1/wallet/tokenpay/usage?limit=` | 代理上游调用记录（真实花费），60s 缓存，见 §9 |
 | POST | `/api/v1/wallet/tokenpay/recharge/sessions` | `{amount}` 创建 TokenDance 充值会话，见 §10 |
@@ -141,7 +143,7 @@ ALTER TABLE generation_tasks ADD COLUMN wallet bool NOT NULL DEFAULT false;
 
 ### 5.3 真实账号联调清单
 
-- [ ] 连接：`/profile` 钱包页 → 授权 → 回调落地 → 显示 Key 掩码
+- [ ] 连接：`/profile` 钱包页 → 授权 → 回调落地 → 显示 TokenPay 后台可见的 Key ID（无调用记录时明确显示「首次调用后显示」）
 - [ ] 四类任务各生成一单：状态推进、产物落资产库、积分余额不变
 - [ ] 异常：TokenDance 余额不足 / 断开钱包后再生成 → 提示文案正确
 - [ ] TokenPay 后台归因调用量 +1（App URL 正确）
@@ -197,6 +199,7 @@ ALTER TABLE generation_tasks ADD COLUMN wallet bool NOT NULL DEFAULT false;
 
 | 字段 | 说明 |
 | --- | --- |
+| `items[].key_id` | TokenPay 后台可见的公开 Key ID，用于钱包状态展示与对账 |
 | `items[].cost` | 真实花费，单位微元（1 元 = 1e6） |
 | `items[].model_slug` | 上游模型别名，与本站 `upstream_model` 匹配 |
 | `items[].model_id` | TokenDance 内部不透明 id，不作为模型名匹配 |

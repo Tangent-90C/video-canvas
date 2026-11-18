@@ -87,7 +87,7 @@ beforeEach(() => {
         enabled: true,
         connected: true,
         app_url: "https://canvas.tan90.site",
-        key_masked: "tk-…test",
+        key_id: "01M7MCYZ45AYTH7GK0MZZRM85N",
         connected_at: "2026-11-18T00:00:00Z",
       };
     }
@@ -110,7 +110,7 @@ beforeEach(() => {
       enabled: true,
       connected: true,
       app_url: "https://canvas.tan90.site",
-      key_masked: "tk-…test",
+      key_id: "01M7MCYZ45AYTH7GK0MZZRM85N",
       connected_at: "2026-11-18T00:00:00Z",
     },
     status: "ready",

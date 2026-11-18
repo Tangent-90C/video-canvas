@@ -142,7 +142,7 @@ func newBalanceService(t *testing.T, credits, used int64) (*UserWalletService, *
 		KeyName:    "连镜",
 		BalanceURL: balance.URL,
 	})
-	repo.row = &model.UserWallet{UserID: 7, Provider: "tokendance", AppURL: "https://app.example.com", KeyMasked: "tk-l…"}
+	repo.row = &model.UserWallet{UserID: 7, Provider: "tokendance", AppURL: "https://app.example.com"}
 	return svc, repo
 }
 
@@ -243,9 +243,9 @@ func TestUserWalletUsage(t *testing.T) {
 	ctx := context.Background()
 	var q url.Values
 	svc, _ := newUsageService(t, []map[string]any{
-		{"model_id": "01KMM9QH8VZX83GM06Q4A6JEF4", "model_slug": "seedream-5.0-lite", "created_at": "2026-11-17T12:15:40Z", "cost": 220_000, "is_success": true},
-		{"model_id": "01KMM9QH8VZX83GM06Q4A6JEF4", "model_slug": "seedream-5.0-lite", "created_at": "2026-11-17T10:08:10Z", "cost": 220_000, "is_success": true},
-		{"model_id": "01KMM9QH8VZX83GM06Q4A6JEF4", "model_slug": "seedream-5.0-lite", "created_at": "2026-11-17T09:21:17Z", "cost": 0, "error": "供应商返回 400"},
+		{"key_id": "01M7MCYZ45AYTH7GK0MZZRM85N", "app_url": "https://app.example.com", "key_name": "连镜", "model_id": "01KMM9QH8VZX83GM06Q4A6JEF4", "model_slug": "seedream-5.0-lite", "created_at": "2026-11-17T12:15:40Z", "cost": 220_000, "is_success": true},
+		{"key_id": "01M7MCYZ45AYTH7GK0MZZRM85N", "app_url": "https://app.example.com", "key_name": "连镜", "model_id": "01KMM9QH8VZX83GM06Q4A6JEF4", "model_slug": "seedream-5.0-lite", "created_at": "2026-11-17T10:08:10Z", "cost": 220_000, "is_success": true},
+		{"key_id": "01M7MCYZ45AYTH7GK0MZZRM85N", "app_url": "https://app.example.com", "key_name": "连镜", "model_id": "01KMM9QH8VZX83GM06Q4A6JEF4", "model_slug": "seedream-5.0-lite", "created_at": "2026-11-17T09:21:17Z", "cost": 0, "error": "供应商返回 400"},
 	}, &q)
 
 	view, err := svc.Usage(ctx, 7)
@@ -262,6 +262,9 @@ func TestUserWalletUsage(t *testing.T) {
 	// 模型名走 model_slug；model_id 是内部不透明 id，不能拿来匹配（线上实测踩过）
 	if view.Items[0].ModelSlug != "seedream-5.0-lite" || view.Items[0].CostYuan != 0.22 {
 		t.Fatalf("金额换算或顺序不对：%+v", view.Items[0])
+	}
+	if view.Items[0].KeyID != "01M7MCYZ45AYTH7GK0MZZRM85N" {
+		t.Fatalf("Key ID 没解析出来：%+v", view.Items[0])
 	}
 	if view.Items[2].Success || view.Items[2].CostYuan != 0 {
 		t.Fatalf("失败记录应标失败且 0 元：%+v", view.Items[2])
@@ -554,7 +557,7 @@ func TestUserWalletStartBuildsAuthURL(t *testing.T) {
 	}
 }
 
-// Connect 的完整链路：换 Key → 加密入库（wallet:<uid>）→ 元数据落库（掩码 + app_url）→ 返回视图。
+// Connect 的完整链路：换 Key → 加密入库（wallet:<uid>）→ 元数据落库（app_url）→ 返回视图。
 func TestUserWalletConnect(t *testing.T) {
 	key := "tk-test-123456789012"
 	svc, repo, secrets, flows := newWalletService(t, key)
@@ -569,14 +572,21 @@ func TestUserWalletConnect(t *testing.T) {
 	if !view.Connected || view.AppURL != "https://app.example.com" {
 		t.Fatalf("视图不对：%+v", view)
 	}
-	if view.KeyMasked != "tk-tes…9012" {
-		t.Fatalf("掩码不对：%q", view.KeyMasked)
+	if view.KeyID != "" {
+		t.Fatalf("刚交换的新 Key 还没有调用记录，不应猜 Key ID：%q", view.KeyID)
 	}
 	if secrets.saved[model.WalletSecretName(1)] != key {
 		t.Fatalf("Key 没有按 wallet:<uid> 保存：%v", secrets.names)
 	}
-	if repo.upserted == nil || repo.upserted.KeyMasked != view.KeyMasked || repo.upserted.Provider != "tokendance" {
+	if repo.upserted == nil || repo.upserted.KeyID != "" || repo.upserted.Provider != "tokendance" {
 		t.Fatalf("元数据没落库：%+v", repo.upserted)
+	}
+	payload, err := json.Marshal(view)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(payload), "key_masked") || strings.Contains(string(payload), key) {
+		t.Fatalf("钱包视图泄露了授权 Key：%s", payload)
 	}
 }
 
@@ -647,6 +657,54 @@ func TestUserWalletDisconnect(t *testing.T) {
 	}
 }
 
+// 已连接用户的 Key ID 不在交换响应里；View 从当前 Key 的调用记录中解析公开 Key ID 并落库。
+// 返回给前端的是 Key ID，不是授权 Key（完整 Key 与掩码都不得出现在响应中）。
+func TestUserWalletViewResolvesKeyID(t *testing.T) {
+	const keyID = "01M7MCYZ45AYTH7GK0MZZRM85N"
+	connectedAt := time.Date(2026, 11, 18, 8, 0, 0, 0, time.UTC)
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer tk-live" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"items": []map[string]any{{
+				"key_id":     keyID,
+				"app_url":    "https://app.example.com",
+				"key_name":   "连镜",
+				"created_at": connectedAt.Add(time.Minute).Format(time.RFC3339),
+			}},
+		})
+	}))
+	defer up.Close()
+	repo := &fakeWalletRepo{row: &model.UserWallet{
+		UserID: 7, Provider: "tokendance", AppURL: "https://app.example.com", UpdatedAt: connectedAt,
+	}}
+	secrets := &fakeWalletSecrets{saved: map[string]string{model.WalletSecretName(7): "tk-live"}}
+	svc := NewUserWalletService(UserWalletDeps{
+		Repo: repo, Secrets: secrets, Flows: &fakeFlows{}, AppURL: "https://app.example.com",
+		KeyName: "连镜", UsageURL: up.URL,
+	})
+
+	view, err := svc.View(context.Background(), 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.KeyID != keyID {
+		t.Fatalf("应从调用记录解析 Key ID：%+v", view)
+	}
+	if repo.upserted == nil || repo.upserted.KeyID != keyID {
+		t.Fatalf("解析出的 Key ID 应落库：%+v", repo.upserted)
+	}
+	payload, err := json.Marshal(view)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(payload), "key_masked") || strings.Contains(string(payload), "tk-live") {
+		t.Fatalf("钱包视图泄露了授权 Key：%s", payload)
+	}
+}
+
 // Enabled / View 的未启用与未连接形态。
 func TestUserWalletViewAndEnabled(t *testing.T) {
 	off := NewUserWalletService(UserWalletDeps{Repo: &fakeWalletRepo{}, Secrets: &fakeWalletSecrets{saved: map[string]string{}}, Flows: &fakeFlows{}})
@@ -668,12 +726,12 @@ func TestUserWalletViewAndEnabled(t *testing.T) {
 	if view.Enabled && view.Connected {
 		t.Fatalf("未连接时视图不对：%+v", view)
 	}
-	repo.row = &model.UserWallet{UserID: 9, AppURL: "https://app.example.com", KeyMasked: "tk-1…2", Provider: "tokendance"}
+	repo.row = &model.UserWallet{UserID: 9, AppURL: "https://app.example.com", KeyID: "01M7MCYZ45AYTH7GK0MZZRM85N", Provider: "tokendance"}
 	view, err = svc.View(context.Background(), 9)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !view.Connected || view.KeyMasked != "tk-1…2" {
+	if !view.Connected || view.KeyID != "01M7MCYZ45AYTH7GK0MZZRM85N" {
 		t.Fatalf("已连接视图不对：%+v", view)
 	}
 	// Connected 实现 WalletChecker

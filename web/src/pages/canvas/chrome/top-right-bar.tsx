@@ -156,7 +156,7 @@ function WalletFace({ showPendingDot }: { showPendingDot: boolean }) {
 
 /**
  * 钱包菜单（不带胶囊）：放进任意 ChromePill 里用。
- * 钱包已连接：显示 TokenDance 余额与已消耗、Key 掩码、连接时间，可断开；
+ * 钱包已连接：显示 TokenDance 余额与已消耗、公开 Key ID、连接时间，可断开；
  * 未连接：点了直接弹全局连接弹窗（新标签页授权）；
  * 本站未启用钱包时也明确引导，不回退到任何平台积分。
  */
@@ -222,8 +222,8 @@ export function WalletMenu() {
             <dd className="font-mono tabular-nums">
               {balance ? `¥${formatYuan(balance.used_yuan)}` : "—"}
             </dd>
-            <dt className="text-muted-foreground">授权 Key</dt>
-            <dd className="font-mono">{view.key_masked || "—"}</dd>
+            <dt className="text-muted-foreground">Key ID</dt>
+            <dd className="font-mono">{view.key_id || "首次调用后显示"}</dd>
             <dt className="text-muted-foreground">最近连接</dt>
             <dd className="font-mono">
               {view.connected_at ? new Date(view.connected_at).toLocaleDateString() : "—"}

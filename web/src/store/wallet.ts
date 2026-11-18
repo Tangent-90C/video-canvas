@@ -112,9 +112,7 @@ export function createWalletStore(overrides: Partial<WalletApi> = {}) {
       await api.disconnectTokenPay();
       const current = get().view;
       set({
-        view: current
-          ? { ...current, connected: false, key_masked: "", connected_at: "" }
-          : current,
+        view: current ? { ...current, connected: false, key_id: "", connected_at: "" } : current,
         balance: null,
         usage: null,
       });

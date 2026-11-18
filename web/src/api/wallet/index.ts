@@ -1,6 +1,6 @@
 import service from "@/utils/requests/service";
 
-/** 用户钱包的展示视图；Key 只回掩码 */
+/** 用户钱包的展示视图；只回 TokenPay 后台可见的公开 Key ID，不回授权 Key */
 export interface WalletView {
   /** 本站是否启用了钱包连接（部署时配置 tokenpay.app_url） */
   enabled: boolean;
@@ -8,8 +8,8 @@ export interface WalletView {
   connected: boolean;
   /** 授权时登记的站点地址（归因 App URL） */
   app_url: string;
-  /** Key 掩码，如 tk-ab12…ef34 */
-  key_masked: string;
+  /** TokenPay 后台可见的公开 API Key ID，如 01M7MCYZ45AYTH7GK0MZZRM85N */
+  key_id: string;
   /** 最近一次连接时间（RFC3339） */
   connected_at: string;
 }
@@ -56,6 +56,8 @@ export const getWalletBalance = () => service.get<WalletBalance>("/wallet/tokenp
 
 /** 一条上游调用记录：金额单位元，created_at 是 UTC RFC3339 */
 export interface WalletUsageItem {
+  /** TokenPay 后台可见的公开 API Key ID */
+  key_id: string;
   /** TokenDance 内部模型 id（不透明，如 01KMM9…），**不是**模型名，别拿来匹配 */
   model_id: string;
   /** 模型别名（如 seedream-5.0-lite），与本站模型的 upstream_model 一致；上游没给时为空 */

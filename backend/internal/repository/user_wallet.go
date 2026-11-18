@@ -33,7 +33,7 @@ func (r *UserWalletRepository) Upsert(ctx context.Context, w *model.UserWallet) 
 	return r.db.WithContext(ctx).
 		Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "user_id"}},
-			DoUpdates: clause.AssignmentColumns([]string{"provider", "app_url", "key_masked", "updated_at"}),
+			DoUpdates: clause.AssignmentColumns([]string{"provider", "app_url", "key_id", "updated_at"}),
 		}).
 		Create(w).Error
 }

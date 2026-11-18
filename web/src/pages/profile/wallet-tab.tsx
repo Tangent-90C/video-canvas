@@ -10,7 +10,7 @@ import { startTokenPayAuth } from "@/api/wallet";
 import { useWalletStore } from "@/store/wallet";
 import { openWalletRecharge } from "@/store/wallet-recharge";
 
-/** 掩码 / 时间都是服务端给的展示值，这里只负责排版 */
+/** Key ID / 时间都是服务端给的展示值，这里只负责排版 */
 
 /**
  * 个人中心「钱包」tab：连接自己的 TokenDance 账号。
@@ -118,7 +118,10 @@ export function WalletTab() {
           </div>
           <div className="text-muted-foreground mt-1 space-y-0.5 text-xs">
             <p className="truncate">应用地址：{view.app_url}</p>
-            {view.key_masked && <p>授权 Key：{view.key_masked}</p>}
+            <p>
+              Key ID：
+              <span className="font-mono">{view.key_id || "首次调用后显示"}</span>
+            </p>
             {view.connected_at && <p>最近连接：{formatTime(view.connected_at)}</p>}
           </div>
         </div>

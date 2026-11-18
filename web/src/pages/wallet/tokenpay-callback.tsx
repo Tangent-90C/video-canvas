@@ -91,8 +91,8 @@ export default function TokenPayCallback() {
           {busy
             ? "正在用一次性授权码换取并保存你的 Key，请稍候…"
             : done
-              ? `钱包已连接${view?.key_masked ? `（${view.key_masked}）` : ""}，原来的页面已更新，可以关掉这个标签页。`
-              : error || `钱包已连接${view?.key_masked ? `（${view.key_masked}）` : ""}。`}
+              ? `钱包已连接${view?.key_id ? `（Key ID：${view.key_id}）` : ""}，原来的页面已更新，可以关掉这个标签页。`
+              : error || `钱包已连接${view?.key_id ? `（Key ID：${view.key_id}）` : ""}。`}
         </p>
         {error ? (
           <div className="mt-2 flex gap-2">

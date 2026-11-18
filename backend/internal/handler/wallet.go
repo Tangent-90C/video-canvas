@@ -42,7 +42,7 @@ func (h *WalletHandler) Connect(c *gin.Context) {
 	response.OK(c, v)
 }
 
-// Connection 返回当前钱包状态（GET /wallet/tokenpay/connection）。Key 只回掩码。
+// Connection 返回当前钱包状态（GET /wallet/tokenpay/connection）。只回公开 Key ID，不回授权 Key。
 func (h *WalletHandler) Connection(c *gin.Context) {
 	v, err := h.svc.View(c.Request.Context(), currentUserID(c))
 	if err != nil {

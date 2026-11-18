@@ -43,7 +43,7 @@ function fakeApi() {
           enabled: true,
           connected: false,
           app_url: "https://canvas.tan90.site",
-          key_masked: "",
+          key_id: "",
           connected_at: "",
         };
       },
@@ -53,7 +53,7 @@ function fakeApi() {
           enabled: true,
           connected: true,
           app_url: "https://canvas.tan90.site",
-          key_masked: "tk-…9",
+          key_id: "01M7MCYZ45AYTH7GK0MZZRM85N",
           connected_at: "",
         };
       },
@@ -235,7 +235,7 @@ describe("钱包 store：连接弹窗", () => {
         enabled: true,
         connected: true,
         app_url: "https://canvas.tan90.site",
-        key_masked: "tk-…1",
+        key_id: "01M7MCYZ45AYTH7GK0MZZRM85N",
         connected_at: "",
       }),
       disconnectTokenPay: async () => {},

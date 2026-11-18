@@ -172,12 +172,12 @@ func (s *UserWalletService) Connected(ctx context.Context, userID uint64) (bool,
 	return true, nil
 }
 
-// WalletView 是用户钱包的展示视图：Key 永远只回掩码。
+// WalletView 是用户钱包的展示视图：只回 TokenPay 后台可见的公开 Key ID；授权 Key 和掩码都不回。
 type WalletView struct {
 	Enabled     bool   `json:"enabled"`
 	Connected   bool   `json:"connected"`
 	AppURL      string `json:"app_url"`
-	KeyMasked   string `json:"key_masked"`
+	KeyID       string `json:"key_id"`
 	ConnectedAt string `json:"connected_at"`
 }
 
@@ -193,8 +193,19 @@ func (s *UserWalletService) View(ctx context.Context, userID uint64) (*WalletVie
 	}
 	view.Connected = true
 	view.AppURL = row.AppURL
-	view.KeyMasked = row.KeyMasked
+	view.KeyID = row.KeyID
 	view.ConnectedAt = row.UpdatedAt.Format(time.RFC3339)
+	if view.KeyID == "" {
+		// TokenDance 授权码交换只返回授权 Key，不返回公开 Key ID；调用记录的 key_id 是官方可见来源。
+		// 已连接用户的记录通常已有该字段，首次解析后落库，后续页面不再依赖上游。
+		if usage, err := s.Usage(ctx, userID); err == nil {
+			if keyID := selectUsageKeyID(usage.Items, row.AppURL, s.keyName, row.UpdatedAt); keyID != "" {
+				view.KeyID = keyID
+				row.KeyID = keyID
+				_ = s.repo.Upsert(ctx, row) // 展示不因元数据缓存写失败而中断
+			}
+		}
+	}
 	return view, nil
 }
 
@@ -318,6 +329,8 @@ type WalletUsageView struct {
 
 // WalletUsage 是一条上游调用记录（金额单位：元）。
 type WalletUsage struct {
+	// KeyID 是 TokenPay 后台可见的公开 API Key ID，不是授权 Key；用于钱包状态展示和调用归因核对。
+	KeyID string `json:"key_id"`
 	// ModelID 是 TokenDance 内部模型 id（不透明，如 01KMM9…），**不是**模型名，不能拿来匹配
 	ModelID string `json:"model_id"`
 	// ModelSlug 是模型别名（如 seedream-5.0-lite），与本站模型的 upstream_model 一致；上游只对有别名的模型给
@@ -325,6 +338,10 @@ type WalletUsage struct {
 	CreatedAt time.Time `json:"created_at"` // UTC，调用完成时间
 	Success   bool      `json:"success"`
 	CostYuan  float64   `json:"cost_yuan"`
+
+	// AppURL / KeyName 只用于从账号记录里识别当前应用创建的 Key，不返回前端。
+	AppURL  string `json:"-"`
+	KeyName string `json:"-"`
 }
 
 // Usage 拉用户的调用记录：未启用 / 未连接返回空视图（不报错，页面照常渲染）；
@@ -380,6 +397,9 @@ func (s *UserWalletService) Usage(ctx context.Context, userID uint64) (*WalletUs
 // 线上实测踩过：按 model_id 匹配永远匹配不上，界面全显示「—」。
 type walletUsageUpstream struct {
 	Items []struct {
+		KeyID      string `json:"key_id"`   // 公开 API Key ID
+		KeyName    string `json:"key_name"` // 创建 Key 时登记的名称
+		AppURL     string `json:"app_url"`  // Key / 请求的应用归因
 		ModelID    string `json:"model_id"`
 		ModelSlug  string `json:"model_slug"` // 模型别名，如 seedream-5.0-lite；没有时为空
 		CreatedAt  string `json:"created_at"` // UTC ISO 8601
@@ -431,6 +451,9 @@ func (s *UserWalletService) fetchUsage(ctx context.Context, key string) ([]Walle
 			continue // 时间解析不了就没法匹配，跳过这条
 		}
 		out = append(out, WalletUsage{
+			KeyID:     item.KeyID,
+			AppURL:    strings.TrimRight(item.AppURL, "/"),
+			KeyName:   item.KeyName,
 			ModelID:   item.ModelID,
 			ModelSlug: item.ModelSlug,
 			CreatedAt: at.UTC(),
@@ -489,12 +512,11 @@ func (s *UserWalletService) Connect(ctx context.Context, userID uint64, flow, co
 		return nil, err
 	}
 	now := s.now()
-	masked := maskKey(key)
-	row := &model.UserWallet{UserID: userID, Provider: tokenPayProviderName, AppURL: s.appURL, KeyMasked: masked, CreatedAt: now, UpdatedAt: now}
+	row := &model.UserWallet{UserID: userID, Provider: tokenPayProviderName, AppURL: s.appURL, CreatedAt: now, UpdatedAt: now}
 	if err := s.repo.Upsert(ctx, row); err != nil {
 		return nil, err
 	}
-	view := &WalletView{Enabled: true, Connected: true, AppURL: row.AppURL, KeyMasked: masked, ConnectedAt: row.UpdatedAt.Format(time.RFC3339)}
+	view := &WalletView{Enabled: true, Connected: true, AppURL: row.AppURL, ConnectedAt: row.UpdatedAt.Format(time.RFC3339)}
 	s.forgetBalance(userID)
 	return view, nil
 }
@@ -553,15 +575,60 @@ func (s *UserWalletService) exchange(ctx context.Context, code, verifier string)
 	return body.Key, nil
 }
 
-// maskKey 掩码展示 Key：前 6 位 + … + 后 4 位；太短只露前 3 位。
-func maskKey(key string) string {
-	if len(key) <= 12 {
-		if len(key) <= 3 {
-			return "…"
-		}
-		return key[:3] + "…"
+// usageKeyCandidates 是从调用记录筛出的 Key ID 候选，按用途分组用于消歧。
+type usageKeyCandidates struct {
+	all           map[string]struct{}
+	sameApp       map[string]struct{}
+	first         string
+	firstSameApp  string
+	firstSameName string
+}
+
+// collectUsageKeyCandidates 只保留当前 Key 创建之后的调用记录，并收集公开 Key ID 候选。
+func collectUsageKeyCandidates(items []WalletUsage, appURL, keyName string, connectedAt time.Time) usageKeyCandidates {
+	out := usageKeyCandidates{
+		all:     map[string]struct{}{},
+		sameApp: map[string]struct{}{},
 	}
-	return key[:6] + "…" + key[len(key)-4:]
+	appURL = strings.TrimRight(appURL, "/")
+	for _, item := range items {
+		if strings.TrimSpace(item.KeyID) == "" || (!connectedAt.IsZero() && item.CreatedAt.Before(connectedAt)) {
+			continue
+		}
+		out.all[item.KeyID] = struct{}{}
+		if out.first == "" {
+			out.first = item.KeyID
+		}
+		if appURL == "" || strings.TrimRight(item.AppURL, "/") != appURL {
+			continue
+		}
+		out.sameApp[item.KeyID] = struct{}{}
+		if out.firstSameApp == "" {
+			out.firstSameApp = item.KeyID
+		}
+		if out.firstSameName == "" && keyName != "" && item.KeyName == keyName {
+			out.firstSameName = item.KeyID
+		}
+	}
+	return out
+}
+
+// selectUsageKeyID 从当前 Key 的调用记录里选 TokenDance 公开 Key ID。
+// 记录按新到旧排列；优先选名称与 App URL 都能确认的记录。只有唯一候选时才兜底，
+// 多条候选且无法确认归属时返回空，绝不猜一个 ID 展示给用户。
+func selectUsageKeyID(items []WalletUsage, appURL, keyName string, connectedAt time.Time) string {
+	candidates := collectUsageKeyCandidates(items, appURL, keyName, connectedAt)
+	if candidates.firstSameName != "" {
+		return candidates.firstSameName
+	}
+	// 用户可以在授权页改名，所以名称不是硬条件；同一 App 下只有一个 Key ID 时仍可确认。
+	if len(candidates.sameApp) == 1 {
+		return candidates.firstSameApp
+	}
+	if len(candidates.all) == 1 {
+		return candidates.first
+	}
+	return ""
 }
 
 // randomToken 生成 n 字节随机数的 base64url（无填充）字符串。
