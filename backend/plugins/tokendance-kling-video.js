@@ -17,7 +17,7 @@ module.exports = {
     apiVersion: 1,
     key: "tokendance-kling-video",
     name: "TokenDance · 可灵视频",
-    version: "1.0.0",
+    version: "1.0.1",
     vendor: "kling",
     description: "TokenDance 可灵视频：Kling 4.0 / 3.0、数字人与视频特效（异步）",
     auth: { type: "bearer" },
@@ -174,7 +174,7 @@ function motionPlan(ctx, base) {
   }
   var contents = [];
   if (textOf(input.prompt)) contents.push({ type: "prompt", text: textOf(input.prompt) });
-  contents.push({ type: "image", url: refURL(images[0]) });
+  contents.push({ type: "image", url: imageRef(images[0]) });
   contents.push({ type: "video", url: refURL(videos[0]) });
   var settings = settingsOf(input);
   settings.character_orientation = "video";
@@ -193,7 +193,7 @@ function avatarPlan(ctx) {
   }
   var body = {
     model_name: ctx.model.upstreamModel,
-    image: refURL(images[0]),
+    image: imageRef(images[0]),
     sound_file: refURL(audios[0]),
     mode: input.mode === "pro" ? "pro" : "std",
   };
@@ -211,7 +211,10 @@ function effectsPlan(ctx) {
   if (images.length < 1 || images.length > 2) {
     throw new Error("视频特效需要 1 或 2 张图片");
   }
-  var visual = images.length === 1 ? { image: refURL(images[0]) } : { images: [refURL(images[0]), refURL(images[1])] };
+  var visual =
+    images.length === 1
+      ? { image: imageRef(images[0]) }
+      : { images: [imageRef(images[0]), imageRef(images[1])] };
   return {
     path: "/kling/v1/videos/effects",
     body: { model_name: ctx.model.upstreamModel, effect_scene: scene, input: visual },
@@ -224,7 +227,7 @@ function framesOf(input) {
   var images = refList(input.images).slice(0, 10);
   for (var i = 0; i < images.length; i++) {
     var type = i === 0 ? "first_frame" : i === images.length - 1 ? "last_frame" : "middle_frame";
-    contents.push({ type: type, url: refURL(images[i]), id: "frame_" + (i + 1) });
+    contents.push({ type: type, url: imageRef(images[i]), id: "frame_" + (i + 1) });
   }
   return contents;
 }
@@ -234,7 +237,7 @@ function omniContents(input) {
   if (textOf(input.prompt)) contents.push({ type: "prompt", text: textOf(input.prompt) });
   var images = refList(input.images).slice(0, 10);
   for (var i = 0; i < images.length; i++) {
-    contents.push({ type: "refer_image", url: refURL(images[i]), id: "image_" + (i + 1) });
+    contents.push({ type: "refer_image", url: imageRef(images[i]), id: "image_" + (i + 1) });
   }
   var videos = refList(input.videos).slice(0, 5);
   for (var v = 0; v < videos.length; v++) {
@@ -307,6 +310,11 @@ function messageOf(body) {
 
 function refURL(ref) {
   return { __fileRef: ref, as: "url" };
+}
+
+// 可灵要求图片宽高都不小于 300px；宿主遇到更小的图会等比放大并以 base64 传入。
+function imageRef(ref) {
+  return { __fileRef: ref, as: "url", min_side: 300 };
 }
 
 function refList(value) {

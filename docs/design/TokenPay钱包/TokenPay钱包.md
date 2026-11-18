@@ -131,6 +131,7 @@ ALTER TABLE generation_tasks ADD COLUMN wallet bool NOT NULL DEFAULT false;
    - 图像 → `tokendance-image.js`（Seedream / Qwen Image；含 Seedream 5.5、5.0 Pro）
    - Seedance → `tokendance-video.js`（`/ark/v3/generations/tasks`）
    - 可灵 V1/V2、Omni、数字人、视频特效 → `tokendance-kling-video.js`
+     - 可灵要求参考图宽高不小于 300px；插件会声明 `min_side=300`，宿主对 256px 等小图自动等比放大后再提交，不再被上游以 `Image pixel is invalid` 拒绝。
    - Wan3.0 / HappyHorse → `tokendance-alibaba-video.js`
    - MiniMax H3 V2 → `tokendance-minimax-video.js`
    - 音频 → `tokendance-tts.js`

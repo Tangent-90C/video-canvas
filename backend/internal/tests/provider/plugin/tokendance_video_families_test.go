@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"video-canvas/internal/provider"
@@ -16,9 +17,10 @@ import (
 )
 
 type tokenPayFamilyEnv struct {
-	exec *plugin.Executor
-	meta *pluginmeta.Meta
-	sha  string
+	exec   *plugin.Executor
+	meta   *pluginmeta.Meta
+	sha    string
+	assets *fakeAssets
 }
 
 func newTokenPayFamilyEnv(t *testing.T, key string) *tokenPayFamilyEnv {
@@ -41,12 +43,13 @@ func newTokenPayFamilyEnv(t *testing.T, key string) *tokenPayFamilyEnv {
 		t.Fatal(err)
 	}
 	resolver := &walletResolver{values: map[string]string{"wallet:9": "td-user-key", "channel:tp-main": "product-key"}}
+	assets := &fakeAssets{userID: 9, files: map[uint64][]byte{1: []byte("image-1"), 2: []byte("image-2"), 3: []byte("video-1"), 4: []byte("audio-1")}}
 	exec := plugin.New(plugin.Options{
 		Runner: runner, Codes: codeStore{"code": code}, Secrets: resolver,
-		Assets:    &fakeAssets{userID: 9, files: map[uint64][]byte{1: []byte("image-1"), 2: []byte("image-2"), 3: []byte("video-1"), 4: []byte("audio-1")}},
+		Assets:    assets,
 		IPAllowed: allowLoopback,
 	})
-	return &tokenPayFamilyEnv{exec: exec, meta: meta, sha: pre.SHA256}
+	return &tokenPayFamilyEnv{exec: exec, meta: meta, sha: pre.SHA256, assets: assets}
 }
 
 func (e *tokenPayFamilyEnv) snapshot(baseURL, key, upstream string, settings map[string]any, caps modelcfg.Capabilities) *provider.Snapshot {
@@ -79,6 +82,9 @@ func intPtr(v int) *int { return &v }
 
 func TestTokendanceKlingV2OmniRequestAndQuery(t *testing.T) {
 	env := newTokenPayFamilyEnv(t, "tokendance-kling-video")
+	env.assets.width, env.assets.height = 256, 256
+	small := imagePNG(t, 256, 256)
+	env.assets.files[1], env.assets.files[2] = small, small
 	var submit map[string]any
 	var paths []string
 	up := &fakeNewAPI{handler: func(w http.ResponseWriter, r *http.Request, body map[string]any) {
@@ -112,6 +118,9 @@ func TestTokendanceKlingV2OmniRequestAndQuery(t *testing.T) {
 	contents := submit["contents"].([]any)
 	if len(contents) != 4 || contents[1].(map[string]any)["type"] != "refer_image" || contents[3].(map[string]any)["type"] != "feature_video" {
 		t.Fatalf("Kling omni contents 不对：%v", contents)
+	}
+	if imageURL, _ := contents[1].(map[string]any)["url"].(string); imageURL == "" || strings.HasPrefix(imageURL, "https://") {
+		t.Fatalf("256px 参考图应由宿主放大并以 base64 传入：%v", contents[1])
 	}
 	settings := submit["settings"].(map[string]any)
 	if settings["resolution"] != "1080p" || settings["audio"] != "native" || settings["duration"] != float64(8) {

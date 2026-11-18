@@ -6,6 +6,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"image"
+	"image/color"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +16,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"image/png"
 
 	"video-canvas/internal/model"
 	"video-canvas/internal/provider"
@@ -276,6 +280,8 @@ type fakeAssets struct {
 	url    string
 	kind   string
 	mime   string
+	width  int
+	height int
 }
 
 func (f *fakeAssets) Get(_ context.Context, userID, id uint64) (*model.Asset, error) {
@@ -290,7 +296,14 @@ func (f *fakeAssets) Get(_ context.Context, userID, id uint64) (*model.Asset, er
 	if mimeType == "" {
 		mimeType = "image/png"
 	}
-	return &model.Asset{ID: id, UserID: userID, Kind: kind, MimeType: mimeType, FileName: "a.png"}, nil
+	width, height := f.width, f.height
+	if width == 0 {
+		width = 1024
+	}
+	if height == 0 {
+		height = 1024
+	}
+	return &model.Asset{ID: id, UserID: userID, Kind: kind, MimeType: mimeType, FileName: "a.png", Width: width, Height: height}, nil
 }
 
 func (f *fakeAssets) Open(ctx context.Context, userID, id uint64) (*provider.AssetFile, error) {
@@ -403,6 +416,57 @@ module.exports = {
 	}
 }
 
+// 上游要求图片最小边时，宿主把过小图片等比放大成 PNG 后以 base64 传入；图片本身仍能正常使用。
+func TestExecutorFileRefs_MinSideUpscalesSmallImages(t *testing.T) {
+	const code = `
+module.exports = {
+  buildSubmitRequest: function(ctx) { return {method: "POST", path: "/run", json: {u: {__fileRef: ctx.input.images[0], as: "url", min_side: 300}}}; },
+  parseSubmitResponse: function(ctx) { return {immediate: {status: "succeeded", outputs: [{type: "url", url: ctx.channel.baseUrl + "/o.png"}]}}; }
+};`
+	raw := imagePNG(t, 256, 256)
+	var got map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer upstream.Close()
+
+	assets := &fakeAssets{userID: 9, files: map[uint64][]byte{5: raw}, url: "https://cdn.example.com/small.png", width: 256, height: 256}
+	exec := execWith(code, func(o *plugin.Options) { o.Assets = assets })
+	if _, err := exec.Submit(context.Background(), imageSnap(upstream.URL, code), provider.SubmitInput{
+		Task: provider.TaskRef{ID: 1, UserID: 9}, Input: map[string]any{"prompt": "x", "op": "i2i", "images": []uint64{5}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	encoded, ok := got["u"].(string)
+	if !ok || encoded == "" || strings.HasPrefix(encoded, "https://") {
+		t.Fatalf("小图应转为 base64：%v", got["u"])
+	}
+	decoded, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := png.DecodeConfig(bytes.NewReader(decoded))
+	if err != nil || cfg.Width != 300 || cfg.Height != 300 {
+		t.Fatalf("放大后图片尺寸不符：%+v %v", cfg, err)
+	}
+}
+
+func imagePNG(t *testing.T, width, height int) []byte {
+	t.Helper()
+	img := image.NewNRGBA(image.Rect(0, 0, width, height))
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			img.SetNRGBA(x, y, color.NRGBA{R: uint8(x), G: uint8(y), B: 120, A: 255})
+		}
+	}
+	var out bytes.Buffer
+	if err := png.Encode(&out, img); err != nil {
+		t.Fatal(err)
+	}
+	return out.Bytes()
+}
+
 // 文件引用的安全边界：只能引用任务输入里已填写的参考素材；别人的素材打不开；as 非法被拒。
 func TestExecutorFileRefBoundaries(t *testing.T) {
 	var hits atomic.Int32
@@ -430,6 +494,8 @@ func TestExecutorFileRefBoundaries(t *testing.T) {
 		{"引用没填写的素材", `{__fileRef: "input:images.0"}`, map[string]any{}, 9, true},
 		{"没有 input: 前缀", `{__fileRef: "images.0"}`, map[string]any{"images": []any{uint64(5)}}, 9, true},
 		{"as 不合法", `{__fileRef: "input:images.0", as: "raw"}`, map[string]any{"images": []any{uint64(5)}}, 9, true},
+		{"min_side 不是正整数", `{__fileRef: "input:images.0", min_side: 0}`, map[string]any{"images": []any{uint64(5)}}, 9, true},
+		{"min_side 不是数字", `{__fileRef: "input:images.0", min_side: "300"}`, map[string]any{"images": []any{uint64(5)}}, 9, true},
 		{"素材不属于该用户", `{__fileRef: "input:images.0"}`, map[string]any{"images": []any{uint64(5)}}, 77, false},
 		{"落库后字符串素材 id 同样可引用", `{__fileRef: "input:images.0"}`, map[string]any{"images": []any{"5"}}, 77, false},
 	}

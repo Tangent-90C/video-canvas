@@ -7,7 +7,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+
+	// 注册 JPEG 解码器，供 min_side 图片放大使用。
+	_ "image/jpeg"
+	"image/png"
 	"io"
+	"math"
 	"mime"
 	"mime/multipart"
 	"net"
@@ -985,7 +991,11 @@ func (e *Executor) describeRequest(b *builtRequest) any {
 // describeRef 把文件引用写回它在请求描述里的样子（{__fileRef: "input:images.0", as: "url"}）。
 // 引用的字段都是小写的，直接序列化会得到空对象，运营就看不出请求里带了哪几个素材。
 func describeRef(r *fileRef) map[string]any {
-	return map[string]any{"__fileRef": fileRefPrefix + r.field, "as": r.as}
+	out := map[string]any{"__fileRef": fileRefPrefix + r.field, "as": r.as}
+	if r.minSide > 0 {
+		out["min_side"] = r.minSide
+	}
+	return out
 }
 
 // describeTree 复制 JSON 请求体树，把里面的文件引用换成可读的描述。
@@ -1045,6 +1055,14 @@ func (o *operation) resolveRef(ctx context.Context, ref fileRef) (any, error) {
 		return nil, terminalErr(codeAssetUnavailable, "打开任务输入素材失败", redactError(err, o.red.str))
 	}
 	defer f.Body.Close()
+	if ref.minSide > 0 {
+		if f.Asset.Kind != "image" {
+			return nil, pluginFault("min_side 只能用于图片素材")
+		}
+		if resized, ok, err := o.resizeImageRef(f, ref); err != nil || ok {
+			return resized, err
+		}
+	}
 	switch ref.as {
 	case "url":
 		if absoluteAssetURL(f.URL) {
@@ -1069,6 +1087,75 @@ func (o *operation) resolveRef(ctx context.Context, ref fileRef) (any, error) {
 	default:
 		return nil, pluginFault("文件引用 as 不合法")
 	}
+}
+
+// resizeImageRef 在图片任一边小于 min_side 时等比放大成 PNG，并以 base64 返回；
+// 上游（如可灵）对图片最小边有硬限制，放大后比直接报“像素不合法”更可用。
+func (o *operation) resizeImageRef(f *provider.AssetFile, ref fileRef) (string, bool, error) {
+	if f.Asset.Width >= ref.minSide && f.Asset.Height >= ref.minSide {
+		return "", false, nil
+	}
+	raw, err := o.readAssetBytes(f)
+	if err != nil {
+		return "", true, err
+	}
+	img, _, err := image.Decode(bytes.NewReader(raw))
+	if err != nil {
+		return "", true, terminalErr(codeAssetUnavailable, "素材不是可识别的图片", nil)
+	}
+	b := img.Bounds()
+	w, h := b.Dx(), b.Dy()
+	if w < ref.minSide || h < ref.minSide {
+		scale := float64(ref.minSide) / float64(w)
+		if s := float64(ref.minSide) / float64(h); s > scale {
+			scale = s
+		}
+		img = nearestResize(img, int(math.Ceil(float64(w)*scale)), int(math.Ceil(float64(h)*scale)))
+		raw, err = encodePNG(img)
+		if err != nil {
+			return "", true, terminalErr(codeAssetUnavailable, "放大任务输入图片失败", redactError(err, o.red.str))
+		}
+	}
+	if ref.as == "url" && absoluteAssetURL(f.URL) && w >= ref.minSide && h >= ref.minSide {
+		return f.URL, true, nil
+	}
+	encoded := base64.StdEncoding.EncodeToString(raw)
+	if ref.as == "dataUrl" {
+		return "data:image/png;base64," + encoded, true, nil
+	}
+	return encoded, true, nil
+}
+
+func (o *operation) readAssetBytes(f *provider.AssetFile) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(f.Body, o.e.opts.MaxInlineBytes+1))
+	if err != nil {
+		return nil, retryableErr(codeAssetUnavailable, "读取任务输入素材失败", redactError(err, o.red.str))
+	}
+	if int64(len(data)) > o.e.opts.MaxInlineBytes {
+		return nil, terminalErr(codeMediaTooLarge, "内联素材超过大小上限", nil)
+	}
+	return data, nil
+}
+
+func nearestResize(src image.Image, width, height int) image.Image {
+	dst := image.NewNRGBA(image.Rect(0, 0, width, height))
+	b := src.Bounds()
+	for y := 0; y < height; y++ {
+		sy := b.Min.Y + y*b.Dy()/height
+		for x := 0; x < width; x++ {
+			sx := b.Min.X + x*b.Dx()/width
+			dst.Set(x, y, src.At(sx, sy))
+		}
+	}
+	return dst
+}
+
+func encodePNG(img image.Image) ([]byte, error) {
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 // absoluteAssetURL 只接受 http(s) 绝对地址。相对地址（如本地存储未配置站点前缀时的 /files/...）

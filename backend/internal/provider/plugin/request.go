@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -97,8 +98,9 @@ type formField struct {
 }
 
 type fileRef struct {
-	field string
-	as    string
+	field   string
+	as      string
+	minSide int // 图片最小边；小于它时宿主放大后内联，避免上游因像素过小拒绝
 }
 
 // partSpec 是 multipart 的一个文件部分。
@@ -402,7 +404,7 @@ func (o *operation) parseRefValue(value any, path string) (*fileRef, bool, error
 	if !exists {
 		return nil, false, nil
 	}
-	if len(obj) > 2 {
+	if len(obj) > 3 {
 		return nil, true, pluginFaultf("请求描述的 %s 文件引用含未知字段", path)
 	}
 	field, ok := raw.(string)
@@ -424,7 +426,27 @@ func (o *operation) parseRefValue(value any, path string) (*fileRef, bool, error
 			return nil, true, pluginFaultf("请求描述的 %s.as 必须是 url / base64 / dataUrl", path)
 		}
 	}
-	return &fileRef{field: field, as: as}, true, nil
+	minSide := 0
+	if rawMin, exists := obj["min_side"]; exists {
+		var minErr error
+		minSide, minErr = refMinSide(rawMin)
+		if minErr != nil {
+			return nil, true, pluginFaultf("请求描述的 %s.min_side %s", path, minErr.Error())
+		}
+	}
+	return &fileRef{field: field, as: as, minSide: minSide}, true, nil
+}
+
+func refMinSide(value any) (int, error) {
+	n, ok := value.(json.Number)
+	if !ok {
+		return 0, fmt.Errorf("必须是 1–4096 的整数")
+	}
+	v, err := strconv.Atoi(n.String())
+	if err != nil || v < 1 || v > 4096 {
+		return 0, fmt.Errorf("必须是 1–4096 的整数")
+	}
+	return v, nil
 }
 
 // buildFormFields 解析 form / multipart.fields：值只能是字符串、数字、布尔或文件引用，null 的键被忽略。

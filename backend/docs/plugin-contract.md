@@ -114,6 +114,8 @@ meta: {
 - `as: "base64"`：文件内容的标准 base64（字符串）；
 - `as: "dataUrl"`：`data:<mime>;base64,<...>`。
 
+图片引用可再加 `"min_side": 300`。图片任一边小于该值时，宿主会等比放大成 PNG，并以 base64 字符串替换引用（`as:"url"` / `as:"base64"` 返回裸 base64，`as:"dataUrl"` 返回 data URL）；满足尺寸时仍按原 `as` 返回。该选项只用于图片素材，最小边只接受 1–4096。
+
 `multipart.parts[].fileRef` 是文件引用（字符串 `"input:<数组名>.<下标>"`，如 `input:images.0`），宿主流式上传文件内容；`filename` 可选。`base64` / `dataUrl` 会把文件读进内存，受 `media_inline_max_bytes`（默认 10MB）限制。引用必须指向 `ctx.input` 里已填写的参考素材；宿主校验素材归属当前任务用户。
 
 **宿主对请求描述的校验**（任一不通过就是 `terminal` + 插件级失败，不发请求）：
